@@ -1,0 +1,3 @@
+#!/bin/bash
+find src -regex ".*\.\(c\|hpp\|h\|cpp\|tpp\)" -exec sh -c "clang-format-5.0 -style=Webkit {} | sponge {}" \;
+find include -regex ".*\.\(c\|hpp\|h\|cpp\|tpp\)" -exec sh -c "clang-format-5.0 -style=Webkit {} | sponge {}" \;
