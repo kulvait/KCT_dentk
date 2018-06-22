@@ -13,8 +13,9 @@ find_package (Threads)
 
 #ITK ... for producing jpg
 find_package(ITK)
+IF(ITK_FOUND)
 include( ${ITK_USE_FILE} )
-
+ENDIF()
 
 #Header directories for the project
 set(GLOBAL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
