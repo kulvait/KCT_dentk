@@ -12,7 +12,7 @@ set(BUILD_SHARED_LIBS False)
 find_package (Threads)
 
 #ITK ... for producing jpg
-find_package( ITK REQUIRED)
+find_package(ITK)
 include( ${ITK_USE_FILE} )
 
 
@@ -73,6 +73,8 @@ target_link_libraries(dentk_info utils)
 target_link_libraries(dentk_info io)
 install (TARGETS dentk_info RUNTIME DESTINATION .)
 
+IF(ITK_FOUND)
+
 SET(DENTK_JPG_SOURCES src/dentk-jpg.cpp)
 add_executable(dentk_jpg ${DENTK_JPG_SOURCES})
 set_target_properties(
@@ -85,6 +87,9 @@ target_link_libraries(dentk_jpg utils)
 target_link_libraries(dentk_jpg ${ITK_LIBRARIES} )
 target_link_libraries(dentk_jpg io)
 install (TARGETS dentk_jpg RUNTIME DESTINATION .)
+
+ENDIF()
+
 
 SET(DENTK_MERGE_SOURCES src/dentk-merge.cpp)
 add_executable(dentk_merge ${DENTK_MERGE_SOURCES})
