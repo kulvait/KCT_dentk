@@ -76,7 +76,7 @@ install (TARGETS dentk_info RUNTIME DESTINATION .)
 
 IF(ITK_FOUND)
 
-SET(DENTK_JPG_SOURCES src/dentk-jpg.cpp)
+SET(DENTK_JPG_SOURCES src/dentk-jpg.cpp src/io/itk/itkop.cpp)
 add_executable(dentk_jpg ${DENTK_JPG_SOURCES})
 set_target_properties(
     dentk_jpg 
