@@ -30,8 +30,8 @@ int main(int argc, char* argv[])
     std::string a_outputFile;
     CLI::App app{ "Create empty den file." };
     app.add_option("dimx", a_dimx, "X dimension.")->required()->check(CLI::Range(0, 65535));
-    app.add_option("dimx", a_dimy, "Y dimension.")->required()->check(CLI::Range(0, 65535));
-    app.add_option("dimx", a_dimz, "Z dimension.")->required()->check(CLI::Range(0, 65535));
+    app.add_option("dimy", a_dimy, "Y dimension.")->required()->check(CLI::Range(0, 65535));
+    app.add_option("dimz", a_dimz, "Z dimension.")->required()->check(CLI::Range(0, 65535));
     app.add_option("output_den_file1", a_outputFile, "File in a DEN format to output.")->required();
     CLI11_PARSE(app, argc, argv);
     LOGD << io::xprintf("Creating file %s with dimensions (x,y,z) = (%d, %d, %d).", a_outputFile.c_str(), a_dimx, a_dimy, a_dimz);
