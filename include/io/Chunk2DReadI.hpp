@@ -34,7 +34,7 @@ public:
                 a = get(i, j);
                 sum += a * a;
             }
-	return T;
+	return a;
     }
 
     T minValue()
