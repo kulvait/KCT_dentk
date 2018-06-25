@@ -157,7 +157,7 @@ int Args::parseArguments(int argc, char* argv[])
             return 1;
         } else {
             LOGE << "Parse error catched";
-            return app.exit(e);
+            return -1;
         }
     }
     return 0;
