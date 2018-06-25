@@ -1,14 +1,14 @@
 #ifndef CONVERTENDIANS_H
 #define CONVERTENDIANS_H
-//Logging, testing
+// Logging, testing
 #include <utils/PlogSetup.h>
 
-//External dependencies
+// External dependencies
 #include <cstdint>
 #include <cstring>
 #include <string>
 
-//Internal dependencies
+// Internal dependencies
 #include "io/DenSupportedType.hpp"
 #include "io/stringFormatter.h"
 
@@ -39,7 +39,8 @@ double putDouble(double val, uint8_t* buffer);
 template <typename T>
 T getNextElement(uint8_t* buffer, io::DenSupportedType dataType)
 {
-    switch (dataType) {
+    switch(dataType)
+    {
     case io::DenSupportedType::uint16_t_:
         return nextUint16(buffer);
     case io::DenSupportedType::float_:
@@ -47,7 +48,8 @@ T getNextElement(uint8_t* buffer, io::DenSupportedType dataType)
     case io::DenSupportedType::double_:
         return nextDouble(buffer);
     default:
-        std::string errMsg = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
+        std::string errMsg
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
         LOGE << errMsg;
         throw std::runtime_error(errMsg);
     }
@@ -56,7 +58,8 @@ T getNextElement(uint8_t* buffer, io::DenSupportedType dataType)
 template <typename T>
 void setNextElement(T val, uint8_t* buffer)
 {
-    switch (sizeof(T)) {
+    switch(sizeof(T))
+    {
     case 2:
         putUint16(val, buffer);
         break;
@@ -69,5 +72,5 @@ void setNextElement(T val, uint8_t* buffer)
     }
 }
 
-} //namespace CTL::util
-#endif //CONVERTENDIANS_H
+} // namespace CTL::util
+#endif // CONVERTENDIANS_H

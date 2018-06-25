@@ -8,5 +8,5 @@
 
 namespace CTL::io {
 std::string xprintf(const std::string fmt_str, ...);
-} //namespace CTL::io
-#endif //STRINGFORMATTER_H
+} // namespace CTL::io
+#endif // STRINGFORMATTER_H

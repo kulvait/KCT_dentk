@@ -1,10 +1,10 @@
 #ifndef DENASYNCWRITTER_HPP
 #define DENASYNCWRITTER_HPP
 
-//External libraries
+// External libraries
 #include <string>
 
-//Internal libraries
+// Internal libraries
 #include "io/AsyncImageWritterI.hpp"
 #include "io/rawop.h"
 #include "utils/convertEndians.h"
@@ -14,7 +14,8 @@ namespace CTL::io {
 Interface for writing images. It is not necessery to write matrices along them.
 */
 template <typename T>
-class DenAsyncWritter : public AsyncImageWritterI<T> {
+class DenAsyncWritter : public AsyncImageWritterI<T>
+{
 private:
     std::string projectionsFile;
     int sizex, sizey, sizez;
@@ -41,8 +42,10 @@ public:
 template <typename T>
 DenAsyncWritter<T>::DenAsyncWritter(std::string projectionsFile, int dimx, int dimy, int dimz)
 {
-    if (dimx < 1 || dimy < 1 || dimz < 1) {
-        std::string msg = io::xprintf("One of the dimensions is nonpositive x=%d, y=%d, z=%d.", dimx, dimy, dimz);
+    if(dimx < 1 || dimy < 1 || dimz < 1)
+    {
+        std::string msg = io::xprintf("One of the dimensions is nonpositive x=%d, y=%d, z=%d.",
+                                      dimx, dimy, dimz);
         LOGE << msg;
         throw std::runtime_error(msg);
     }
@@ -52,7 +55,8 @@ DenAsyncWritter<T>::DenAsyncWritter(std::string projectionsFile, int dimx, int d
     this->sizez = dimz;
     int totalFileSize = 6 + sizeof(T) * dimx * dimy * dimz;
     io::createEmptyFile(projectionsFile, totalFileSize, true);
-    LOGD << io::xprintf("Just created a file %s with size %d bytes.", projectionsFile.c_str(), totalFileSize);
+    LOGD << io::xprintf("Just created a file %s with size %d bytes.", projectionsFile.c_str(),
+                        totalFileSize);
     uint8_t buffer[6];
     util::putUint16((uint16_t)dimy, &buffer[0]);
     util::putUint16((uint16_t)dimx, &buffer[2]);
@@ -88,8 +92,10 @@ template <typename T>
 void DenAsyncWritter<T>::writeSlice(const Chunk2DReadI<T>& s, int i)
 {
     uint8_t buffer[sizeof(T) * this->dimx() * this->dimy()];
-    for (int j = 0; j != this->dimy(); j++) {
-        for (int k = 0; k != this->dimx(); k++) {
+    for(int j = 0; j != this->dimy(); j++)
+    {
+        for(int k = 0; k != this->dimx(); k++)
+        {
             util::setNextElement<T>(s(k, j), &buffer[(j * this->dimx() + k) * sizeof(T)]);
         }
     }
@@ -99,5 +105,5 @@ void DenAsyncWritter<T>::writeSlice(const Chunk2DReadI<T>& s, int i)
     LOGE << "FUNCTION writeSlice is not implemented!!!";
 }
 
-} //namespace CTL::io
-#endif //DENASYNCWRITTER_HPP
+} // namespace CTL::io
+#endif // DENASYNCWRITTER_HPP

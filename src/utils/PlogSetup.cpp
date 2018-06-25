@@ -11,16 +11,21 @@ PlogSetup::PlogSetup(plog::Severity verbosityLevel, std::string csvLogFile, bool
 
 void PlogSetup::initLogging()
 {
-    if (!csvLogFile.empty()) {
+    if(!csvLogFile.empty())
+    {
         static plog::RollingFileAppender<plog::CsvFormatter> fileAppender(csvLogFile.c_str(), 0, 0);
-        if (logToConsole) {
+        if(logToConsole)
+        {
             static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
             plog::init(verbosityLevel, &fileAppender).addAppender(&consoleAppender);
-        } else {
+        } else
+        {
             plog::init(verbosityLevel, &fileAppender);
         }
-    } else {
-        if (logToConsole) {
+    } else
+    {
+        if(logToConsole)
+        {
             static plog::ColorConsoleAppender<plog::TxtFormatter> consoleAppender;
             plog::init(verbosityLevel, &consoleAppender);
         }
@@ -28,4 +33,4 @@ void PlogSetup::initLogging()
     return;
 }
 
-} //namespace CTL::util
+} // namespace CTL::util

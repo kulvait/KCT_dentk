@@ -1,18 +1,19 @@
 #ifndef DENFILEINFO_HPP
 #define DENFILEINFO_HPP
-//Logging
+// Logging
 #include <utils/PlogSetup.h>
 
-//Standard libraries
+// Standard libraries
 #include <string>
 
-//Internal libraries
+// Internal libraries
 #include "io/DenSupportedType.hpp"
 #include "io/rawop.h" //To get number of rows...
 
 namespace CTL::io {
 
-class DenFileInfo {
+class DenFileInfo
+{
 public:
     DenFileInfo(std::string fileName);
     int getNumRows();
@@ -27,5 +28,5 @@ private:
     std::string fileName;
 };
 
-} //namespace CTL::io
-#endif //DENFILEINFO_HPP
+} // namespace CTL::io
+#endif // DENFILEINFO_HPP

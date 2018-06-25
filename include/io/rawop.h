@@ -1,6 +1,6 @@
 #ifndef RAWOP_H
 #define RAWOP_H
-//Raw reading of the part file into the uint8_t buffer
+// Raw reading of the part file into the uint8_t buffer
 
 #include <plog/Log.h>
 
@@ -22,5 +22,5 @@ void writeFirstBytes(std::string fileName, uint8_t* buffer, int numBytes);
 void writeBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer, int numBytes);
 inline bool fileExists(std::string fileName);
 void createEmptyFile(std::string fileName, int numBytes, bool overwrite);
-} //namespace CTL::io
-#endif //RAWOP_H
+} // namespace CTL::io
+#endif // RAWOP_H

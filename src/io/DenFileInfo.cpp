@@ -47,7 +47,8 @@ long DenFileInfo::getNumPixels()
 DenSupportedType DenFileInfo::getDataType()
 {
     int elementByteSize = this->elementByteSize();
-    switch (elementByteSize) {
+    switch(elementByteSize)
+    {
     case 2:
         return DenSupportedType::uint16_t_;
     case 4:
@@ -56,7 +57,9 @@ DenSupportedType DenFileInfo::getDataType()
         return DenSupportedType::double_;
     default:
         std::stringstream errMsg;
-        errMsg << "File " << this->fileName << " is not valid DEN file because it has datatype of the length " << elementByteSize << ".";
+        errMsg << "File " << this->fileName
+               << " is not valid DEN file because it has datatype of the length " << elementByteSize
+               << ".";
         LOGE << errMsg.str();
         throw std::runtime_error(errMsg.str());
     }
@@ -66,29 +69,39 @@ int DenFileInfo::elementByteSize()
 {
     long dataSize = this->getSize() - 6;
     long numPixels = this->getNumPixels();
-    if (dataSize == 0) {
-        if (numPixels == 0) {
+    if(dataSize == 0)
+    {
+        if(numPixels == 0)
+        {
             return 0;
-        } else {
+        } else
+        {
             std::stringstream errMsg;
             errMsg << "File " << this->fileName << " is not valid DEN file.";
             LOGE << errMsg.str();
             throw std::runtime_error(errMsg.str());
         }
     }
-    if (dataSize < 0 || numPixels <= 0) {
+    if(dataSize < 0 || numPixels <= 0)
+    {
         std::stringstream errMsg;
-        errMsg << "File " << this->fileName << " is not valid DEN file because it is shorter than 6 bytes or number of pixels is nonpositive.";
+        errMsg << "File " << this->fileName
+               << " is not valid DEN file because it is shorter than 6 bytes or number of pixels "
+                  "is nonpositive.";
         LOGE << errMsg.str();
         throw std::runtime_error(errMsg.str());
     }
-    if (dataSize % numPixels != 0) {
+    if(dataSize % numPixels != 0)
+    {
         std::stringstream errMsg;
-        errMsg << "File " << this->fileName << " is not valid DEN file because its data are not aligned with a pixels represented.";
+        errMsg
+            << "File " << this->fileName
+            << " is not valid DEN file because its data are not aligned with a pixels represented.";
         LOGE << errMsg.str();
         throw std::runtime_error(errMsg.str());
     }
-    switch (dataSize / numPixels) {
+    switch(dataSize / numPixels)
+    {
     case 2:
         return 2;
     case 4:
@@ -97,10 +110,12 @@ int DenFileInfo::elementByteSize()
         return 8;
     default:
         std::stringstream errMsg;
-        errMsg << "File " << this->fileName << " is not valid DEN file because it has datatype of the length " << dataSize / numPixels << ".";
+        errMsg << "File " << this->fileName
+               << " is not valid DEN file because it has datatype of the length "
+               << dataSize / numPixels << ".";
         LOGE << errMsg.str();
         throw std::runtime_error(errMsg.str());
     }
 }
 
-} //namespace CTL::io
+} // namespace CTL::io

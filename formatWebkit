@@ -1,3 +1,13 @@
 #!/bin/bash
-find src -regex ".*\.\(c\|hpp\|h\|cpp\|tpp\)" -exec sh -c "clang-format-5.0 -style=Webkit {} | sponge {}" \;
-find include -regex ".*\.\(c\|hpp\|h\|cpp\|tpp\)" -exec sh -c "clang-format-5.0 -style=Webkit {} | sponge {}" \;
+shopt -s globstar
+for f in {src,include}/**/*.{c,hpp,h,cpp,tpp}; do
+	if echo x"$f" | grep -v '*' > /dev/null; then #Process only matches that do not contain asterix
+		echo "Formating file $f."
+		clang-format-5.0 -style=file "$f" > /tmp/clang_tmp_file
+		if [ $? -eq 0 ]; then
+			cat /tmp/clang_tmp_file > "$f"
+		else
+			echo "Clang failed to modify file."
+		fi
+	fi
+done

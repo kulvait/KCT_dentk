@@ -1,7 +1,7 @@
 #ifndef ASYNCIMAGEWRITTERI_HPP
 #define ASYNCIMAGEWRITTERI_HPP
 
-//Internal libraries
+// Internal libraries
 #include "io/Chunk2DReadI.hpp"
 
 namespace CTL::io {
@@ -9,7 +9,8 @@ namespace CTL::io {
 Interface for writing images. It is not necessery to write matrices along them.
 */
 template <typename T>
-class AsyncImageWritterI {
+class AsyncImageWritterI
+{
 public:
     virtual void writeSlice(const Chunk2DReadI<T>& s, int i) = 0;
     /**Writes i-th slice to the source.*/
@@ -23,5 +24,5 @@ public:
     virtual unsigned int dimz() const = 0;
     /**Returns y dimension.*/
 };
-} //namespace CTL::io
-#endif //ASYNCIMAGEWRITTERI_HPP
+} // namespace CTL::io
+#endif // ASYNCIMAGEWRITTERI_HPP
