@@ -25,16 +25,16 @@ int64_t nextInt64(uint8_t* buffer);
 float nextFloat(uint8_t* buffer);
 double nextDouble(uint8_t* buffer);
 
-uint8_t putUint8(uint8_t val, uint8_t* buffer);
-int16_t putInt8(int16_t val, uint8_t* buffer);
-uint16_t putUint16(uint16_t val, uint8_t* buffer);
-int16_t putInt16(int16_t val, uint8_t* buffer);
-uint32_t putUint32(uint32_t val, uint8_t* buffer);
-int32_t putInt32(int32_t val, uint8_t* buffer);
-uint64_t putUint64(uint64_t val, uint8_t* buffer);
-int32_t putInt64(int64_t val, uint8_t* buffer);
-float putFloat(float val, uint8_t* buffer);
-double putDouble(double val, uint8_t* buffer);
+void putUint8(uint8_t val, uint8_t* buffer);
+void putInt8(int16_t val, uint8_t* buffer);
+void putUint16(uint16_t val, uint8_t* buffer);
+void putInt16(int16_t val, uint8_t* buffer);
+void putUint32(uint32_t val, uint8_t* buffer);
+void putInt32(int32_t val, uint8_t* buffer);
+void putUint64(uint64_t val, uint8_t* buffer);
+void putInt64(int64_t val, uint8_t* buffer);
+void putFloat(float val, uint8_t* buffer);
+void putDouble(double val, uint8_t* buffer);
 
 template <typename T>
 T getNextElement(uint8_t* buffer, io::DenSupportedType dataType)

@@ -102,7 +102,6 @@ void DenAsyncWritter<T>::writeSlice(const Chunk2DReadI<T>& s, int i)
     uint64_t position = (uint64_t)6 + ((uint64_t)sizeof(T)) * i * this->dimx() * this->dimy();
     io::writeBytesFrom(projectionsFile, position, buffer, sizeof(T) * this->dimx() * this->dimy());
     return;
-    LOGE << "FUNCTION writeSlice is not implemented!!!";
 }
 
 } // namespace CTL::io

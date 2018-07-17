@@ -24,9 +24,6 @@
 
 using namespace CTL;
 
-// Function declarations (definition at the end of the file)
-void print_usage();
-
 // class declarations
 struct Args
 {

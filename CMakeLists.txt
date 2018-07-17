@@ -116,3 +116,17 @@ set_target_properties(
 target_link_libraries(dentk_empty utils)
 target_link_libraries(dentk_empty io)
 install (TARGETS dentk_empty RUNTIME DESTINATION .)
+
+SET(DENTK_TODICOM_SOURCES src/dentk-todicom.cpp)
+add_executable(dentk_todicom ${DENTK_TODICOM_SOURCES})
+set_target_properties(
+    dentk_todicom 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-todicom"
+        SUFFIX ""
+)
+target_link_libraries(dentk_todicom utils)
+target_link_libraries(dentk_todicom io)
+target_link_libraries(dentk_todicom ${ITK_LIBRARIES} )
+target_link_libraries(dentk_todicom stdc++fs)#<experimental/filesystem>
+install (TARGETS dentk_todicom RUNTIME DESTINATION .)
