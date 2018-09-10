@@ -53,10 +53,27 @@ DenAsyncWritter<T>::DenAsyncWritter(std::string projectionsFile, int dimx, int d
     this->sizex = dimx;
     this->sizey = dimy;
     this->sizez = dimz;
-    int totalFileSize = 6 + sizeof(T) * dimx * dimy * dimz;
-    io::createEmptyFile(projectionsFile, totalFileSize, true);
-    LOGD << io::xprintf("Just created a file %s with size %d bytes.", projectionsFile.c_str(),
-                        totalFileSize);
+    long elementByteSize = sizeof(T);
+    long totalFileSize = 6 + elementByteSize * dimx * dimy * dimz;
+    if(io::fileExists(projectionsFile))
+    {
+        long fileSize = io::getFileSize(projectionsFile);
+        if(fileSize != totalFileSize)
+        {
+            io::createEmptyFile(projectionsFile, totalFileSize, true);
+            LOGD << io::xprintf(
+                "Just overwritten the file %s with empty file of the size %ld bytes.",
+                projectionsFile.c_str(), totalFileSize);
+        }
+        LOGD << io::xprintf(
+            "Will be working on existing file %s ewith %ld bytes. Overwritten old file.",
+            projectionsFile.c_str(), totalFileSize);
+    } else
+    {
+        io::createEmptyFile(projectionsFile, totalFileSize, true);
+        LOGD << io::xprintf("Just created a file %s with size %ld bytes.", projectionsFile.c_str(),
+                            totalFileSize);
+    }
     uint8_t buffer[6];
     util::putUint16((uint16_t)dimy, &buffer[0]);
     util::putUint16((uint16_t)dimx, &buffer[2]);

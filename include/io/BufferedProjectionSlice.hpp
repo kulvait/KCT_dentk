@@ -23,7 +23,7 @@ public:
     }
 
     BufferedProjectionSlice(const BufferedProjectionSlice& b)
-        : BufferedProjectionSlice(b->slice, b->sizex, b->sizey)
+        : BufferedProjectionSlice(b.slice, b.sizex, b.sizey)
     {
     } // copy constructor
 
@@ -47,6 +47,29 @@ public:
     unsigned int dimx() const override { return sizex; }
 
     unsigned int dimy() const override { return sizey; }
+
+    std::shared_ptr<io::Chunk2DReadI<T>> transpose()
+    {
+        T* tmp;
+        int sizex_tmp = sizey;
+        int sizey_tmp = sizex;
+        tmp = new T[sizex * sizey];
+        for(int x = 0; x != sizex_tmp; x++)
+            for(int y = 0; y != sizey_tmp; y++)
+            {
+                tmp[y * sizex_tmp + x] = slice[x * sizex + y];
+            }
+        std::shared_ptr<io::Chunk2DReadI<T>> bps
+            = std::make_shared<BufferedProjectionSlice<T>>(tmp, sizex_tmp, sizey_tmp);
+        delete[] tmp;
+        return bps;
+    }
+
+    /**
+     * Function to get access to the data array. Very dangerous operation.
+     * This array is destroyed after the slice is destroyed.
+     */
+    void* getDataPointer() { return (void*)slice; }
 
 private:
     T* slice;

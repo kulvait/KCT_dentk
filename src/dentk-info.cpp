@@ -78,7 +78,7 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
                 }
             } else
             {
-                int index = atoi(it->c_str());
+                int index = std::stoi(*it);
                 if(0 <= index && index < dimz)
                 {
                     frames.push_back(index);

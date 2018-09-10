@@ -1,6 +1,6 @@
 #ifndef PLOGSETUP_H
 #define PLOGSETUP_H
-
+#define PLOG_CAPTURE_FILE
 // External dependencies
 #include <plog/Appenders/ColorConsoleAppender.h>
 #include <plog/Log.h>

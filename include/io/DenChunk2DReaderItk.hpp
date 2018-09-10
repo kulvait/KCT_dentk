@@ -33,7 +33,8 @@ typename itk::Image<T, 2>::Pointer DenChunk2DReaderItk<T>::readChunk2DAsItkImage
     typename itk::RawImageIO<T, 2>::Pointer rawImageIO = itk::RawImageIO<T, 2>::New();
     rawImageIO->SetFileName(this->denFile); //(1) ... this is probably unnecessery
     rawImageIO->SetFileTypeToBinary();
-    rawImageIO->SetHeaderSize(6 + i * this->elementByteSize * (this->sizex * this->sizey));
+    uint32_t offset = 6;
+    rawImageIO->SetHeaderSize(offset + i * this->elementByteSize * (this->sizex * this->sizey));
     rawImageIO->SetFileDimensionality(2);
 
     rawImageIO->SetOrigin(0, 0.0); // origin in millimeters

@@ -36,6 +36,7 @@ void readFirstBytes(std::string fileName, uint8_t* buffer, int numBytes)
 
 void readBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer, int numBytes)
 {
+    // LOGD << io::xprintf("Reading %d bytes from pos %lu.", numBytes, fromPosition);
     if(CHAR_BIT != 8)
     {
         std::stringstream errMsg;
@@ -59,7 +60,8 @@ void readBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer,
     if(num != numBytes)
     {
         std::stringstream errMsg;
-        errMsg << "Can not read first " << numBytes << "bytes from the file " << fileName << ".";
+        errMsg << "Can not read " << numBytes << " bytes from the position " << fromPosition
+               << " in the file " << fileName << ".";
         LOGE << errMsg.str();
         throw std::runtime_error(errMsg.str());
     }
@@ -134,7 +136,14 @@ void writeBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer
     }
 }
 
-inline bool fileExists(std::string fileName) { return (access(fileName.c_str(), F_OK) != -1); }
+bool fileExists(std::string fileName) { return (access(fileName.c_str(), F_OK) != -1); }
+
+long getFileSize(std::string filename)
+{
+    struct stat stat_buf;
+    int rc = stat(filename.c_str(), &stat_buf);
+    return rc == 0 ? stat_buf.st_size : -1;
+}
 
 void createEmptyFile(std::string fileName, int numBytes, bool overwrite)
 {

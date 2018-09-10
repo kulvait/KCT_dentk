@@ -87,7 +87,7 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
                 }
             } else
             {
-                int index = atoi(it->c_str());
+                int index = std::stoi(*it);
                 if(0 <= index && index < dimz)
                 {
                     frames.push_back(index);
@@ -106,11 +106,31 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
     return frames;
 }
 
-void writeFrame(int id,
-                int fromId,
-                std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader,
-                int toId,
-                std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter)
+void writeFrameFloat(int id,
+                     int fromId,
+                     std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader,
+                     int toId,
+                     std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter)
+{
+    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+}
+
+void writeFrameDouble(int id,
+                      int fromId,
+                      std::shared_ptr<io::Chunk2DReaderI<double>> denSliceReader,
+                      int toId,
+                      std::shared_ptr<io::AsyncImageWritterI<double>> imagesWritter)
+{
+    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+}
+
+void writeFrameUint16(int id,
+                      int fromId,
+                      std::shared_ptr<io::Chunk2DReaderI<uint16_t>> denSliceReader,
+                      int toId,
+                      std::shared_ptr<io::AsyncImageWritterI<uint16_t>> imagesWritter)
 {
     imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
     LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
@@ -137,14 +157,14 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
-    LOGD << "Parsed arguments, entering main function.";
-    std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader
-        = std::make_shared<io::DenChunk2DReader<float>>(a.input_file);
-    int dimx = denSliceReader->dimx();
-    int dimy = denSliceReader->dimy();
-    int dimz = denSliceReader->count();
-    LOGD << io::xprintf("The file has dimensions (x,y,z)=(%d, %d, %d)", dimx, dimy, dimz);
-    std::vector<int> framesToProcess = processResultingFrames(a.frames, dimz);
+    io::DenFileInfo di(a.input_file);
+    io::DenSupportedType dataType = di.getDataType();
+    int dimx = di.getNumCols();
+    int dimy = di.getNumRows();
+    LOGD << io::xprintf("The file %s of the type %s has dimensions (x,y,z)=(%d, %d, %d)",
+                        a.input_file.c_str(), io::DenSupportedTypeToString(dataType).c_str(), dimx,
+                        dimy, di.getNumSlices());
+    std::vector<int> framesToProcess = processResultingFrames(a.frames, di.getNumSlices());
     if(a.reverse_order)
     {
         std::reverse(framesToProcess.begin(), framesToProcess.end()); // It really does!
@@ -158,14 +178,57 @@ int main(int argc, char* argv[])
         }
     }
     ctpl::thread_pool* threadpool = new ctpl::thread_pool(a.threads);
-    std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter
-        = std::make_shared<io::DenAsyncWritter<float>>(a.output_file, dimx, dimy,
-                                                       framesToOutput.size());
-    for(int i = 0; i != framesToOutput.size(); i++)
+    switch(dataType)
     {
-        // Try asynchronous calls
-        threadpool->push(writeFrame, framesToOutput[i], denSliceReader, i, imagesWritter);
+    case io::DenSupportedType::uint16_t_:
+    {
+        std::shared_ptr<io::Chunk2DReaderI<uint16_t>> denSliceReader
+            = std::make_shared<io::DenChunk2DReader<uint16_t>>(a.input_file);
+        std::shared_ptr<io::AsyncImageWritterI<uint16_t>> imagesWritter
+            = std::make_shared<io::DenAsyncWritter<uint16_t>>(a.output_file, dimx, dimy,
+                                                              framesToOutput.size());
+        for(int i = 0; i != framesToOutput.size(); i++)
+        {
+            // Try asynchronous calls
+            threadpool->push(writeFrameUint16, framesToOutput[i], denSliceReader, i, imagesWritter);
+        }
+        break;
     }
+    case io::DenSupportedType::float_:
+    {
+        std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader
+            = std::make_shared<io::DenChunk2DReader<float>>(a.input_file);
+        std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter
+            = std::make_shared<io::DenAsyncWritter<float>>(a.output_file, dimx, dimy,
+                                                           framesToOutput.size());
+        for(int i = 0; i != framesToOutput.size(); i++)
+        {
+            // Try asynchronous calls
+            threadpool->push(writeFrameFloat, framesToOutput[i], denSliceReader, i, imagesWritter);
+        }
+        break;
+    }
+    case io::DenSupportedType::double_:
+    {
+        std::shared_ptr<io::Chunk2DReaderI<double>> denSliceReader
+            = std::make_shared<io::DenChunk2DReader<double>>(a.input_file);
+        std::shared_ptr<io::AsyncImageWritterI<double>> imagesWritter
+            = std::make_shared<io::DenAsyncWritter<double>>(a.output_file, dimx, dimy,
+                                                            framesToOutput.size());
+        for(int i = 0; i != framesToOutput.size(); i++)
+        {
+            // Try asynchronous calls
+            threadpool->push(writeFrameDouble, framesToOutput[i], denSliceReader, i, imagesWritter);
+        }
+        break;
+    }
+    default:
+        std::string errMsg
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
+        LOGE << errMsg;
+        throw std::runtime_error(errMsg);
+    }
+
     delete threadpool;
 }
 

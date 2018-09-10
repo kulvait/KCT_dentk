@@ -1,4 +1,3 @@
-// Logging on the top
 #include "io/stringFormatter.h"
 
 namespace CTL {

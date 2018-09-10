@@ -73,7 +73,7 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
                 }
             } else
             {
-                int index = atoi(it->c_str());
+                int index = std::stoi(it->c_str());
                 if(0 <= index && index < dimz)
                 {
                     frames.push_back(index);
@@ -98,7 +98,7 @@ void writeFrame(int id,
                 int toId,
                 std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter)
 {
-    LOGD << io::xprintf("Writting %d th slice of file %s to %d th slice of file %s.", fromId,
+    LOGD << io::xprintf("Writing %d th slice of file %s to %d th slice of file %s.", fromId,
                         (std::dynamic_pointer_cast<io::DenChunk2DReader<float>>(denSliceReader))
                             ->getFileName()
                             .c_str(),
@@ -129,11 +129,11 @@ int main(int argc, char* argv[])
                  "First n frames in the output will be from the first n DEN files.");
     app.add_option("-f,--frames", a_frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
-                   "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
+                   "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
     app.add_option("-k,--each-kth", a_eachkth,
                    "Process only each k-th frame specified by k to output. The frames to output "
-                   "are then 1st specified, 1+kN, N=1...\\infty if such frame exists. Parametter k "
+                   "are then 1st specified, 1+kN, N=1...\\infty if such frame exists. Parameter k "
                    "must be positive integer.")
         ->check(CLI::Range(1, 65535));
     app.add_option("-j,--threads", a_threads, "Number of extra threads that application can use.")

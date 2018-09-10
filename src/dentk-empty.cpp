@@ -13,8 +13,8 @@
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
-#include "io/AsyncImageWritterI.hpp"
-#include "io/DenAsyncWritter.hpp"
+#include "io/rawop.h"
+#include "io/stringFormatter.h"
 
 using namespace CTL;
 
@@ -39,27 +39,25 @@ int main(int argc, char* argv[])
     app.add_option("dimz", a_dimz, "Z dimension.")->required()->check(CLI::Range(0, 65535));
     app.add_option("output_den_file1", a_outputFile, "File in a DEN format to output.")->required();
     CLI11_PARSE(app, argc, argv);
+    long elementByteSize;
     if(a_type == "float")
     {
+        elementByteSize = 4;
         LOGD << io::xprintf(
             "Creating file %s with data type float and dimensions (x,y,z) = (%d, %d, %d).",
             a_outputFile.c_str(), a_dimx, a_dimy, a_dimz);
-        std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<float>>(a_outputFile, a_dimx, a_dimy, a_dimz);
     } else if(a_type == "double")
     {
+        elementByteSize = 8;
         LOGD << io::xprintf(
             "Creating file %s with data type double and dimensions (x,y,z) = (%d, %d, %d).",
             a_outputFile.c_str(), a_dimx, a_dimy, a_dimz);
-        std::shared_ptr<io::AsyncImageWritterI<double>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<double>>(a_outputFile, a_dimx, a_dimy, a_dimz);
     } else if(a_type == "uint16_t")
     {
+        elementByteSize = 2;
         LOGD << io::xprintf(
             "Creating file %s with data type uint16_t and dimensions (x,y,z) = (%d, %d, %d).",
             a_outputFile.c_str(), a_dimx, a_dimy, a_dimz);
-        std::shared_ptr<io::AsyncImageWritterI<uint16_t>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<uint16_t>>(a_outputFile, a_dimx, a_dimy, a_dimz);
     } else
     {
         std::string err = io::xprintf("Unrecognized data type %s, for help run dentk-empty -h.",
@@ -67,4 +65,11 @@ int main(int argc, char* argv[])
         LOGE << err;
         throw std::runtime_error(err);
     }
+    long totalFileSize = 6 + elementByteSize * a_dimx * a_dimy * a_dimz;
+    io::createEmptyFile(a_outputFile, totalFileSize, true);
+    uint8_t buffer[6];
+    util::putUint16((uint16_t)a_dimy, &buffer[0]);
+    util::putUint16((uint16_t)a_dimx, &buffer[2]);
+    util::putUint16((uint16_t)a_dimz, &buffer[4]);
+    io::writeFirstBytes(a_outputFile, buffer, 6);
 }

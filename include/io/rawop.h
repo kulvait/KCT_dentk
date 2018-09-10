@@ -20,7 +20,8 @@ void readFirstBytes(std::string fileName, uint8_t* buffer, int numBytes);
 void readBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer, int numBytes);
 void writeFirstBytes(std::string fileName, uint8_t* buffer, int numBytes);
 void writeBytesFrom(std::string fileName, uint64_t fromPosition, uint8_t* buffer, int numBytes);
-inline bool fileExists(std::string fileName);
 void createEmptyFile(std::string fileName, int numBytes, bool overwrite);
+bool fileExists(std::string fileName);
+long getFileSize(std::string filename);
 } // namespace CTL::io
 #endif // RAWOP_H

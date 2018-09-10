@@ -4,6 +4,7 @@
 #include <utils/PlogSetup.h>
 
 // Standard libraries
+#include <cmath>
 #include <string>
 
 // Internal libraries
@@ -40,6 +41,8 @@ T DenFileInfo::getMaxVal()
     int rows = getNumRows();
     int cols = getNumCols();
     int zdim = getNumSlices();
+    uint32_t currentPosition;
+    uint32_t offset = 6;
     switch(dataType)
     {
     case io::DenSupportedType::uint16_t_:
@@ -48,7 +51,8 @@ T DenFileInfo::getMaxVal()
         uint8_t buffer[rows * cols * 2];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 2, buffer, rows * cols * 2);
+            currentPosition = offset + z * rows * cols * 2;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 2);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
@@ -64,28 +68,36 @@ T DenFileInfo::getMaxVal()
         uint8_t buffer[rows * cols * 4];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 4, buffer, rows * cols * 4);
+            currentPosition = offset + z * rows * cols * 4;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 4);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
                 val = util::getNextElement<T>(&buffer[pos * 4], dataType);
-                max = (max > val ? max : val);
+                if(!std::isnan(val))
+                {
+                    max = (max > val ? max : val);
+                }
             }
         }
         return max;
     }
     case io::DenSupportedType::double_:
     {
-        double max = -std::numeric_limits<float>::infinity();
+        double max = -std::numeric_limits<double>::infinity();
         uint8_t buffer[rows * cols * 8];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 8, buffer, rows * cols * 8);
+            currentPosition = offset + z * rows * cols * 8;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 8);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
                 val = util::getNextElement<T>(&buffer[pos * 8], dataType);
-                max = (max > val ? max : val);
+                if(!std::isnan(val))
+                {
+                    max = (max > val ? max : val);
+                }
             }
         }
         return max;
@@ -105,6 +117,8 @@ T DenFileInfo::getMinVal()
     int rows = getNumRows();
     int cols = getNumCols();
     int zdim = getNumSlices();
+    uint32_t currentPosition;
+    uint32_t offset = 6;
     switch(dataType)
     {
     case io::DenSupportedType::uint16_t_:
@@ -113,7 +127,8 @@ T DenFileInfo::getMinVal()
         uint8_t buffer[rows * cols * 2];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 2, buffer, rows * cols * 2);
+            currentPosition = offset + z * rows * cols * 2;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 2);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
@@ -129,28 +144,36 @@ T DenFileInfo::getMinVal()
         uint8_t buffer[rows * cols * 4];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 4, buffer, rows * cols * 4);
+            currentPosition = offset + z * rows * cols * 4;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 4);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
                 val = util::getNextElement<T>(&buffer[pos * 4], dataType);
-                min = (min < val ? min : val);
+                if(!std::isnan(val))
+                {
+                    min = (min < val ? min : val);
+                }
             }
         }
         return min;
     }
     case io::DenSupportedType::double_:
     {
-        double min = std::numeric_limits<float>::infinity();
+        double min = std::numeric_limits<double>::infinity();
         uint8_t buffer[rows * cols * 8];
         for(int z = 0; z != zdim; z++)
         {
-            io::readBytesFrom(fileName, 6 + z * rows * cols * 8, buffer, rows * cols * 8);
+            currentPosition = offset + z * rows * cols * 8;
+            io::readBytesFrom(fileName, currentPosition, buffer, rows * cols * 8);
             T val;
             for(int pos = 0; pos != rows * cols; pos++)
             {
                 val = util::getNextElement<T>(&buffer[pos * 8], dataType);
-                min = (min > val ? min : val);
+                if(!std::isnan(val))
+                {
+                    min = (min < val ? min : val);
+                }
             }
         }
         return min;
