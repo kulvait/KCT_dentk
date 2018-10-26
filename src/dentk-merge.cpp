@@ -15,10 +15,10 @@
 #include "strtk.hpp"
 
 // Internal libraries
-#include "io/AsyncImageWritterI.hpp"
-#include "io/Chunk2DReaderI.hpp"
-#include "io/DenAsyncWritter.hpp"
-#include "io/DenChunk2DReader.hpp"
+#include "AsyncFrame2DWritterI.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "Frame2DReaderI.hpp"
 
 using namespace CTL;
 
@@ -94,19 +94,20 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
 
 void writeFrame(int id,
                 int fromId,
-                std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader,
+                std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader,
                 int toId,
-                std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter)
+                std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter)
 {
-    LOGD << io::xprintf("Writing %d th slice of file %s to %d th slice of file %s.", fromId,
-                        (std::dynamic_pointer_cast<io::DenChunk2DReader<float>>(denSliceReader))
-                            ->getFileName()
-                            .c_str(),
-                        toId,
-                        (std::dynamic_pointer_cast<io::DenAsyncWritter<float>>(imagesWritter))
-                            ->getFileName()
-                            .c_str());
-    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    LOGD << io::xprintf(
+        "Writing %d th slice of file %s to %d th slice of file %s.", fromId,
+        (std::dynamic_pointer_cast<io::DenFrame2DReader<float>>(denSliceReader))
+            ->getFileName()
+            .c_str(),
+        toId,
+        (std::dynamic_pointer_cast<io::DenAsyncFrame2DWritter<float>>(imagesWritter))
+            ->getFileName()
+            .c_str());
+    imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
 }
 
 int main(int argc, char* argv[])
@@ -152,15 +153,15 @@ int main(int argc, char* argv[])
                         a_interlacing, a_frameSpecs.c_str(), a_eachkth, a_threads,
                         a_inputDenFiles.size());
     // Frames to process
-    std::vector<std::shared_ptr<io::Chunk2DReaderI<float>>> denSliceReaders;
+    std::vector<std::shared_ptr<io::Frame2DReaderI<float>>> denSliceReaders;
     for(int i = 0; i != a_inputDenFiles.size(); i++)
     {
         denSliceReaders.push_back(
-            std::make_shared<io::DenChunk2DReader<float>>(a_inputDenFiles[i]));
+            std::make_shared<io::DenFrame2DReader<float>>(a_inputDenFiles[i]));
     }
     int dimx = denSliceReaders[0]->dimx();
     int dimy = denSliceReaders[0]->dimy();
-    int dimz = denSliceReaders[0]->count();
+    int dimz = denSliceReaders[0]->dimz();
     LOGD << io::xprintf("The file %s has dimensions (x,y,z)=(%d, %d, %d)",
                         a_inputDenFiles[0].c_str(), dimx, dimy, dimz);
     std::vector<int> framesToProcess = processResultingFrames(a_frameSpecs, dimz);
@@ -173,8 +174,8 @@ int main(int argc, char* argv[])
         }
     }
     ctpl::thread_pool* threadpool = new ctpl::thread_pool(a_threads);
-    std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter
-        = std::make_shared<io::DenAsyncWritter<float>>(
+    std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<float>>(
             a_outputDen, dimx, dimy, a_inputDenFiles.size() * framesToOutput.size());
     int outputFiles = a_inputDenFiles.size();
     for(int i = 0; i != framesToOutput.size(); i++)

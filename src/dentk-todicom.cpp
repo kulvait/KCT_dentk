@@ -13,14 +13,14 @@
 #include "CLI/CLI.hpp" //Command line parser
 #include "strtk.hpp"
 // Internal libraries
-#include "io/AsyncImageWritterItkI.hpp"
-#include "io/Chunk2DReaderI.hpp"
-#include "io/DICOMAsyncWritterItk.hpp"
-#include "io/DenAsyncWritter.hpp"
-#include "io/DenChunk2DReader.hpp"
-#include "io/DenChunk2DReaderItk.hpp"
-#include "io/DenFileInfo.hpp"
-#include "io/itkop.h"
+#include "DENITK/AsyncFrame2DWritterItkI.hpp"
+#include "DENITK/DICOMAsyncWritterItk.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFileInfo.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "DENITK/DenFrame2DReaderItk.hpp"
+#include "Frame2DReaderI.hpp"
+#include "DENITK/itkop.h"
 using namespace CTL;
 namespace fs = std::experimental::filesystem;
 struct Args
@@ -35,6 +35,7 @@ struct Args
     bool useSignedIntegers = false;
     float multiplyByFactor = 1.0, addToValues = 0.0;
     float windowMin, windowMax;
+    float spacing_x = 1.0, spacing_y = 1.0;
     int outputMin, outputMax;
 };
 
@@ -134,8 +135,8 @@ int main(int argc, char* argv[])
     //    float tmpmin, tmpmax;
     //    for(int i = 0; i != framesToOutput.size(); i++)
     //    {
-    //        tmpmin = (double)sliceReader->readSlice(framesToOutput[i])->minValue();
-    //        tmpmax = (double)sliceReader->readSlice(framesToOutput[i])->maxValue();
+    //        tmpmin = (double)sliceReader->readFrame(framesToOutput[i])->minValue();
+    //        tmpmax = (double)sliceReader->readFrame(framesToOutput[i])->maxValue();
     //        min = (min < tmpmin ? min : tmpmin);
     //        max = (max > tmpmax ? max : tmpmax);
     //    }
@@ -195,9 +196,10 @@ int main(int argc, char* argv[])
             }
         }
 
-        std::shared_ptr<io::Chunk2DReaderItkI<uint16_t>> sliceReader
-            = std::make_shared<io::DenChunk2DReaderItk<uint16_t>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterItkI<uint16_t>> dicomWritter
+        std::shared_ptr<io::Frame2DReaderItkI<uint16_t>> sliceReader
+            = std::make_shared<io::DenFrame2DReaderItk<uint16_t>>(a.input_file, a.spacing_x,
+                                                                  a.spacing_y);
+        std::shared_ptr<io::AsyncFrame2DWritterItkI<uint16_t>> dicomWritter
             = std::make_shared<io::DICOMAsyncWritterItk<uint16_t>>(
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
@@ -206,7 +208,7 @@ int main(int argc, char* argv[])
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);
-            dicomWritter->writeSlice(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
+            dicomWritter->writeFrame(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
         }
         break;
     }
@@ -258,9 +260,10 @@ int main(int argc, char* argv[])
             }
         }
 
-        std::shared_ptr<io::Chunk2DReaderItkI<float>> sliceReader
-            = std::make_shared<io::DenChunk2DReaderItk<float>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterItkI<float>> dicomWritter
+        std::shared_ptr<io::Frame2DReaderItkI<float>> sliceReader
+            = std::make_shared<io::DenFrame2DReaderItk<float>>(a.input_file, a.spacing_x,
+                                                               a.spacing_y);
+        std::shared_ptr<io::AsyncFrame2DWritterItkI<float>> dicomWritter
             = std::make_shared<io::DICOMAsyncWritterItk<float>>(
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
@@ -269,7 +272,7 @@ int main(int argc, char* argv[])
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);
-            dicomWritter->writeSlice(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
+            dicomWritter->writeFrame(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
         }
         break;
     }
@@ -321,9 +324,10 @@ int main(int argc, char* argv[])
                 }
             }
         }
-        std::shared_ptr<io::Chunk2DReaderItkI<double>> sliceReader
-            = std::make_shared<io::DenChunk2DReaderItk<double>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterItkI<double>> dicomWritter
+        std::shared_ptr<io::Frame2DReaderItkI<double>> sliceReader
+            = std::make_shared<io::DenFrame2DReaderItk<double>>(a.input_file, a.spacing_x,
+                                                                a.spacing_y);
+        std::shared_ptr<io::AsyncFrame2DWritterItkI<double>> dicomWritter
             = std::make_shared<io::DICOMAsyncWritterItk<double>>(
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
@@ -332,7 +336,7 @@ int main(int argc, char* argv[])
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);
-            dicomWritter->writeSlice(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
+            dicomWritter->writeFrame(sliceReader->readChunk2DAsItkImage(framesToOutput[i]), i);
         }
         break;
     }
@@ -364,6 +368,10 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("-a,--add_to_values", addToValues,
                    "Float value to add to the input values prior to further processing. "
                    "Multiplication prior to addition.");
+    app.add_option("--spacing_x", spacing_x, "Spacing in the x direction, defaults to 1.0.")
+        ->check(CLI::Range(0.0, 100.0));
+    app.add_option("--spacing_y", spacing_y, "Spacing in the y direction, defaults to 1.0.")
+        ->check(CLI::Range(0.0, 100.0));
     CLI::Option* wmn = app.add_option("--window-min", windowMin, "Min value of the window to use.");
     CLI::Option* wmx = app.add_option("--window-max", windowMax, "Max value of the window to use.");
     CLI::Option* omn
@@ -408,7 +416,7 @@ int Args::parseArguments(int argc, char* argv[])
     if(app.count("--window-min") > 0)
         windowingSpecified = true;
     if(app.count("--file-prefix") == 0)
-        file_prefix = input_file;
+        file_prefix = fs::path(input_file).stem();
     if(!fs::is_directory(output_dir))
     {
         if(fs::exists(output_dir))

@@ -15,10 +15,10 @@
 #include "strtk.hpp"
 
 // Internal libraries
-#include "io/AsyncImageWritterI.hpp"
-#include "io/Chunk2DReaderI.hpp"
-#include "io/DenAsyncWritter.hpp"
-#include "io/DenChunk2DReader.hpp"
+#include "AsyncFrame2DWritterI.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "Frame2DReaderI.hpp"
 
 using namespace CTL;
 
@@ -108,31 +108,31 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
 
 void writeFrameFloat(int id,
                      int fromId,
-                     std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader,
+                     std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader,
                      int toId,
-                     std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter)
+                     std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter)
 {
-    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
     LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
 void writeFrameDouble(int id,
                       int fromId,
-                      std::shared_ptr<io::Chunk2DReaderI<double>> denSliceReader,
+                      std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader,
                       int toId,
-                      std::shared_ptr<io::AsyncImageWritterI<double>> imagesWritter)
+                      std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter)
 {
-    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
     LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
 void writeFrameUint16(int id,
                       int fromId,
-                      std::shared_ptr<io::Chunk2DReaderI<uint16_t>> denSliceReader,
+                      std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader,
                       int toId,
-                      std::shared_ptr<io::AsyncImageWritterI<uint16_t>> imagesWritter)
+                      std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter)
 {
-    imagesWritter->writeSlice(*(denSliceReader->readSlice(fromId)), toId);
+    imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
     LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
@@ -182,11 +182,11 @@ int main(int argc, char* argv[])
     {
     case io::DenSupportedType::uint16_t_:
     {
-        std::shared_ptr<io::Chunk2DReaderI<uint16_t>> denSliceReader
-            = std::make_shared<io::DenChunk2DReader<uint16_t>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterI<uint16_t>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<uint16_t>>(a.output_file, dimx, dimy,
-                                                              framesToOutput.size());
+        std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
+            = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
+        std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(a.output_file, dimx, dimy,
+                                                                     framesToOutput.size());
         for(int i = 0; i != framesToOutput.size(); i++)
         {
             // Try asynchronous calls
@@ -196,11 +196,11 @@ int main(int argc, char* argv[])
     }
     case io::DenSupportedType::float_:
     {
-        std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader
-            = std::make_shared<io::DenChunk2DReader<float>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterI<float>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<float>>(a.output_file, dimx, dimy,
-                                                           framesToOutput.size());
+        std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
+            = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
+        std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_file, dimx, dimy,
+                                                                  framesToOutput.size());
         for(int i = 0; i != framesToOutput.size(); i++)
         {
             // Try asynchronous calls
@@ -210,11 +210,11 @@ int main(int argc, char* argv[])
     }
     case io::DenSupportedType::double_:
     {
-        std::shared_ptr<io::Chunk2DReaderI<double>> denSliceReader
-            = std::make_shared<io::DenChunk2DReader<double>>(a.input_file);
-        std::shared_ptr<io::AsyncImageWritterI<double>> imagesWritter
-            = std::make_shared<io::DenAsyncWritter<double>>(a.output_file, dimx, dimy,
-                                                            framesToOutput.size());
+        std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
+            = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
+        std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_file, dimx, dimy,
+                                                                   framesToOutput.size());
         for(int i = 0; i != framesToOutput.size(); i++)
         {
             // Try asynchronous calls

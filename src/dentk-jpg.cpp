@@ -15,12 +15,12 @@
 #include "strtk.hpp"
 
 // Internal libraries
-#include "io/AsyncImageWritterI.hpp"
-#include "io/Chunk2DReaderI.hpp"
-#include "io/DenAsyncWritter.hpp"
-#include "io/DenChunk2DReader.hpp"
-#include "io/DenChunk2DReaderItk.hpp"
-#include "io/itkop.h"
+#include "AsyncFrame2DWritterI.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "DENITK/DenFrame2DReaderItk.hpp"
+#include "Frame2DReaderI.hpp"
+#include "DENITK/itkop.h"
 
 using namespace CTL;
 
@@ -114,7 +114,7 @@ int main(int argc, char* argv[])
 {
     plog::Severity verbosityLevel
         = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/imageRegistrationLog.csv"; // Set NULL to disable
+    std::string csvLogFile = "/tmp/dentk-jpg.csv"; // Set NULL to disable
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
@@ -135,9 +135,9 @@ int main(int argc, char* argv[])
     std::vector<int> framesToOutput;
     if(a.grayscaleSpecified)
     {
-        std::shared_ptr<io::Chunk2DReaderItkI<float>> sliceReader
-            = std::make_shared<io::DenChunk2DReaderItk<float>>(a.input_file);
-        framesToOutput = processResultingFrames(a.frames, sliceReader->count());
+        std::shared_ptr<io::Frame2DReaderItkI<float>> sliceReader
+            = std::make_shared<io::DenFrame2DReaderItk<float>>(a.input_file);
+        framesToOutput = processResultingFrames(a.frames, sliceReader->dimz());
         for(int i = 0; i != framesToOutput.size(); i++)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
@@ -161,50 +161,50 @@ int main(int argc, char* argv[])
             LOGE << msg;
             throw std::runtime_error(msg);
         }
-        std::shared_ptr<io::Chunk2DReaderI<float>> redSliceReader, greenSliceReader,
+        std::shared_ptr<io::Frame2DReaderI<float>> redSliceReader, greenSliceReader,
             blueSliceReader;
         redSliceReader = NULL;
         greenSliceReader = NULL;
         blueSliceReader = NULL;
         if(!a.input_file_red.empty())
         {
-            redSliceReader = std::make_shared<io::DenChunk2DReader<float>>(a.input_file_red);
-            framesToOutput = processResultingFrames(a.frames, redSliceReader->count());
+            redSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_red);
+            framesToOutput = processResultingFrames(a.frames, redSliceReader->dimz());
         }
         if(!a.input_file_green.empty())
         {
-            greenSliceReader = std::make_shared<io::DenChunk2DReader<float>>(a.input_file_green);
+            greenSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_green);
             if(framesToOutput.size() == 0)
-                framesToOutput = processResultingFrames(a.frames, redSliceReader->count());
+                framesToOutput = processResultingFrames(a.frames, redSliceReader->dimz());
         }
         if(!a.input_file_blue.empty())
         {
-            blueSliceReader = std::make_shared<io::DenChunk2DReader<float>>(a.input_file_blue);
+            blueSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_blue);
             if(framesToOutput.size() == 0)
-                framesToOutput = processResultingFrames(a.frames, redSliceReader->count());
+                framesToOutput = processResultingFrames(a.frames, redSliceReader->dimz());
         }
         for(int i = 0; i != framesToOutput.size(); i++)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
                                              a.file_prefix.c_str(), framesToOutput[i]);
-            std::shared_ptr<io::Chunk2DReadI<float>> imgR, imgG, imgB;
+            std::shared_ptr<io::Frame2DI<float>> imgR, imgG, imgB;
             if(redSliceReader)
             {
-                imgR = redSliceReader->readSlice(framesToOutput[i]);
+                imgR = redSliceReader->readFrame(framesToOutput[i]);
             } else
             {
                 imgR = NULL;
             }
             if(greenSliceReader)
             {
-                imgG = greenSliceReader->readSlice(framesToOutput[i]);
+                imgG = greenSliceReader->readFrame(framesToOutput[i]);
             } else
             {
                 imgG = NULL;
             }
             if(blueSliceReader)
             {
-                imgB = blueSliceReader->readSlice(framesToOutput[i]);
+                imgB = blueSliceReader->readFrame(framesToOutput[i]);
             } else
             {
                 imgB = NULL;

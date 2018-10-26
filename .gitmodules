@@ -7,3 +7,6 @@
 [submodule "submodules/plog"]
 	path = submodules/plog
 	url = https://github.com/SergiusTheBest/plog.git
+[submodule "submodules/CTIOL"]
+	path = submodules/CTIOL
+	url = ssh://git@gitlab.stimulate.ovgu.de:2200/vojtech.kulvait/CTIOL.git

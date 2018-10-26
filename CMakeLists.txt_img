@@ -1,21 +1,23 @@
 cmake_minimum_required(VERSION 3.1)
 project(ImageRegistration)
 
-set(CMAKE_INSTALL_PREFIX /home/user/bin)
+set(CMAKE_INSTALL_PREFIX $ENV{HOME}/bin)
 set(CMAKE_CXX_STANDARD 14)#Supported values are 98, 11 and 14.
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wextra")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 set(CMAKE_BUILD_TYPE Debug)
 set(BUILD_SHARED_LIBS False)
 
-#Threads lib
-find_package (Threads)
-
-#ITK ... for producing jpg
+#ITK
 find_package(ITK)
 IF(ITK_FOUND)
 	include( ${ITK_USE_FILE} )
 ENDIF()
+
+#OPENCV
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+message( ${OpenCV_INCLUDE_DIRS} )
 
 #Header directories for the project
 set(GLOBAL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
@@ -26,6 +28,9 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules)
 
 #Plog logger
 include_directories(${CMAKE_SOURCE_DIR}/submodules/plog/include)
+
+#CTIOL
+include_directories(${CMAKE_SOURCE_DIR}/submodules/CTIOL/include)
 
 #C++ String Toolkit Library
 #(2) If the Boost libraries  (random, regex,  lexical_cast etc) are not
@@ -41,32 +46,56 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules/CLI11/include)
 
 #Thread pool management lib ctpl from https://github.com/vit-vit/ctpl
 include_directories(${CMAKE_SOURCE_DIR}/submodules/ctpl)
+find_package (Threads)#include pthreads
 
-#CTIOL IO lib
-FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
-add_library(ctiol_itk ${DENITK_SRC})
-include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
+#Matrix class ssh://git@gitlab.stimulate.ovgu.de:2200/robert-frysch/Matrix-Template.git
+include_directories(${CMAKE_SOURCE_DIR}/submodules/Matrix-Template)
 
-FILE( GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp )
-add_library(ctiol ${CTIOL_SRC})
+#Projection matrix comparator by Robert Frysch
+#To enable Frobenius norm just define ENABLE_FROBENIUS_NORM
+add_definitions("-DENABLE_FROBENIUS_NORM")
+include_directories(${CMAKE_SOURCE_DIR}/submodules/projection-matrix-comparator)
+SET( PMC_SRC ${CMAKE_SOURCE_DIR}/submodules/projection-matrix-comparator/pmatcachedfilereader.cpp  ${CMAKE_SOURCE_DIR}/submodules/projection-matrix-comparator/pmatcomparator.cpp)
+add_library(pmc ${PMC_SRC})
 
 FILE( GLOB UTILS_SRC ${CMAKE_SOURCE_DIR}/src/utils/*.cpp )
 add_library(utils ${UTILS_SRC})
 
+FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
+add_library(denitk_lib ${DENITK_SRC})
 
-SET(DENTK_INFO_SOURCES src/dentk-info.cpp)
-add_executable(dentk_info ${DENTK_INFO_SOURCES})
+FILE( GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp )
+add_library(ctiol_lib ${CTIOL_SRC})
+
+#file(GLOB GLOBAL_SOURCES "src/*.cpp")
+message("Version opencv "${OpenCV_VERSION_MAJOR})
+if(${OpenCV_VERSION_MAJOR} GREATER 2)
+
+SET(GLOBAL_SOURCES src/main.cpp
+	src/imageRegistrationExecutor.cpp)
+
+add_executable(ImageRegistration ${GLOBAL_SOURCES})
 set_target_properties(
-    dentk_info 
+    ImageRegistration 
     PROPERTIES 
-        OUTPUT_NAME "dentk-info"
+        OUTPUT_NAME "imgreg"
         SUFFIX ""
 )
-target_link_libraries(dentk_info utils)
-target_link_libraries(dentk_info ctiol)
-install (TARGETS dentk_info RUNTIME DESTINATION .)
 
+target_link_libraries(ImageRegistration utils)
+target_link_libraries(ImageRegistration ctiol_lib)
+target_link_libraries(ImageRegistration pmc)
+target_link_libraries(ImageRegistration ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(ImageRegistration ${OpenCV_LIBS} )
+install (TARGETS ImageRegistration RUNTIME DESTINATION .)
 
+else()
+	message("Opencv is outdated on this system, can not compile ImageRegistration program.")
+endif()
+
+add_custom_target(formatWebkit
+./formatWebkit
+WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 SET(DENTK_GRAD_SOURCES src/dentk-grad.cpp)
 add_executable(dentk_grad ${DENTK_GRAD_SOURCES})
@@ -77,7 +106,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_grad utils)
-target_link_libraries(dentk_grad ctiol)
+target_link_libraries(dentk_grad ctiol_lib)
 install (TARGETS dentk_grad RUNTIME DESTINATION .)
 
 SET(DENTK_CAT_SOURCES src/dentk-cat.cpp)
@@ -89,10 +118,24 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_cat utils)
-target_link_libraries(dentk_cat ctiol)
+target_link_libraries(dentk_cat ctiol_lib)
+target_link_libraries(dentk_cat pmc)
 target_link_libraries(dentk_cat ${ITK_LIBRARIES} )
 install (TARGETS dentk_cat RUNTIME DESTINATION .)
 
+SET(DENTK_INFO_SOURCES src/dentk-info.cpp)
+add_executable(dentk_info ${DENTK_INFO_SOURCES})
+set_target_properties(
+    dentk_info 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-info"
+        SUFFIX ""
+)
+target_link_libraries(dentk_info utils)
+target_link_libraries(dentk_info ctiol_lib)
+target_link_libraries(dentk_info pmc)
+target_link_libraries(dentk_info ${ITK_LIBRARIES} )
+install (TARGETS dentk_info RUNTIME DESTINATION .)
 
 IF(ITK_FOUND)
 	SET(DENTK_JPG_SOURCES src/dentk-jpg.cpp)
@@ -104,8 +147,9 @@ IF(ITK_FOUND)
 			SUFFIX ""
 			)
 	target_link_libraries(dentk_jpg utils)
-	target_link_libraries(dentk_jpg ctiol)
-	target_link_libraries(dentk_jpg ctiol_itk)
+	target_link_libraries(dentk_jpg ctiol_lib)
+	target_link_libraries(dentk_jpg denitk_lib)
+	target_link_libraries(dentk_jpg pmc)
 	target_link_libraries(dentk_jpg ${ITK_LIBRARIES} )
 	install (TARGETS dentk_jpg RUNTIME DESTINATION .)
 ENDIF()
@@ -118,7 +162,7 @@ set_target_properties(
         OUTPUT_NAME "dentk-fen2den"
         SUFFIX ""
 )
-target_link_libraries(dentk_fen2den ctiol)
+target_link_libraries(dentk_fen2den ctiol_lib)
 target_link_libraries(dentk_fen2den utils)
 install (TARGETS dentk_fen2den RUNTIME DESTINATION .)
 
@@ -130,7 +174,7 @@ set_target_properties(
         OUTPUT_NAME "dentk-transpose"
         SUFFIX ""
 )
-target_link_libraries(dentk_transpose ctiol)
+target_link_libraries(dentk_transpose ctiol_lib)
 target_link_libraries(dentk_transpose utils)
 install (TARGETS dentk_transpose RUNTIME DESTINATION .)
 
@@ -143,7 +187,8 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_todicom utils)
-target_link_libraries(dentk_todicom ctiol)
+target_link_libraries(dentk_todicom ctiol_lib)
+target_link_libraries(dentk_todicom pmc)
 target_link_libraries(dentk_todicom ${ITK_LIBRARIES} )
 target_link_libraries(dentk_todicom stdc++fs)#<experimental/filesystem>
 install (TARGETS dentk_todicom RUNTIME DESTINATION .)
@@ -158,7 +203,8 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_merge utils)
-target_link_libraries(dentk_merge ctiol)
+target_link_libraries(dentk_merge ctiol_lib)
+target_link_libraries(dentk_merge pmc)
 target_link_libraries(dentk_merge ${ITK_LIBRARIES} )
 install (TARGETS dentk_merge RUNTIME DESTINATION .)
 
@@ -171,7 +217,8 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_empty utils)
-target_link_libraries(dentk_empty ctiol)
+target_link_libraries(dentk_empty ctiol_lib)
+target_link_libraries(dentk_empty pmc)
 target_link_libraries(dentk_empty ${ITK_LIBRARIES} )
 install (TARGETS dentk_empty RUNTIME DESTINATION .)
 
@@ -184,7 +231,8 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_diff utils)
-target_link_libraries(dentk_diff ctiol)
+target_link_libraries(dentk_diff ctiol_lib)
+target_link_libraries(dentk_diff pmc)
 install (TARGETS dentk_diff RUNTIME DESTINATION .)
 
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)
@@ -196,7 +244,8 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_tohu utils)
-target_link_libraries(dentk_tohu ctiol)
+target_link_libraries(dentk_tohu ctiol_lib)
+target_link_libraries(dentk_tohu pmc)
 install (TARGETS dentk_tohu RUNTIME DESTINATION .)
 
 SET(DENTK_FROMHU_SOURCES src/dentk-fromhu.cpp)
@@ -208,6 +257,20 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_fromhu utils)
-target_link_libraries(dentk_fromhu ctiol)
+target_link_libraries(dentk_fromhu ctiol_lib)
+target_link_libraries(dentk_fromhu pmc)
 install (TARGETS dentk_fromhu RUNTIME DESTINATION .)
 
+
+
+add_library(Catch INTERFACE)
+target_include_directories(Catch INTERFACE ${CMAKE_SOURCE_DIR}/submodules/Catch2/single_include)
+FILE( GLOB TST_SRC ${CMAKE_SOURCE_DIR}/tests/*.cpp )
+add_executable(test_imgreg ${TST_SRC})
+target_link_libraries(test_imgreg Catch)
+target_link_libraries(test_imgreg utils)
+target_link_libraries(test_imgreg ctiol_lib)
+target_link_libraries(test_imgreg ${ITK_LIBRARIES})
+
+enable_testing()
+add_test(NAME ImageRegistrationTest COMMAND test_imgreg)

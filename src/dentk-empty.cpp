@@ -13,8 +13,8 @@
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
-#include "io/rawop.h"
-#include "io/stringFormatter.h"
+#include "rawop.h"
+#include "stringFormatter.h"
 
 using namespace CTL;
 

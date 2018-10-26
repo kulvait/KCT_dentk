@@ -15,11 +15,13 @@
 #include "strtk.hpp"
 
 // Internal libraries
-#include "io/AsyncImageWritterI.hpp"
-#include "io/Chunk2DReaderI.hpp"
-#include "io/DenAsyncWritter.hpp"
-#include "io/DenChunk2DReader.hpp"
-#include "io/DenSupportedType.hpp"
+#include "AsyncFrame2DWritterI.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "DEN/DenSupportedType.hpp"
+#include "Frame2DI.hpp"
+#include "Frame2DReaderI.hpp"
+#include "frameop.h"
 
 using namespace CTL;
 
@@ -97,6 +99,27 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
     return frames;
 }
 
+template <typename T>
+void printFrameStatistics(const io::Frame2DI<T>& f)
+{
+    double min = (double)io::minFrameValue<T>(f);
+    double max = (double)io::maxFrameValue<T>(f);
+    double avg = io::meanFrameValue<T>(f);
+    double l2norm = io::normFrame<T>(f, 2);
+    std::cout << io::xprintf("\tMinimum, maximum, average values: %.3f, %0.3f, %0.3f.\n", min, max,
+                             avg);
+    std::cout << io::xprintf("\tEuclidean 2-norm of the frame: %E.\n", l2norm);
+    int nonFiniteCount = io::sumNonfiniteValues<T>(f);
+    if(nonFiniteCount == 0)
+    {
+        std::cout << io::xprintf("\tNo NAN or not finite number.\n\n");
+    } else
+    {
+        std::cout << io::xprintf("\tThere is %d non finite numbers. \tFrom that %d NAN.\n\n",
+                                 io::sumNonfiniteValues<T>(f), io::sumNanValues<T>(f));
+    }
+}
+
 int main(int argc, char* argv[])
 {
     plog::Severity verbosityLevel
@@ -124,9 +147,10 @@ int main(int argc, char* argv[])
     int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
     std::string elm = io::DenSupportedTypeToString(t);
-    std::cout << io::xprintf("The file of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
-                             "%d, %d), each cell has x*y=%d pixels.\n",
-                             elm.c_str(), dimx, dimy, dimz, dimx * dimy);
+    std::cout << io::xprintf(
+        "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
+        "%d, %d), each cell has x*y=%d pixels.\n",
+        a.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
     switch(t)
     {
     case io::DenSupportedType::uint16_t_:
@@ -149,7 +173,7 @@ int main(int argc, char* argv[])
     {
         double min = di.getMinVal<double>();
         double max = di.getMaxVal<double>();
-        std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", min, max);
+	std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", min, max);
         break;
     }
     default:
@@ -166,69 +190,39 @@ int main(int argc, char* argv[])
         {
         case io::DenSupportedType::uint16_t_:
         {
-            std::shared_ptr<io::Chunk2DReaderI<uint16_t>> denSliceReader
-                = std::make_shared<io::DenChunk2DReader<uint16_t>>(a.input_file);
+            std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
+                = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
             for(int i = 0; i != framesToOutput.size(); i++)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readSlice(framesToOutput[i]);
-                float normSquared = (float)slicePtr->normSquare();
-                float norm = std::sqrt(normSquared);
-                float min = slicePtr->minValue();
-                float max = slicePtr->maxValue();
-                double avg = slicePtr->meanValue();
-                std::cout << io::xprintf("Minimum, maximum, average values: %.3f, %0.3f, %0.3f.\n",
-                                         min, max, avg);
-                std::cout << io::xprintf("Euclidean 2-norm of the whole chunk: %.3f.\n",
-                                         std::sqrt(normSquared));
-                std::cout << io::xprintf("Average pixel square intensity: %.3f.\n\n",
-                                         normSquared / (dimx * dimy));
+                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                printFrameStatistics<uint16_t>(*slicePtr);
             }
             break;
         }
         case io::DenSupportedType::float_:
         {
 
-            std::shared_ptr<io::Chunk2DReaderI<float>> denSliceReader
-                = std::make_shared<io::DenChunk2DReader<float>>(a.input_file);
+            std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
+                = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
             for(int i = 0; i != framesToOutput.size(); i++)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readSlice(framesToOutput[i]);
-                float normSquared = (float)slicePtr->normSquare();
-                float norm = std::sqrt(normSquared);
-                float min = slicePtr->minValue();
-                float max = slicePtr->maxValue();
-                double avg = slicePtr->meanValue();
-                std::cout << io::xprintf("Minimum, maximum, average values: %.3f, %0.3f, %0.3f.\n",
-                                         min, max, avg);
-                std::cout << io::xprintf("Euclidean 2-norm of the whole chunk: %.3f.\n",
-                                         std::sqrt(normSquared));
-                std::cout << io::xprintf("Average pixel square intensity: %.3f.\n\n",
-                                         normSquared / (dimx * dimy));
+                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                printFrameStatistics<float>(*slicePtr);
             }
             break;
         }
         case io::DenSupportedType::double_:
         {
 
-            std::shared_ptr<io::Chunk2DReaderI<double>> denSliceReader
-                = std::make_shared<io::DenChunk2DReader<double>>(a.input_file);
+            std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
+                = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
             for(int i = 0; i != framesToOutput.size(); i++)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readSlice(framesToOutput[i]);
-                float normSquared = (float)slicePtr->normSquare();
-                float norm = std::sqrt(normSquared);
-                float min = slicePtr->minValue();
-                float max = slicePtr->maxValue();
-                double avg = slicePtr->meanValue();
-                std::cout << io::xprintf("Minimum, maximum, average values: %.3f, %0.3f, %0.3f.\n",
-                                         min, max, avg);
-                std::cout << io::xprintf("Euclidean 2-norm of the whole chunk: %.3f.\n",
-                                         std::sqrt(normSquared));
-                std::cout << io::xprintf("Average pixel square intensity: %.3f.\n\n",
-                                         normSquared / (dimx * dimy));
+	    auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                printFrameStatistics<double>(*slicePtr);
             }
             break;
         }
