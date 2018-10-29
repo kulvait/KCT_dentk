@@ -109,6 +109,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-diff";
     // Process arguments
     program_name = argv[0];
     Args a;

@@ -22,8 +22,8 @@
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-#include "rawop.h"
 #include "littleEndianAlignment.h"
+#include "rawop.h"
 
 using namespace CTL;
 
@@ -44,6 +44,8 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-merge";
+    // Command line parsing
     Args a;
     int parseResult = a.parseArguments(argc, argv);
     if(parseResult != 0)

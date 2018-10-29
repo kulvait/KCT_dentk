@@ -32,6 +32,7 @@ struct Args
     std::string input_file;
     std::string frames = "";
     bool framesSpecified = false;
+    bool returnDimensions = false;
 };
 
 std::vector<int> processResultingFrames(std::string frameSpecification, int dimz)
@@ -144,6 +145,11 @@ int main(int argc, char* argv[])
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
+    if(a.returnDimensions)
+    {
+        std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
+return 0;
+    }
     int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
     std::string elm = io::DenSupportedTypeToString(t);
@@ -245,8 +251,10 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
+    app.add_flag("--dim", returnDimensions,
+                 "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
 
-    try
+        try
     {
         app.parse(argc, argv);
         if(app.count("--frames") > 0)

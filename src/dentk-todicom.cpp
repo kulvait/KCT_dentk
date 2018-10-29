@@ -13,14 +13,14 @@
 #include "CLI/CLI.hpp" //Command line parser
 #include "strtk.hpp"
 // Internal libraries
-#include "DENITK/AsyncFrame2DWritterItkI.hpp"
-#include "DENITK/DICOMAsyncWritterItk.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
+#include "DENITK/AsyncFrame2DWritterItkI.hpp"
+#include "DENITK/DICOMAsyncWritterItk.hpp"
 #include "DENITK/DenFrame2DReaderItk.hpp"
-#include "Frame2DReaderI.hpp"
 #include "DENITK/itkop.h"
+#include "Frame2DReaderI.hpp"
 using namespace CTL;
 namespace fs = std::experimental::filesystem;
 struct Args
@@ -114,6 +114,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-todicom";
     // Process arguments
     program_name = argv[0];
     Args a;

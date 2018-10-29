@@ -26,6 +26,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-empty";
     // Argument parsing
     int a_dimx, a_dimy, a_dimz;
     std::string a_outputFile;

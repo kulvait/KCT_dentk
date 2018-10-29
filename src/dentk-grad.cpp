@@ -109,6 +109,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-grad";
     // Process arguments
     program_name = argv[0];
     Args a;
@@ -220,13 +221,13 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
-    if(output_x.empty())
-    {
-        std::string prefix = input_file.substr(0, input_file.find(".", 0));
-        output_x = io::xprintf("%s_x.den", prefix.c_str());
-        output_y = io::xprintf("%s_y.den", prefix.c_str());
-        output_z = io::xprintf("%s_z.den", prefix.c_str());
-    }
+        if(output_x.empty())
+        {
+            std::string prefix = input_file.substr(0, input_file.find(".", 0));
+            output_x = io::xprintf("%s_x.den", prefix.c_str());
+            output_y = io::xprintf("%s_y.den", prefix.c_str());
+            output_z = io::xprintf("%s_z.den", prefix.c_str());
+        }
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

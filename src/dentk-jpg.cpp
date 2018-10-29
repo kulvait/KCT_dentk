@@ -19,8 +19,8 @@
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "DENITK/DenFrame2DReaderItk.hpp"
-#include "Frame2DReaderI.hpp"
 #include "DENITK/itkop.h"
+#include "Frame2DReaderI.hpp"
 
 using namespace CTL;
 
@@ -118,6 +118,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-jpg";
     // Process arguments
     program_name = argv[0];
     Args a;

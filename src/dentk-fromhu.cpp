@@ -35,6 +35,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-fromhu";
     // Process arguments
     Args a;
     int parseResult = a.parseArguments(argc, argv);

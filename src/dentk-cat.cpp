@@ -44,11 +44,10 @@ std::vector<int> processResultingFrames(std::string frameSpecification, int dimz
             frameSpecification.erase(i, 1);
     frameSpecification = std::regex_replace(frameSpecification, std::regex("end"),
                                             io::xprintf("%d", dimz - 1).c_str());
-    LOGD << io::xprintf("Processing frame specification '%s'.", frameSpecification.c_str());
     std::vector<int> frames;
     if(frameSpecification.empty())
     {
-        LOGD << "Frame specification is empty, putting all frames.";
+    //    LOGD << "Frame specification is empty, putting all frames.";
         for(int i = 0; i != dimz; i++)
             frames.push_back(i);
     } else
@@ -113,7 +112,7 @@ void writeFrameFloat(int id,
                      std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter)
 {
     imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
-    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+    //    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
 void writeFrameDouble(int id,
@@ -123,7 +122,7 @@ void writeFrameDouble(int id,
                       std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter)
 {
     imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
-    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+    //    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
 void writeFrameUint16(int id,
@@ -133,7 +132,7 @@ void writeFrameUint16(int id,
                       std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter)
 {
     imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
-    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+    //    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
 }
 
 int main(int argc, char* argv[])
@@ -144,6 +143,7 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    LOGI << "dentk-cat";
     // Argument parsing
     Args a;
     int parseResult = a.parseArguments(argc, argv);
@@ -161,9 +161,6 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
-    LOGD << io::xprintf("The file %s of the type %s has dimensions (x,y,z)=(%d, %d, %d)",
-                        a.input_file.c_str(), io::DenSupportedTypeToString(dataType).c_str(), dimx,
-                        dimy, di.getNumSlices());
     std::vector<int> framesToProcess = processResultingFrames(a.frames, di.getNumSlices());
     if(a.reverse_order)
     {
@@ -251,11 +248,11 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_den_file", input_file, "File in a DEN format to process.")->required();
     app.add_option("output_den_file", output_file, "File in a DEN format to output.")->required();
 
-    LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
-                        output_file.c_str());
     try
     {
         app.parse(argc, argv);
+    LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
+                        output_file.c_str());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);
