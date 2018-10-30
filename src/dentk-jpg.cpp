@@ -1,5 +1,5 @@
 // Logging
-#include <utils/PlogSetup.h>
+#include "PLOG/PlogSetup.h"
 
 // External libraries
 #include <algorithm>
@@ -116,7 +116,7 @@ int main(int argc, char* argv[])
         = plog::debug; // Set to debug to see the debug messages, info messages
     std::string csvLogFile = "/tmp/dentk-jpg.csv"; // Set NULL to disable
     bool logToConsole = true;
-    util::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
+    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
     LOGI << "dentk-jpg";
     // Process arguments

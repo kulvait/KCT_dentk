@@ -50,10 +50,6 @@ include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 FILE( GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp )
 add_library(ctiol ${CTIOL_SRC})
 
-FILE( GLOB UTILS_SRC ${CMAKE_SOURCE_DIR}/src/utils/*.cpp )
-add_library(utils ${UTILS_SRC})
-
-
 SET(DENTK_INFO_SOURCES src/dentk-info.cpp)
 add_executable(dentk_info ${DENTK_INFO_SOURCES})
 set_target_properties(
@@ -62,7 +58,6 @@ set_target_properties(
         OUTPUT_NAME "dentk-info"
         SUFFIX ""
 )
-target_link_libraries(dentk_info utils)
 target_link_libraries(dentk_info ctiol)
 install (TARGETS dentk_info RUNTIME DESTINATION .)
 
@@ -76,7 +71,6 @@ set_target_properties(
         OUTPUT_NAME "dentk-grad"
         SUFFIX ""
 )
-target_link_libraries(dentk_grad utils)
 target_link_libraries(dentk_grad ctiol)
 install (TARGETS dentk_grad RUNTIME DESTINATION .)
 
@@ -88,9 +82,8 @@ set_target_properties(
         OUTPUT_NAME "dentk-cat"
         SUFFIX ""
 )
-target_link_libraries(dentk_cat utils)
 target_link_libraries(dentk_cat ctiol)
-target_link_libraries(dentk_cat ${ITK_LIBRARIES} )
+target_link_libraries(dentk_cat ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_cat RUNTIME DESTINATION .)
 
 
@@ -103,11 +96,24 @@ IF(ITK_FOUND)
 			OUTPUT_NAME "dentk-jpg"
 			SUFFIX ""
 			)
-	target_link_libraries(dentk_jpg utils)
 	target_link_libraries(dentk_jpg ctiol)
 	target_link_libraries(dentk_jpg ctiol_itk)
 	target_link_libraries(dentk_jpg ${ITK_LIBRARIES} )
 	install (TARGETS dentk_jpg RUNTIME DESTINATION .)
+
+SET(DENTK_TODICOM_SOURCES src/dentk-todicom.cpp)
+add_executable(dentk_todicom ${DENTK_TODICOM_SOURCES})
+set_target_properties(
+    dentk_todicom 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-todicom"
+        SUFFIX ""
+)
+target_link_libraries(dentk_todicom ctiol)
+target_link_libraries(dentk_todicom ${ITK_LIBRARIES} )
+target_link_libraries(dentk_todicom stdc++fs)#<experimental/filesystem>
+install (TARGETS dentk_todicom RUNTIME DESTINATION .)
+
 ENDIF()
 
 SET(DENTK_FEN2DEN_SOURCES src/dentk-fen2den.cpp)
@@ -119,7 +125,6 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_fen2den ctiol)
-target_link_libraries(dentk_fen2den utils)
 install (TARGETS dentk_fen2den RUNTIME DESTINATION .)
 
 SET(DENTK_TRANSPOSE_SOURCES src/dentk-transpose.cpp)
@@ -131,23 +136,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_transpose ctiol)
-target_link_libraries(dentk_transpose utils)
 install (TARGETS dentk_transpose RUNTIME DESTINATION .)
-
-SET(DENTK_TODICOM_SOURCES src/dentk-todicom.cpp)
-add_executable(dentk_todicom ${DENTK_TODICOM_SOURCES})
-set_target_properties(
-    dentk_todicom 
-    PROPERTIES 
-        OUTPUT_NAME "dentk-todicom"
-        SUFFIX ""
-)
-target_link_libraries(dentk_todicom utils)
-target_link_libraries(dentk_todicom ctiol)
-target_link_libraries(dentk_todicom ${ITK_LIBRARIES} )
-target_link_libraries(dentk_todicom stdc++fs)#<experimental/filesystem>
-install (TARGETS dentk_todicom RUNTIME DESTINATION .)
-
 
 SET(DENTK_MERGE_SOURCES src/dentk-merge.cpp)
 add_executable(dentk_merge ${DENTK_MERGE_SOURCES})
@@ -157,9 +146,8 @@ set_target_properties(
         OUTPUT_NAME "dentk-merge"
         SUFFIX ""
 )
-target_link_libraries(dentk_merge utils)
+target_link_libraries(dentk_merge ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_merge ctiol)
-target_link_libraries(dentk_merge ${ITK_LIBRARIES} )
 install (TARGETS dentk_merge RUNTIME DESTINATION .)
 
 SET(DENTK_EMPTY_SOURCES src/dentk-empty.cpp)
@@ -170,9 +158,7 @@ set_target_properties(
         OUTPUT_NAME "dentk-empty"
         SUFFIX ""
 )
-target_link_libraries(dentk_empty utils)
 target_link_libraries(dentk_empty ctiol)
-target_link_libraries(dentk_empty ${ITK_LIBRARIES} )
 install (TARGETS dentk_empty RUNTIME DESTINATION .)
 
 SET(DENTK_DIFF_SOURCES src/dentk-diff.cpp)
@@ -183,7 +169,6 @@ set_target_properties(
         OUTPUT_NAME "dentk-diff"
         SUFFIX ""
 )
-target_link_libraries(dentk_diff utils)
 target_link_libraries(dentk_diff ctiol)
 install (TARGETS dentk_diff RUNTIME DESTINATION .)
 
@@ -195,7 +180,6 @@ set_target_properties(
         OUTPUT_NAME "dentk-tohu"
         SUFFIX ""
 )
-target_link_libraries(dentk_tohu utils)
 target_link_libraries(dentk_tohu ctiol)
 install (TARGETS dentk_tohu RUNTIME DESTINATION .)
 
@@ -207,7 +191,6 @@ set_target_properties(
         OUTPUT_NAME "dentk-fromhu"
         SUFFIX ""
 )
-target_link_libraries(dentk_fromhu utils)
 target_link_libraries(dentk_fromhu ctiol)
 install (TARGETS dentk_fromhu RUNTIME DESTINATION .)
 
