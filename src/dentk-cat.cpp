@@ -12,9 +12,9 @@
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
 #include "ctpl_stl.h" //Threadpool
-#include "strtk.hpp"
 
 // Internal libraries
+#include "ARGPARSE/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
@@ -35,75 +35,6 @@ struct Args
     int k = 1;
     bool reverse_order = false;
 };
-
-std::vector<int> processResultingFrames(std::string frameSpecification, int dimz)
-{
-    // Remove spaces
-    for(int i = 0; i < frameSpecification.length(); i++)
-        if(frameSpecification[i] == ' ')
-            frameSpecification.erase(i, 1);
-    frameSpecification = std::regex_replace(frameSpecification, std::regex("end"),
-                                            io::xprintf("%d", dimz - 1).c_str());
-    std::vector<int> frames;
-    if(frameSpecification.empty())
-    {
-    //    LOGD << "Frame specification is empty, putting all frames.";
-        for(int i = 0; i != dimz; i++)
-            frames.push_back(i);
-    } else
-    {
-        std::list<std::string> string_list;
-        LOGW << "Before parse";
-        strtk::parse(frameSpecification, ",", string_list);
-        LOGW << "After parse";
-        auto it = string_list.begin();
-        while(it != string_list.end())
-        {
-            LOGD << io::xprintf("Iteration where the iterator value is '%s'.", (*it).c_str());
-            size_t numRangeSigns = std::count(it->begin(), it->end(), '-');
-            if(numRangeSigns > 1)
-            {
-                std::string msg = io::xprintf("Wrong number of range specifiers in the string %s.",
-                                              (*it).c_str());
-                LOGE << msg;
-                throw std::runtime_error(msg);
-            } else if(numRangeSigns == 1)
-            {
-                std::vector<int> int_vector;
-                strtk::parse((*it), "-", int_vector);
-                if(0 <= int_vector[0] && int_vector[0] <= int_vector[1] && int_vector[1] < dimz)
-                {
-                    for(int k = int_vector[0]; k != int_vector[1] + 1; k++)
-                    {
-                        frames.push_back(k);
-                    }
-                } else
-                {
-                    std::string msg
-                        = io::xprintf("String %s is invalid range specifier.", (*it).c_str());
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            } else
-            {
-                int index = std::stoi(*it);
-                if(0 <= index && index < dimz)
-                {
-                    frames.push_back(index);
-                } else
-                {
-                    std::string msg = io::xprintf(
-                        "String %s is invalid specifier for the value in the range [0,%d).",
-                        (*it).c_str(), dimz);
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            }
-            it++;
-        }
-    }
-    return frames;
-}
 
 void writeFrameFloat(int id,
                      int fromId,
@@ -161,7 +92,8 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
-    std::vector<int> framesToProcess = processResultingFrames(a.frames, di.getNumSlices());
+    std::vector<int> framesToProcess
+        = util::processFramesSpecification(a.frames, di.getNumSlices());
     if(a.reverse_order)
     {
         std::reverse(framesToProcess.begin(), framesToProcess.end()); // It really does!
@@ -251,8 +183,8 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
-    LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
-                        output_file.c_str());
+        LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
+                            output_file.c_str());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

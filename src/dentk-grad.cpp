@@ -12,7 +12,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "strtk.hpp"
+#include "ARGPARSE/parseArgs.h"
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"

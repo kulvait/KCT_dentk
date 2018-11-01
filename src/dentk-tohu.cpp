@@ -11,7 +11,6 @@
 #include <string>
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "strtk.hpp"
 // Internal libraries
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"

@@ -12,9 +12,9 @@
 
 // External libraries
 #include "CLI/CLI.hpp"
-#include "strtk.hpp"
 
 // Internal libraries
+#include "ARGPARSE/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
@@ -34,71 +34,6 @@ struct Args
     bool framesSpecified = false;
     bool returnDimensions = false;
 };
-
-std::vector<int> processResultingFrames(std::string frameSpecification, int dimz)
-{
-    // Remove spaces
-    for(int i = 0; i < frameSpecification.length(); i++)
-        if(frameSpecification[i] == ' ')
-            frameSpecification.erase(i, 1);
-    frameSpecification = std::regex_replace(frameSpecification, std::regex("end"),
-                                            io::xprintf("%d", dimz - 1).c_str());
-    std::vector<int> frames;
-    if(frameSpecification.empty())
-    {
-        for(int i = 0; i != dimz; i++)
-            frames.push_back(i);
-    } else
-    {
-        std::list<std::string> string_list;
-        strtk::parse(frameSpecification, ",", string_list);
-        auto it = string_list.begin();
-        while(it != string_list.end())
-        {
-            size_t numRangeSigns = std::count(it->begin(), it->end(), '-');
-            if(numRangeSigns > 1)
-            {
-                std::string msg = io::xprintf("Wrong number of range specifiers in the string %s.",
-                                              (*it).c_str());
-                LOGE << msg;
-                throw std::runtime_error(msg);
-            } else if(numRangeSigns == 1)
-            {
-                std::vector<int> int_vector;
-                strtk::parse((*it), "-", int_vector);
-                if(0 <= int_vector[0] && int_vector[0] <= int_vector[1] && int_vector[1] < dimz)
-                {
-                    for(int k = int_vector[0]; k != int_vector[1] + 1; k++)
-                    {
-                        frames.push_back(k);
-                    }
-                } else
-                {
-                    std::string msg
-                        = io::xprintf("String %s is invalid range specifier.", (*it).c_str());
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            } else
-            {
-                int index = std::stoi(*it);
-                if(0 <= index && index < dimz)
-                {
-                    frames.push_back(index);
-                } else
-                {
-                    std::string msg = io::xprintf(
-                        "String %s is invalid specifier for the value in the range [0,%d).",
-                        (*it).c_str(), dimz);
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            }
-            it++;
-        }
-    }
-    return frames;
-}
 
 template <typename T>
 void printFrameStatistics(const io::Frame2DI<T>& f)
@@ -148,7 +83,7 @@ int main(int argc, char* argv[])
     if(a.returnDimensions)
     {
         std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
-return 0;
+        return 0;
     }
     int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
@@ -179,7 +114,7 @@ return 0;
     {
         double min = di.getMinVal<double>();
         double max = di.getMaxVal<double>();
-	std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", min, max);
+        std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", min, max);
         break;
     }
     default:
@@ -190,8 +125,7 @@ return 0;
     }
     if(a.framesSpecified)
     {
-        std::vector<int> framesToOutput;
-        framesToOutput = processResultingFrames(a.frames, dimz);
+        std::vector<int> framesToOutput = util::processFramesSpecification(a.frames, dimz);
         switch(t)
         {
         case io::DenSupportedType::uint16_t_:
@@ -227,7 +161,7 @@ return 0;
             for(int i = 0; i != framesToOutput.size(); i++)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-	    auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
                 printFrameStatistics<double>(*slicePtr);
             }
             break;
@@ -254,7 +188,7 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_flag("--dim", returnDimensions,
                  "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
 
-        try
+    try
     {
         app.parse(argc, argv);
         if(app.count("--frames") > 0)

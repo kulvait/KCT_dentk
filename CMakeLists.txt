@@ -34,7 +34,6 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules/plog/include)
 #is included or as a compiler switch:
 #   (*) strtk_no_tr1_or_boost
 add_definitions("-Dstrtk_no_tr1_or_boost")
-include_directories(${CMAKE_SOURCE_DIR}/include/strtk)
 
 #CLI11 comand line parser library
 include_directories(${CMAKE_SOURCE_DIR}/submodules/CLI11/include)
@@ -47,7 +46,7 @@ FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
 add_library(ctiol_itk ${DENITK_SRC})
 include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 
-FILE( GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp )
+FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/ARGPARSE/*.cpp)
 add_library(ctiol ${CTIOL_SRC})
 
 SET(DENTK_INFO_SOURCES src/dentk-info.cpp)
