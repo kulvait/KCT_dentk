@@ -57,17 +57,38 @@ apt-get install libinsighttoolkit4-dev
 ## dentk-cat 
 Is able to extract only specified frames from a den file.
 
+## dentk-diff
+Compute difference between two DEN files.
+
 ## dentk-empty
 Creates empty DEN file. Uses CLI command line parser.
+
+## dentk-fen2den
+Fixes the format for the files produced by some conversion tools.
+
+## dentk-fromhu
+Convert den in HU to the unitless file.
+
+## dentk-tohu
+Convert unitless DEN file into HU.
+
+## dentk-grad
+Compute gradient of the DEN file in three dimensions.
 
 ## dentk-info
 Prints info about DEN file. Can be used to specify different RGB channels. Intensity windowing is also possible.
 
-## dentk-jpg
-Creates jpg from particular slices of DEN file.
+## dentk-transpose
+Transposes all frames in a DEN file and change the header accordingly.
 
 ## dentk-merge
 Merges multiple DEN files together. Can write interlacing. Uses CLI command line parser.
+
+## dentk-todicom
+Converts DEN file into the DICOM format, requires ITK.
+
+## dentk-jpg
+Creates jpg from particular slices of DEN file, requires ITK.
 
 # Using IDEs
 
