@@ -44,7 +44,7 @@ int main(int argc, char* argv[])
 {
     plog::Severity verbosityLevel
         = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/imageRegistrationLog.csv"; // Set NULL to disable
+    std::string csvLogFile = "/tmp/dentk-merge.csv"; // Set NULL to disable
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
@@ -106,6 +106,7 @@ int main(int argc, char* argv[])
         }
     }
     ctpl::thread_pool* threadpool = new ctpl::thread_pool(a_threads);
+    LOGD << io::xprintf("Size of framesToOutput is %d.", framesToOutput.size());
     std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<float>>(
             a_outputDen, dimx, dimy, a_inputDenFiles.size() * framesToOutput.size());

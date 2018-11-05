@@ -11,8 +11,8 @@
 #include <string>
 
 // External libraries
-#include "CLI/CLI.hpp" //Command line parser
 #include "ARGPARSE/parseArgs.h"
+#include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
@@ -216,7 +216,8 @@ int Args::parseArguments(int argc, char* argv[])
     oy->needs(ox)->needs(oz);
     oz->needs(ox)->needs(oy);
     app.add_option("input_file", input_file, "File to compute gradient from.")
-        ->check(CLI::ExistingFile);
+        ->check(CLI::ExistingFile)
+        ->required();
     app.add_option("--pixel-spacing", h, "Spacing of pixels, defaults to 1.0.");
     try
     {
