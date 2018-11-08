@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
         throw std::runtime_error(errMsg);
     }
 
+            threadpool->stop(true);
     delete threadpool;
 }
 
