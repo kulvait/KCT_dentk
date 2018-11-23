@@ -22,11 +22,12 @@
 
 using namespace CTL;
 
+template <typename T>
 void writeFrame(int id,
                 int fromId,
-                std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader,
+                std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader,
                 int toId,
-                std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter)
+                std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter)
 {
     // LOGD << io::xprintf(
     //    "Writing %d th slice of file %s to %d th slice of file %s.", fromId,
@@ -40,88 +41,213 @@ void writeFrame(int id,
     imagesWritter->writeFrame(*(denSliceReader->readFrame(fromId)), toId);
 }
 
-int main(int argc, char* argv[])
+struct Args
 {
-    plog::Severity verbosityLevel
-        = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/dentk-merge.csv"; // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
-    LOGI << "dentk-merge";
-    // Argument parsing
-    bool a_interlacing = false;
-    std::string a_frameSpecs = "";
-    int a_eachkth = 1;
-    int a_threads = 1;
-    std::vector<std::string> a_inputDenFiles;
-    std::string a_outputDen;
+    bool interlacing = false;
+    std::string frameSpecs = "";
+    std::vector<int> frames;
+    int eachkth = 1;
+    int threads = 1;
+    std::vector<std::string> inputFiles;
+    std::string outputFile;
+    bool force = false;
+    int parseArguments(int argc, char* argv[]);
+};
+
+template <typename T>
+void mergeFiles(Args a)
+{
+    std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders;
+    LOGD << io::xprintf("Will merge file %s from specified files.", a.outputFile.c_str());
+    for(const std::string& f : a.inputFiles)
+    {
+        denSliceReaders.push_back(std::make_shared<io::DenFrame2DReader<T>>(f));
+    }
+    uint16_t dimx = denSliceReaders[0]->dimx();
+    uint16_t dimy = denSliceReaders[0]->dimy();
+    ctpl::thread_pool* threadpool = new ctpl::thread_pool(a.threads);
+    if(a.interlacing || a.eachkth || !a.frameSpecs.empty())
+    {
+
+        uint16_t dimz = denSliceReaders[0]->dimz();
+        LOGD << io::xprintf("From each file will output %d frames.", a.frames.size());
+        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
+                a.outputFile, dimx, dimy, a.inputFiles.size() * a.frames.size());
+        for(std::size_t i = 0; i != a.frames.size(); i++)
+        {
+            for(std::size_t j = 0; j != a.inputFiles.size(); j++)
+            {
+                if(a.interlacing)
+                    threadpool->push(writeFrame<T>, a.frames[i], denSliceReaders[j],
+                                     i * a.inputFiles.size() + j, imagesWritter);
+                else
+                    threadpool->push(writeFrame<T>, a.frames[i], denSliceReaders[j], j * dimz + i,
+                                     imagesWritter);
+            }
+        }
+    } else // just to merge files with potentially different z dimension
+    {
+        uint32_t totaldimz = 0;
+        for(auto const& r : denSliceReaders)
+        {
+            totaldimz += r->dimz();
+        }
+
+        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<T>>(a.outputFile, dimx, dimy, totaldimz);
+        uint32_t posoffset = 0;
+        for(std::size_t i = 0; i != denSliceReaders.size(); i++)
+        {
+            auto r = denSliceReaders[i];
+            uint16_t dimz = r->dimz();
+            for(uint16_t j = 0; j != dimz; j++)
+            {
+                threadpool->push(writeFrame<T>, j, r, posoffset + j, imagesWritter);
+            }
+            posoffset += dimz;
+        }
+    }
+    threadpool->stop(true);
+    delete threadpool;
+}
+
+/**Argument parsing
+ *
+ */
+int Args::parseArguments(int argc, char* argv[])
+{
     CLI::App app{ "Merge multiple DEN files together." };
-    app.add_flag("-i,--interlacing", a_interlacing,
+    app.add_flag("-i,--interlacing", interlacing,
                  "First n frames in the output will be from the first n DEN files.");
-    app.add_option("-f,--frames", a_frameSpecs,
+    app.add_flag("--force", force, "Overwrite outputFile if it exists.");
+    app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
-    app.add_option("-k,--each-kth", a_eachkth,
+    app.add_option("-k,--each-kth", eachkth,
                    "Process only each k-th frame specified by k to output. The frames to output "
                    "are then 1st specified, 1+kN, N=1...\\infty if such frame exists. Parameter k "
                    "must be positive integer.")
         ->check(CLI::Range(1, 65535));
-    app.add_option("-j,--threads", a_threads, "Number of extra threads that application can use.")
+    app.add_option("-j,--threads", threads, "Number of extra threads that application can use.")
         ->check(CLI::Range(1, 65535));
-    app.add_option("output_den_file", a_outputDen, "File in a DEN format to output.")
-        ->required()
-        ->check(CLI::NonexistentPath);
-    app.add_option("input_den_file1 ... input_den_filen output_den_file", a_inputDenFiles,
+    app.add_option("output_den_file", outputFile, "File in a DEN format to output.")->required();
+    app.add_option("input_den_file1 ... input_den_filen output_den_file", inputFiles,
                    "Files in a DEN format to process. These files should have the same x,y and z "
                    "dimension as the first file of input.")
         ->required()
         ->check(CLI::ExistingFile);
-    CLI11_PARSE(app, argc, argv);
-    LOGD << io::xprintf("Optional parameters: interlacing=%d, frames=%s, eachkth=%d, threads=%d "
-                        "and %d input files.",
-                        a_interlacing, a_frameSpecs.c_str(), a_eachkth, a_threads,
-                        a_inputDenFiles.size());
+    try
+    {
+        app.parse(argc, argv);
+        LOGD << io::xprintf(
+            "Optional parameters: interlacing=%d, frames=%s, eachkth=%d, threads=%d "
+            "and %d input files.",
+            interlacing, frameSpecs.c_str(), eachkth, threads, inputFiles.size());
+        // If force is not set, then check if output file does not exist
+        if(!force)
+        {
+            if(io::fileExists(outputFile))
+            {
+                std::string msg
+                    = "Error: output file already exists, use --force to force overwrite.";
+                LOGE << msg;
+                return 1;
+            }
+        }
+        // How many projection matrices is there in total
+        io::DenFileInfo di(inputFiles[0]);
+        io::DenSupportedType dataType = di.getDataType();
+        uint16_t dimx = di.dimx();
+        uint16_t dimy = di.dimy();
+        uint16_t dimz = di.dimz();
+        for(std::string const& f : inputFiles)
+        {
+            io::DenFileInfo df(f);
+            if(df.getDataType() != dataType)
+            {
+                io::throwerr("File %s and %s are of different element types.",
+                             inputFiles[0].c_str(), f.c_str());
+            }
+            if(df.dimx() != dimx || df.dimy() != dimy)
+            {
+                io::throwerr("Files %s and %s do not have the same x and y dimensions.",
+                             inputFiles[0].c_str(), f.c_str());
+            }
+            if(interlacing || eachkth || !frameSpecs.empty())
+            {
+                if(df.dimx() != dimx || df.dimy() != dimy || df.dimz() != dimz)
+                {
+                    io::throwerr("Files %s and %s do not have the same z dimensions. Since "
+                                 "interlacing, eachkth or frame specification was given, this is "
+                                 "important.",
+                                 inputFiles[0].c_str(), f.c_str());
+                }
+            }
+        }
+        if(interlacing || eachkth || !frameSpecs.empty())
+        {
+            std::vector<int> f = util::processFramesSpecification(frameSpecs, di.getNumSlices());
+            for(std::size_t i = 0; i != f.size(); i++)
+            {
+                if(i % eachkth == 0)
+                {
+                    frames.push_back(f[i]);
+                }
+            }
+        }
+    } catch(const CLI::ParseError& e)
+    {
+        int exitcode = app.exit(e);
+        if(exitcode == 0) // Help message was printed
+        {
+            return 1;
+        } else
+        {
+            LOGE << "Parse error catched";
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
+    std::string csvLogFile = io::xprintf(
+        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
+    bool logToConsole = true;
+    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
+    plogSetup.initLogging();
+    LOGI << io::xprintf("START %s", argv[0]);
+    // Argument parsing
+    Args a;
+    a.parseArguments(argc, argv);
     // Frames to process
-    std::vector<std::shared_ptr<io::Frame2DReaderI<float>>> denSliceReaders;
-    LOGD << io::xprintf("Will merge file %s from specified files.", a_outputDen.c_str());
-    for(int i = 0; i != a_inputDenFiles.size(); i++)
+    io::DenFileInfo inf(a.inputFiles[0]);
+    io::DenSupportedType dataType = inf.getDataType();
+    switch(dataType)
     {
-        denSliceReaders.push_back(
-            std::make_shared<io::DenFrame2DReader<float>>(a_inputDenFiles[i]));
-    }
-    int dimx = denSliceReaders[0]->dimx();
-    int dimy = denSliceReaders[0]->dimy();
-    int dimz = denSliceReaders[0]->dimz();
-    // LOGD << io::xprintf("The file %s has dimensions (x,y,z)=(%d, %d, %d)",
-    //                    a_inputDenFiles[0].c_str(), dimx, dimy, dimz);
-    std::vector<int> framesToProcess = util::processFramesSpecification(a_frameSpecs, dimz);
-    std::vector<int> framesToOutput;
-    for(int i = 0; i != framesToProcess.size(); i++)
+    case io::DenSupportedType::uint16_t_:
     {
-        if(i % a_eachkth == 0)
-        {
-            framesToOutput.push_back(framesToProcess[i]);
-        }
+        mergeFiles<uint16_t>(a);
+        break;
     }
-    ctpl::thread_pool* threadpool = new ctpl::thread_pool(a_threads);
-    LOGD << io::xprintf("Size of framesToOutput is %d.", framesToOutput.size());
-    std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<float>>(
-            a_outputDen, dimx, dimy, a_inputDenFiles.size() * framesToOutput.size());
-    int outputFiles = a_inputDenFiles.size();
-    for(int i = 0; i != framesToOutput.size(); i++)
+    case io::DenSupportedType::float_:
     {
-        for(int j = 0; j != a_inputDenFiles.size(); j++)
-        {
-            if(a_interlacing)
-                threadpool->push(writeFrame, framesToOutput[i], denSliceReaders[j],
-                                 i * outputFiles + j, imagesWritter);
-            else
-                threadpool->push(writeFrame, framesToOutput[i], denSliceReaders[j], j * dimz + i,
-                                 imagesWritter);
-        }
+        mergeFiles<float>(a);
+        break;
     }
-    delete threadpool;
+    case io::DenSupportedType::double_:
+    {
+        mergeFiles<double>(a);
+        break;
+    }
+    default:
+        std::string errMsg
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
+        LOGE << errMsg;
+        throw std::runtime_error(errMsg);
+    }
 }

@@ -30,7 +30,8 @@ struct Args
     std::string input_subtrahend = "";
     std::string input_minuend = "";
     std::string output_difference = "";
-    std::string frames = "";
+    std::string frameSpecs = "";
+    std::vector<int> frames;
     bool force = false;
 };
 
@@ -61,8 +62,6 @@ int main(int argc, char* argv[])
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
     io::DenSupportedType dataType = di.getDataType();
-    std::vector<int> framesToOutput = util::processFramesSpecification(a.frames, dimz);
-
     switch(dataType)
     {
     case io::DenSupportedType::uint16_t_:
@@ -73,14 +72,12 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> outputWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(a.output_difference, dimx,
-                                                                     dimy, framesToOutput.size());
+                                                                     dimy, dimz);//I write regardless to frame specification to original position
         uint16_t* buffer = new uint16_t[dimx * dimy];
         io::BufferedFrame2D<uint16_t> x(buffer, dimx, dimy);
         delete[] buffer;
-        int k;
-        for(int ind = 0; ind != framesToOutput.size(); ind++)
+        for(const int &k : a.frames)
         {
-            k = framesToOutput[ind];
             std::shared_ptr<io::Frame2DI<uint16_t>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<uint16_t>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
@@ -101,14 +98,12 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> outputWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_difference, dimx, dimy,
-                                                                  framesToOutput.size());
+                                                                  dimz);//I write regardless to frame specification to original position
         float* buffer = new float[dimx * dimy];
         io::BufferedFrame2D<float> x(buffer, dimx, dimy);
         delete[] buffer;
-        int k;
-        for(int ind = 0; ind != framesToOutput.size(); ind++)
+        for(const int &k : a.frames)
         {
-            k = framesToOutput[ind];
             std::shared_ptr<io::Frame2DI<float>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<float>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
@@ -129,14 +124,12 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<double>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<double>> outputWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_difference, dimx, dimy,
-                                                                   framesToOutput.size());
+                                                                   dimz);//I write regardless to frame specification to original position
         double* buffer = new double[dimx * dimy];
         io::BufferedFrame2D<double> x(buffer, dimx, dimy);
         delete[] buffer;
-        int k;
-        for(int ind = 0; ind != framesToOutput.size(); ind++)
+        for(const int &k : a.frames)
         {
-            k = framesToOutput[ind];
             std::shared_ptr<io::Frame2DI<double>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<double>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
@@ -162,8 +155,8 @@ int main(int argc, char* argv[])
 int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Subtract two DEN files with the same dimensions from each other." };
-    app.add_flag("-f,--force", force, "Force rewrite output file if it exists.");
-    app.add_option("-k,--frames", frames,
+    app.add_flag("--force", force, "Force rewrite output file if it exists.");
+    app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
@@ -175,6 +168,8 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
+	io::DenFileInfo inf(input_minuend);
+        frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

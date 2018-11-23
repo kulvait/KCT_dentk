@@ -32,7 +32,8 @@ struct Args
     std::string input_file_red = "";
     std::string input_file_green = "";
     std::string input_file_blue = "";
-    std::string frames = "";
+    std::string frameSpecs = "";
+    std::vector<int> frames;
     std::string output_directory = "/tmp";
     std::string file_prefix = "slice";
     float min;
@@ -68,23 +69,21 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
-    std::vector<int> framesToOutput;
     if(a.grayscaleSpecified)
     {
         std::shared_ptr<io::Frame2DReaderItkI<float>> sliceReader
             = std::make_shared<io::DenFrame2DReaderItk<float>>(a.input_file);
-        framesToOutput = util::processFramesSpecification(a.frames, sliceReader->dimz());
-        for(int i = 0; i != framesToOutput.size(); i++)
+        for(const int &k : a.frames)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
-                                             a.file_prefix.c_str(), framesToOutput[i]);
+                                             a.file_prefix.c_str(), k);
             if(a.intervalSpecified)
             {
-                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(framesToOutput[i]),
+                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k),
                                             tmpImg, a.min, a.max);
             } else
             {
-                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(framesToOutput[i]),
+                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k),
                                             tmpImg);
             }
         }
@@ -105,44 +104,37 @@ int main(int argc, char* argv[])
         if(!a.input_file_red.empty())
         {
             redSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_red);
-            framesToOutput = util::processFramesSpecification(a.frames, redSliceReader->dimz());
         }
         if(!a.input_file_green.empty())
         {
             greenSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_green);
-            if(framesToOutput.size() == 0)
-                framesToOutput
-                    = util::processFramesSpecification(a.frames, greenSliceReader->dimz());
         }
         if(!a.input_file_blue.empty())
         {
             blueSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_blue);
-            if(framesToOutput.size() == 0)
-                framesToOutput
-                    = util::processFramesSpecification(a.frames, blueSliceReader->dimz());
         }
-        for(int i = 0; i != framesToOutput.size(); i++)
+        for(const int &k : a.frames)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
-                                             a.file_prefix.c_str(), framesToOutput[i]);
+                                             a.file_prefix.c_str(), k);
             std::shared_ptr<io::Frame2DI<float>> imgR, imgG, imgB;
             if(redSliceReader)
             {
-                imgR = redSliceReader->readFrame(framesToOutput[i]);
+                imgR = redSliceReader->readFrame(k);
             } else
             {
                 imgR = NULL;
             }
             if(greenSliceReader)
             {
-                imgG = greenSliceReader->readFrame(framesToOutput[i]);
+                imgG = greenSliceReader->readFrame(k);
             } else
             {
                 imgG = NULL;
             }
             if(blueSliceReader)
             {
-                imgB = blueSliceReader->readFrame(framesToOutput[i]);
+                imgB = blueSliceReader->readFrame(k);
             } else
             {
                 imgB = NULL;
@@ -162,11 +154,14 @@ int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Process different frames as color channels." };
     app.add_option("-R,--red-component", input_file_red,
-                   "File in a DEN format to be interpretted as a red component.");
+                   "File in a DEN format to be interpretted as a red component.")
+        ->check(CLI::ExistingFile);
     app.add_option("-B,--blue-component", input_file_blue,
-                   "File in a DEN format to be interpretted as a blue component.");
+                   "File in a DEN format to be interpretted as a blue component.")
+        ->check(CLI::ExistingFile);
     app.add_option("-G,--green-component", input_file_green,
-                   "File in a DEN format to be interpretted as a green component.");
+                   "File in a DEN format to be interpretted as a green component.")
+        ->check(CLI::ExistingFile);
     app.add_option("-f,--frames", frames,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
@@ -209,7 +204,9 @@ int Args::parseArguments(int argc, char* argv[])
         framesSpecified = true;
     if(app.count("--red-component") > 0 || app.count("--blue-component") > 0
        || app.count("--green-component") > 0)
+    {
         colorsSpecified = true;
+    }
     if(app.count("--max") > 0)
         intervalSpecified = true;
     if(!input_file.empty())
@@ -222,6 +219,29 @@ int Args::parseArguments(int argc, char* argv[])
         LOGE << msg;
         std::cout << app.help();
         return -1;
+    } else
+    {
+        std::string f = "";
+        if(!input_file.empty())
+        {
+            f = input_file;
+        } else if(!input_file_green.empty())
+        {
+            f = input_file_green;
+        } else if(!input_file_blue.empty())
+        {
+            f = input_file_blue;
+        } else if(!input_file_red.empty())
+        {
+            f = input_file_red;
+        } else
+        {//If all the strings are empty
+            std::string msg = io::xprintf("There was no input files specified.");
+            LOGE << msg;
+            std::cout << app.help();
+        }
+        io::DenFileInfo di(f);
+        frames = util::processFramesSpecification(frameSpecs, di.getNumSlices());
     }
     return 0;
 }

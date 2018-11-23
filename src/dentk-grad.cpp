@@ -30,76 +30,12 @@ struct Args
     float h = 1.0;
     std::string input_file = "";
     std::string output_x = "", output_y = "", output_z = "";
-    std::string frames = "";
+    std::string frameSpecs = "";
+    std::vector<int> frames;
     bool force = false;
 };
 
 std::string program_name = "";
-
-std::vector<int> processResultingFrames(std::string frameSpecification, int dimz)
-{
-    // Remove spaces
-    for(int i = 0; i < frameSpecification.length(); i++)
-        if(frameSpecification[i] == ' ')
-            frameSpecification.erase(i, 1);
-    frameSpecification = std::regex_replace(frameSpecification, std::regex("end"),
-                                            io::xprintf("%d", dimz - 1).c_str());
-    std::vector<int> frames;
-    if(frameSpecification.empty())
-    {
-        for(int i = 0; i != dimz; i++)
-            frames.push_back(i);
-    } else
-    {
-        std::list<std::string> string_list;
-        strtk::parse(frameSpecification, ",", string_list);
-        auto it = string_list.begin();
-        while(it != string_list.end())
-        {
-            size_t numRangeSigns = std::count(it->begin(), it->end(), '-');
-            if(numRangeSigns > 1)
-            {
-                std::string msg = io::xprintf("Wrong number of range specifiers in the string %s.",
-                                              (*it).c_str());
-                LOGE << msg;
-                throw std::runtime_error(msg);
-            } else if(numRangeSigns == 1)
-            {
-                std::vector<int> int_vector;
-                strtk::parse((*it), "-", int_vector);
-                if(0 <= int_vector[0] && int_vector[0] <= int_vector[1] && int_vector[1] < dimz)
-                {
-                    for(int k = int_vector[0]; k != int_vector[1] + 1; k++)
-                    {
-                        frames.push_back(k);
-                    }
-                } else
-                {
-                    std::string msg
-                        = io::xprintf("String %s is invalid range specifier.", (*it).c_str());
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            } else
-            {
-                int index = atoi(it->c_str());
-                if(0 <= index && index < dimz)
-                {
-                    frames.push_back(index);
-                } else
-                {
-                    std::string msg = io::xprintf(
-                        "String %s is invalid specifier for the value in the range [0,%d).",
-                        (*it).c_str(), dimz);
-                    LOGE << msg;
-                    throw std::runtime_error(msg);
-                }
-            }
-            it++;
-        }
-    }
-    return frames;
-}
 
 int main(int argc, char* argv[])
 {
@@ -129,8 +65,6 @@ int main(int argc, char* argv[])
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
     io::DenSupportedType dataType = di.getDataType();
-    std::vector<int> framesToOutput;
-    framesToOutput = processResultingFrames(a.frames, dimz);
     switch(dataType)
     {
     case io::DenSupportedType::float_:
@@ -139,20 +73,20 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> ox
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_x, dimx, dimy,
-                                                                  framesToOutput.size());
+                                                                  a.frames.size());
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> oy
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_y, dimx, dimy,
-                                                                  framesToOutput.size());
+                                                                  a.frames.size());
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> oz
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_z, dimx, dimy,
-                                                                  framesToOutput.size());
+                                                                  a.frames.size());
         io::BufferedFrame2D<float> x(nullptr, dimx, dimy);
         io::BufferedFrame2D<float> y(nullptr, dimx, dimy);
         io::BufferedFrame2D<float> z(nullptr, dimx, dimy);
         int k;
-        for(int ind = 0; ind != framesToOutput.size(); ind++)
+        for(std::size_t ind = 0; ind != a.frames.size(); ind++)
         {
-            k = framesToOutput[ind];
+            k = a.frames[ind];
             std::shared_ptr<io::Frame2DI<float>> f = reader->readFrame(k);
             std::shared_ptr<io::Frame2DI<float>> fprev, fnext;
             if(k > 0)
@@ -204,7 +138,7 @@ int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Subtract two DEN files with the same dimensions from each other." };
     app.add_flag("-f,--force", force, "Force rewrite output file if it exists.");
-    app.add_option("-k,--frames", frames,
+    app.add_option("-k,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
@@ -229,6 +163,8 @@ int Args::parseArguments(int argc, char* argv[])
             output_y = io::xprintf("%s_y.den", prefix.c_str());
             output_z = io::xprintf("%s_z.den", prefix.c_str());
         }
+	io::DenFileInfo di(input_file);
+        frames = util::processFramesSpecification(frameSpecs, di.getNumSlices());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

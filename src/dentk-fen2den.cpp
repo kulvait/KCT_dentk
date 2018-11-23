@@ -74,9 +74,8 @@ int main(int argc, char* argv[])
     uint8_t buffer[1024];
     io::readFirstBytes(a.input_file, buffer, 6);
 
-    int i1 = util::nextUint16(&buffer[0]);
-    int i2 = util::nextUint16(&buffer[2]);
-    int i3 = util::nextUint16(&buffer[4]);
+    uint16_t i1 = util::nextUint16(&buffer[0]);
+    uint16_t i2 = util::nextUint16(&buffer[2]);
     // Now flip first two shorts
     util::putUint16(i1, &buffer[2]);
     util::putUint16(i2, &buffer[0]);
