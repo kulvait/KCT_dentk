@@ -30,7 +30,8 @@ struct Args
 {
     int parseArguments(int argc, char* argv[]);
     std::string input_file;
-    std::string frames = "";
+    std::string frameSpecs = "";
+    std::vector<int> frames;
     bool framesSpecified = false;
     bool returnDimensions = false;
 };
@@ -85,7 +86,7 @@ int main(int argc, char* argv[])
         std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
         return 0;
     }
-    int elementSize = di.elementByteSize();
+    //int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
     std::string elm = io::DenSupportedTypeToString(t);
     std::cout << io::xprintf(
@@ -125,17 +126,16 @@ int main(int argc, char* argv[])
     }
     if(a.framesSpecified)
     {
-        std::vector<int> framesToOutput = util::processFramesSpecification(a.frames, dimz);
         switch(t)
         {
         case io::DenSupportedType::uint16_t_:
         {
             std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
-            for(int i = 0; i != framesToOutput.size(); i++)
+            for(const int f : a.frames)
             {
-                std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
+                auto slicePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<uint16_t>(*slicePtr);
             }
             break;
@@ -145,10 +145,10 @@ int main(int argc, char* argv[])
 
             std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
-            for(int i = 0; i != framesToOutput.size(); i++)
+            for(const int f : a.frames)
             {
-                std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                std::cout << io::xprintf("Statistic of %d-th frame:\n", f); 
+                auto slicePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<float>(*slicePtr);
             }
             break;
@@ -158,10 +158,10 @@ int main(int argc, char* argv[])
 
             std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
-            for(int i = 0; i != framesToOutput.size(); i++)
+            for(const int f : a.frames)
             {
-                std::cout << io::xprintf("Statistic of %d-th frame:\n", framesToOutput[i]);
-                auto slicePtr = denSliceReader->readFrame(framesToOutput[i]);
+                std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
+                auto slicePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<double>(*slicePtr);
             }
             break;
@@ -178,7 +178,7 @@ int main(int argc, char* argv[])
 int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Information about DEN file and its individual slices." };
-    app.add_option("-f,--frames", frames,
+    app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
@@ -195,6 +195,8 @@ int Args::parseArguments(int argc, char* argv[])
         {
             framesSpecified = true;
         }
+	io::DenFileInfo inf(input_file);
+	frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

@@ -140,7 +140,7 @@ int main(int argc, char* argv[])
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
                 a.useSignedIntegers, a.multiplyByFactor, a.addToValues);
-        for(int i = 0; i != framesToOutput.size(); i++)
+        for(std::size_t i = 0; i != framesToOutput.size(); i++)
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);
@@ -204,7 +204,7 @@ int main(int argc, char* argv[])
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
                 a.useSignedIntegers, a.multiplyByFactor, a.addToValues);
-        for(int i = 0; i != framesToOutput.size(); i++)
+        for(std::size_t i = 0; i != framesToOutput.size(); i++)
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);
@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
                 a.output_dir, a.file_prefix, sliceReader->dimx(), sliceReader->dimy(),
                 framesToOutput.size(), windowMin, windowMax, outputMin, outputMax,
                 a.useSignedIntegers, a.multiplyByFactor, a.addToValues);
-        for(int i = 0; i != framesToOutput.size(); i++)
+        for(std::size_t i = 0; i != framesToOutput.size(); i++)
         {
             // For each frame I write one slice into the output directory.
             // LOGD << io::xprintf("Processing frame %d.", framesToOutput[i]);

@@ -30,7 +30,8 @@ struct Args
     int parseArguments(int argc, char* argv[]);
     std::string input_file;
     std::string output_file;
-    std::string frames = "";
+    std::string frameSpecs = "";
+    std::vector<int> frames;
     int threads = 1;
     int k = 1;
     bool reverse_order = false;
@@ -92,20 +93,6 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
-    std::vector<int> framesToProcess
-        = util::processFramesSpecification(a.frames, di.getNumSlices());
-    if(a.reverse_order)
-    {
-        std::reverse(framesToProcess.begin(), framesToProcess.end()); // It really does!
-    }
-    std::vector<int> framesToOutput;
-    for(int i = 0; i != framesToProcess.size(); i++)
-    {
-        if(i % a.k == 0)
-        {
-            framesToOutput.push_back(framesToProcess[i]);
-        }
-    }
     ctpl::thread_pool* threadpool = new ctpl::thread_pool(a.threads);
     switch(dataType)
     {
@@ -115,11 +102,11 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(a.output_file, dimx, dimy,
-                                                                     framesToOutput.size());
-        for(int i = 0; i != framesToOutput.size(); i++)
+                                                                     a.frames.size());
+        for(uint32_t i = 0; i != a.frames.size(); i++)
         {
             // Try asynchronous calls
-            threadpool->push(writeFrameUint16, framesToOutput[i], denSliceReader, i, imagesWritter);
+            threadpool->push(writeFrameUint16, a.frames[i], denSliceReader, i, imagesWritter);
         }
         break;
     }
@@ -129,11 +116,11 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_file, dimx, dimy,
-                                                                  framesToOutput.size());
-        for(int i = 0; i != framesToOutput.size(); i++)
+                                                                  a.frames.size());
+        for(uint32_t i = 0; i != a.frames.size(); i++)
         {
             // Try asynchronous calls
-            threadpool->push(writeFrameFloat, framesToOutput[i], denSliceReader, i, imagesWritter);
+            threadpool->push(writeFrameFloat, a.frames[i], denSliceReader, i, imagesWritter);
         }
         break;
     }
@@ -143,11 +130,11 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_file, dimx, dimy,
-                                                                   framesToOutput.size());
-        for(int i = 0; i != framesToOutput.size(); i++)
+                                                                   a.frames.size());
+        for(uint32_t i = 0; i != a.frames.size(); i++)
         {
             // Try asynchronous calls
-            threadpool->push(writeFrameDouble, framesToOutput[i], denSliceReader, i, imagesWritter);
+            threadpool->push(writeFrameDouble, a.frames[i], denSliceReader, i, imagesWritter);
         }
         break;
     }
@@ -158,7 +145,7 @@ int main(int argc, char* argv[])
         throw std::runtime_error(errMsg);
     }
 
-            threadpool->stop(true);
+    threadpool->stop(true);
     delete threadpool;
 }
 
@@ -167,7 +154,7 @@ int Args::parseArguments(int argc, char* argv[])
     CLI::App app{ "Extract particular frames from DEN file." };
     app.add_flag("-r,--reverse_order", reverse_order,
                  "Output in the reverse order of input or reverse specified frames.");
-    app.add_option("-f,--frames", frames,
+    app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
@@ -186,6 +173,19 @@ int Args::parseArguments(int argc, char* argv[])
         app.parse(argc, argv);
         LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
                             output_file.c_str());
+	io::DenFileInfo inf(input_file);
+        std::vector<int> f = util::processFramesSpecification(frameSpecs, inf.dimz());
+        if(reverse_order)
+        {
+            std::reverse(f.begin(), f.end()); // It really does!
+        }
+        for(std::size_t i = 0; i != f.size(); i++)
+        {
+            if(i % k == 0)
+            {
+                frames.push_back(f[i]);
+            }
+        }
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);
