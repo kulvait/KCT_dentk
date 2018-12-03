@@ -52,6 +52,17 @@ include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/ARGPARSE/*.cpp)
 add_library(ctiol ${CTIOL_SRC})
 
+SET(DENTK_ADDHEADER_SOURCES src/dentk-addheader.cpp)
+add_executable(dentk_addheader ${DENTK_ADDHEADER_SOURCES})
+set_target_properties(
+    dentk_addheader 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-addheader"
+        SUFFIX ""
+)
+target_link_libraries(dentk_addheader ctiol)
+install (TARGETS dentk_addheader RUNTIME DESTINATION .)
+
 SET(DENTK_INFO_SOURCES src/dentk-info.cpp)
 add_executable(dentk_info ${DENTK_INFO_SOURCES})
 set_target_properties(

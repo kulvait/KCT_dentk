@@ -205,7 +205,7 @@ int Args::parseArguments(int argc, char* argv[])
             return 1;
         } else
         {
-            LOGE << "Parse error catched";
+            LOGE << io::xprintf("There was perse error catched.\n %s", app.help().c_str());
             return -1;
         }
     }
@@ -220,10 +220,20 @@ int main(int argc, char* argv[])
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
-    LOGI << io::xprintf("START %s", argv[0]);
     // Argument parsing
     Args a;
-    a.parseArguments(argc, argv);
+    int parseResult = a.parseArguments(argc, argv);
+    if(parseResult != 0)
+    {
+        if(parseResult > 0)
+        {
+            return 0; // Exited sucesfully, help message printed
+        } else
+        {
+            return -1; // Exited somehow wrong
+        }
+    }
+    LOGI << io::xprintf("START %s", argv[0]);
     // Frames to process
     io::DenFileInfo inf(a.inputFiles[0]);
     io::DenSupportedType dataType = inf.getDataType();
@@ -250,4 +260,5 @@ int main(int argc, char* argv[])
         LOGE << errMsg;
         throw std::runtime_error(errMsg);
     }
+    LOGI << io::xprintf("END %s", argv[0]);
 }
