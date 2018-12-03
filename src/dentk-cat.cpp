@@ -69,13 +69,12 @@ void writeFrameUint16(int id,
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel
-        = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/imageRegistrationLog.csv"; // Set NULL to disable
+    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
+    std::string csvLogFile = io::xprintf(
+        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
-    LOGI << "dentk-cat";
     // Argument parsing
     Args a;
     int parseResult = a.parseArguments(argc, argv);
@@ -89,6 +88,7 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
+    LOGI << io::xprintf("START %s", argv[0]);
     io::DenFileInfo di(a.input_file);
     io::DenSupportedType dataType = di.getDataType();
     int dimx = di.getNumCols();
@@ -147,6 +147,7 @@ int main(int argc, char* argv[])
 
     threadpool->stop(true);
     delete threadpool;
+    LOGI << io::xprintf("END %s", argv[0]);
 }
 
 int Args::parseArguments(int argc, char* argv[])

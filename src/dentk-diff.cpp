@@ -37,14 +37,13 @@ struct Args
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel
-        = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/dentk-diff.csv"; // Set NULL to disable
+    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
+    std::string csvLogFile = io::xprintf(
+        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
-    LOGI << "dentk-diff";
-    // Process arguments
+    // Argument parsing
     Args a;
     int parseResult = a.parseArguments(argc, argv);
     if(parseResult != 0)
@@ -57,6 +56,7 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
+    LOGI << io::xprintf("START %s", argv[0]);
     io::DenFileInfo di(a.input_subtrahend);
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
@@ -150,6 +150,7 @@ int main(int argc, char* argv[])
         throw std::runtime_error(errMsg);
     }
     }
+    LOGI << io::xprintf("END %s", argv[0]);
 }
 
 int Args::parseArguments(int argc, char* argv[])
