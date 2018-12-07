@@ -86,7 +86,7 @@ int main(int argc, char* argv[])
         std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
         return 0;
     }
-    //int elementSize = di.elementByteSize();
+    // int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
     std::string elm = io::DenSupportedTypeToString(t);
     std::cout << io::xprintf(
@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
                 = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
             for(const int f : a.frames)
             {
-                std::cout << io::xprintf("Statistic of %d-th frame:\n", f); 
+                std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 auto slicePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<float>(*slicePtr);
             }
@@ -191,12 +191,16 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
+        if(returnDimensions)
+        {
+            return 0; // Do not process frames and print a log message.
+        }
         if(app.count("--frames") > 0)
         {
             framesSpecified = true;
         }
-	io::DenFileInfo inf(input_file);
-	frames = util::processFramesSpecification(frameSpecs, inf.dimz());
+        io::DenFileInfo inf(input_file);
+        frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);
