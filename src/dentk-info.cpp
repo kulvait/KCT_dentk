@@ -99,7 +99,7 @@ int main(int argc, char* argv[])
     {
         uint16_t min = di.getMinVal<uint16_t>();
         uint16_t max = di.getMaxVal<uint16_t>();
-        std::cout << io::xprintf("Global maximum and minimum values are (%d, %d).\n", (int)min,
+        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d).\n", (int)min,
                                  (int)max);
         break;
     }
@@ -107,7 +107,7 @@ int main(int argc, char* argv[])
     {
         float min = di.getMinVal<float>();
         float max = di.getMaxVal<float>();
-        std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", (double)min,
+        std::cout << io::xprintf("Global minimum and maximum values are (%f, %f).\n", (double)min,
                                  (double)max);
         break;
     }
@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
     {
         double min = di.getMinVal<double>();
         double max = di.getMaxVal<double>();
-        std::cout << io::xprintf("Global maximum and minimum values are (%f, %f).\n", min, max);
+        std::cout << io::xprintf("Global minimum and maximum values are (%f, %f).\n", min, max);
         break;
     }
     default:
