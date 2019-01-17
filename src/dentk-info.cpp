@@ -78,7 +78,6 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
-    LOGI << io::xprintf("START %s", argv[0]);
     io::DenFileInfo di(a.input_file);
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
