@@ -3,6 +3,7 @@ project(ImageRegistration)
 
 set(CMAKE_INSTALL_PREFIX $ENV{HOME}/bin)
 set(CMAKE_CXX_STANDARD 14)#Supported values are 98, 11 and 14.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wextra")
 message("Current value of flags is ${CMAKE_CXX_FLAGS} and debug is ${CMAKE_CXX_FLAGS_DEBUG} and release is ${CMAKE_CXX_FLAGS_RELEASE}")
 #Default CMAKE_CXX_FLAGS are empty, default for CMAKE_CXX_FLAGS_DEBUG is -g and CMAKE_CXX_FLAGS_RELEASE are not empty
@@ -44,6 +45,10 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules/CLI11/include)
 #Thread pool management lib ctpl from https://github.com/vit-vit/ctpl
 include_directories(${CMAKE_SOURCE_DIR}/submodules/ctpl)
 
+#Intel MKL
+find_package(MKL)
+include_directories(${MKL_INCLUDE_DIRS})
+
 #CTIOL IO lib
 FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
 add_library(ctiol_itk ${DENITK_SRC})
@@ -51,6 +56,19 @@ include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 
 FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/ARGPARSE/*.cpp)
 add_library(ctiol ${CTIOL_SRC})
+
+#CTMAL mathematics
+include_directories(${CMAKE_SOURCE_DIR}/submodules/CTMAL/include)
+FILE( GLOB CTMAL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTMAL/src/*.cpp )
+add_library(ctmal ${CTMAL_SRC})
+target_link_libraries(ctmal ctiol)
+target_link_libraries(ctmal ${MKL_CORE_LIBRARY})
+set_target_properties(
+    ctmal
+    PROPERTIES 
+        OUTPUT_NAME "ctmal.so"
+        SUFFIX ""
+)
 
 SET(DENTK_ADDHEADER_SOURCES src/dentk-addheader.cpp)
 add_executable(dentk_addheader ${DENTK_ADDHEADER_SOURCES})
@@ -74,6 +92,17 @@ set_target_properties(
 target_link_libraries(dentk_info ctiol)
 install (TARGETS dentk_info RUNTIME DESTINATION .)
 
+SET(DENTK_MATINFO_SOURCES src/dentk-matinfo.cpp)
+add_executable(dentk_matinfo ${DENTK_MATINFO_SOURCES})
+set_target_properties(
+    dentk_matinfo 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-matinfo"
+        SUFFIX ""
+)
+target_link_libraries(dentk_matinfo ctiol)
+target_link_libraries(dentk_matinfo ctmal)
+install (TARGETS dentk_matinfo RUNTIME DESTINATION .)
 
 
 SET(DENTK_GRAD_SOURCES src/dentk-grad.cpp)
@@ -128,6 +157,19 @@ target_link_libraries(dentk_todicom stdc++fs)#<experimental/filesystem>
 install (TARGETS dentk_todicom RUNTIME DESTINATION .)
 
 ENDIF()
+
+SET(DENTK_TRUNCATE_SOURCES src/dentk-truncate.cpp)
+add_executable(dentk_truncate ${DENTK_TRUNCATE_SOURCES})
+set_target_properties(
+    dentk_truncate 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-truncate"
+        SUFFIX ""
+)
+target_link_libraries(dentk_truncate ctiol)
+target_link_libraries(dentk_truncate ctmal)
+target_link_libraries(dentk_truncate ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_truncate RUNTIME DESTINATION .)
 
 SET(DENTK_FEN2DEN_SOURCES src/dentk-fen2den.cpp)
 add_executable(dentk_fen2den ${DENTK_FEN2DEN_SOURCES})

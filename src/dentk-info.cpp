@@ -59,12 +59,13 @@ void printFrameStatistics(const io::Frame2DI<T>& f)
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel
-        = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/imageRegistrationLog.csv"; // Set NULL to disable
+    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
+    std::string csvLogFile = io::xprintf(
+        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
+    // Argument parsing
     Args a;
     int parseResult = a.parseArguments(argc, argv);
     if(parseResult != 0)
@@ -77,6 +78,7 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
+    LOGI << io::xprintf("START %s", argv[0]);
     io::DenFileInfo di(a.input_file);
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
