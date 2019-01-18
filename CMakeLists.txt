@@ -158,6 +158,20 @@ install (TARGETS dentk_todicom RUNTIME DESTINATION .)
 
 ENDIF()
 
+SET(DENTK_PCOMP_SOURCES src/dentk-pcomp.cpp)
+add_executable(dentk_pcomp ${DENTK_PCOMP_SOURCES})
+set_target_properties(
+    dentk_pcomp
+    PROPERTIES 
+        OUTPUT_NAME "dentk-pcomp"
+        SUFFIX ""
+)
+target_link_libraries(dentk_pcomp ctiol)
+target_link_libraries(dentk_pcomp ctmal)
+target_link_libraries(dentk_pcomp ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_pcomp ${MKL_CORE_LIBRARY})
+install (TARGETS dentk_pcomp RUNTIME DESTINATION .)
+
 SET(DENTK_TRUNCATE_SOURCES src/dentk-truncate.cpp)
 add_executable(dentk_truncate ${DENTK_TRUNCATE_SOURCES})
 set_target_properties(
