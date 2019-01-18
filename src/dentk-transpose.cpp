@@ -106,7 +106,7 @@ int main(int argc, char* argv[])
     case io::DenSupportedType::double_:
     {
         std::shared_ptr<io::Frame2DReaderI<double>> sliceReader
-            = std::make_shared<io::DenFrame2DReader<double>>(a.output_file);
+            = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<double>>(
                 a.output_file, sliceReader->dimy(), sliceReader->dimx(), i3);
