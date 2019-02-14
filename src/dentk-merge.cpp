@@ -131,7 +131,7 @@ int Args::parseArguments(int argc, char* argv[])
                    "must be positive integer.")
         ->check(CLI::Range(1, 65535));
     app.add_option("-j,--threads", threads, "Number of extra threads that application can use.")
-        ->check(CLI::Range(1, 65535));
+        ->check(CLI::Range(0, 65535));
     app.add_option("output_den_file", outputFile, "File in a DEN format to output.")->required();
     app.add_option("input_den_file1 ... input_den_filen output_den_file", inputFiles,
                    "Files in a DEN format to process. These files should have the same x,y and z "

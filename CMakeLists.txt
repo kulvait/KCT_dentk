@@ -70,6 +70,18 @@ set_target_properties(
         SUFFIX ""
 )
 
+SET(DENTK_ALPHA_SOURCES src/dentk-alpha.cpp)
+add_executable(dentk_alpha ${DENTK_ALPHA_SOURCES})
+set_target_properties(
+    dentk_alpha
+    PROPERTIES 
+        OUTPUT_NAME "dentk-alpha"
+        SUFFIX ""
+)
+target_link_libraries(dentk_alpha ctiol)
+target_link_libraries(dentk_alpha ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_alpha RUNTIME DESTINATION .)
+
 SET(DENTK_ADDHEADER_SOURCES src/dentk-addheader.cpp)
 add_executable(dentk_addheader ${DENTK_ADDHEADER_SOURCES})
 set_target_properties(

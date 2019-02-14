@@ -33,6 +33,7 @@ struct Args
     std::string frameSpecs = "";
     std::vector<int> frames;
     bool force = false;
+    bool multiply = false;
 };
 
 int main(int argc, char* argv[])
@@ -71,21 +72,31 @@ int main(int argc, char* argv[])
         std::shared_ptr<io::Frame2DReaderI<uint16_t>> bReader
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> outputWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(a.output_difference, dimx,
-                                                                     dimy, dimz);//I write regardless to frame specification to original position
+            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(
+                a.output_difference, dimx, dimy,
+                dimz); // I write regardless to frame specification to original position
         uint16_t* buffer = new uint16_t[dimx * dimy];
         io::BufferedFrame2D<uint16_t> x(buffer, dimx, dimy);
         delete[] buffer;
-        for(const int &k : a.frames)
+        for(const int& k : a.frames)
         {
+            uint16_t val;
             std::shared_ptr<io::Frame2DI<uint16_t>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<uint16_t>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
+            {
                 for(int j = 0; j != dimy; j++)
                 {
-                    uint16_t difference = A->get(i, j) - B->get(i, j); // From uint16_t
-                    x.set(difference, i, j);
+                    if(a.multiply)
+                    {
+                        val = A->get(i, j) * B->get(i, j);
+                    } else
+                    {
+                        val = A->get(i, j) - B->get(i, j);
+                    }
+                    x.set(val, i, j);
                 }
+            }
             outputWritter->writeFrame(x, k);
         }
         break;
@@ -97,21 +108,31 @@ int main(int argc, char* argv[])
         std::shared_ptr<io::Frame2DReaderI<float>> bReader
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> outputWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_difference, dimx, dimy,
-                                                                  dimz);//I write regardless to frame specification to original position
+            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(
+                a.output_difference, dimx, dimy,
+                dimz); // I write regardless to frame specification to original position
         float* buffer = new float[dimx * dimy];
         io::BufferedFrame2D<float> x(buffer, dimx, dimy);
         delete[] buffer;
-        for(const int &k : a.frames)
+        for(const int& k : a.frames)
         {
+            float val;
             std::shared_ptr<io::Frame2DI<float>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<float>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
+            {
                 for(int j = 0; j != dimy; j++)
                 {
-                    float difference = A->get(i, j) - B->get(i, j); // From uint16_t
-                    x.set(difference, i, j);
+                    if(a.multiply)
+                    {
+                        val = A->get(i, j) * B->get(i, j);
+                    } else
+                    {
+                        val = A->get(i, j) - B->get(i, j);
+                    }
+                    x.set(val, i, j);
                 }
+            }
             outputWritter->writeFrame(x, k);
         }
         break;
@@ -123,21 +144,31 @@ int main(int argc, char* argv[])
         std::shared_ptr<io::Frame2DReaderI<double>> bReader
             = std::make_shared<io::DenFrame2DReader<double>>(a.input_minuend);
         std::shared_ptr<io::AsyncFrame2DWritterI<double>> outputWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_difference, dimx, dimy,
-                                                                   dimz);//I write regardless to frame specification to original position
+            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(
+                a.output_difference, dimx, dimy,
+                dimz); // I write regardless to frame specification to original position
         double* buffer = new double[dimx * dimy];
         io::BufferedFrame2D<double> x(buffer, dimx, dimy);
         delete[] buffer;
-        for(const int &k : a.frames)
+        for(const int& k : a.frames)
         {
+            double val;
             std::shared_ptr<io::Frame2DI<double>> A = aReader->readFrame(k);
             std::shared_ptr<io::Frame2DI<double>> B = bReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
+            {
                 for(int j = 0; j != dimy; j++)
                 {
-                    double difference = A->get(i, j) - B->get(i, j); // From uint16_t
-                    x.set(difference, i, j);
+                    if(a.multiply)
+                    {
+                        val = A->get(i, j) * B->get(i, j);
+                    } else
+                    {
+                        val = A->get(i, j) - B->get(i, j);
+                    }
+                    x.set(val, i, j);
                 }
+            }
             outputWritter->writeFrame(x, k);
         }
         break;
@@ -157,6 +188,7 @@ int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Subtract two DEN files with the same dimensions from each other." };
     app.add_flag("--force", force, "Force rewrite output file if it exists.");
+    app.add_flag("--multiply", multiply, "Multiply instead of diff.");
     app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
@@ -169,7 +201,7 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
-	io::DenFileInfo inf(input_minuend);
+        io::DenFileInfo inf(input_minuend);
         frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     } catch(const CLI::ParseError& e)
     {
