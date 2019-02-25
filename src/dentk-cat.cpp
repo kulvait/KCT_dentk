@@ -174,7 +174,7 @@ int Args::parseArguments(int argc, char* argv[])
         app.parse(argc, argv);
         LOGD << io::xprintf("Input file is %s and output file is %s.", input_file.c_str(),
                             output_file.c_str());
-	io::DenFileInfo inf(input_file);
+        io::DenFileInfo inf(input_file);
         std::vector<int> f = util::processFramesSpecification(frameSpecs, inf.dimz());
         if(reverse_order)
         {

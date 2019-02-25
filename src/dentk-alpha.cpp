@@ -6,13 +6,13 @@
 
 // Internal libraries
 #include "ARGPARSE/parseArgs.h"
-#include "DEN/DenSupportedType.hpp"
-#include "DEN/DenFileInfo.hpp"
-#include "DEN/DenFrame2DReader.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
-#include "Frame2DReaderI.hpp"
 #include "AsyncFrame2DWritterI.hpp"
 #include "BufferedFrame2D.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFileInfo.hpp"
+#include "DEN/DenFrame2DReader.hpp"
+#include "DEN/DenSupportedType.hpp"
+#include "Frame2DReaderI.hpp"
 #include "littleEndianAlignment.h"
 #include "rawop.h"
 
@@ -42,8 +42,7 @@ int Args::parseArguments(int argc, char* argv[])
         ->required()
         ->check(CLI::ExistingFile);
     app.add_option("output_file", outputFile, "Output DEN file.")->required();
-    app.add_option("--leq", leq,
-                   "In alpha channel will be just the items less or equal than x.");
+    app.add_option("--leq", leq, "In alpha channel will be just the items less or equal than x.");
     app.add_option("--geq", geq,
                    "In alpha channel will be just the items greater or equal than x.");
     app.add_option("-j,--threads", threads, "Number of extra threads that application can use.")
@@ -176,8 +175,8 @@ int main(int argc, char* argv[])
             } else
             {
 
-                writeAlphaChannel<uint16_t>(0, a.frames[i], denSliceReader, i, imagesWritter,
-                                            leq, geq);
+                writeAlphaChannel<uint16_t>(0, a.frames[i], denSliceReader, i, imagesWritter, leq,
+                                            geq);
             }
 
             // Try asynchronous calls

@@ -18,11 +18,11 @@
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
-#include "DEN/DenSupportedType.hpp"
 #include "DEN/DenProjectionMatrixReader.hpp"
-#include "MATRIX/ProjectionMatrix.hpp"
+#include "DEN/DenSupportedType.hpp"
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
+#include "MATRIX/ProjectionMatrix.hpp"
 #include "frameop.h"
 
 using namespace CTL;
@@ -110,7 +110,8 @@ int Args::parseArguments(int argc, char* argv[])
         {
             framesSpecified = true;
         }
-        io::DenFileInfo inf(input_file);//Print description of the file before potential throwing error
+        io::DenFileInfo inf(
+            input_file); // Print description of the file before potential throwing error
         int dimx = inf.dimx();
         int dimy = inf.dimy();
         int dimz = inf.dimz();

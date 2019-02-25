@@ -141,10 +141,10 @@ int Args::parseArguments(int argc, char* argv[])
     try
     {
         app.parse(argc, argv);
-	if(app.count("--help")>0)
-	{
-		return 1;
-	}
+        if(app.count("--help") > 0)
+        {
+            return 1;
+        }
         LOGD << io::xprintf(
             "Optional parameters: interlacing=%d, frames=%s, eachkth=%d, threads=%d "
             "and %d input files.",

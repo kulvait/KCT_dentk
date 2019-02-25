@@ -73,18 +73,17 @@ int main(int argc, char* argv[])
     {
         std::shared_ptr<io::Frame2DReaderItkI<float>> sliceReader
             = std::make_shared<io::DenFrame2DReaderItk<float>>(a.input_file);
-        for(const int &k : a.frames)
+        for(const int& k : a.frames)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
                                              a.file_prefix.c_str(), k);
             if(a.intervalSpecified)
             {
-                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k),
-                                            tmpImg, a.min, a.max);
+                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k), tmpImg, a.min,
+                                            a.max);
             } else
             {
-                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k),
-                                            tmpImg);
+                io::writeCastedImage<float>(sliceReader->readChunk2DAsItkImage(k), tmpImg);
             }
         }
 
@@ -113,7 +112,7 @@ int main(int argc, char* argv[])
         {
             blueSliceReader = std::make_shared<io::DenFrame2DReader<float>>(a.input_file_blue);
         }
-        for(const int &k : a.frames)
+        for(const int& k : a.frames)
         {
             std::string tmpImg = io::xprintf("%s/%s%03d.bmp", a.output_directory.c_str(),
                                              a.file_prefix.c_str(), k);
@@ -235,7 +234,7 @@ int Args::parseArguments(int argc, char* argv[])
         {
             f = input_file_red;
         } else
-        {//If all the strings are empty
+        { // If all the strings are empty
             std::string msg = io::xprintf("There was no input files specified.");
             LOGE << msg;
             std::cout << app.help();

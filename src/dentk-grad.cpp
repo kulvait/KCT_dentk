@@ -163,7 +163,7 @@ int Args::parseArguments(int argc, char* argv[])
             output_y = io::xprintf("%s_y.den", prefix.c_str());
             output_z = io::xprintf("%s_z.den", prefix.c_str());
         }
-	io::DenFileInfo di(input_file);
+        io::DenFileInfo di(input_file);
         frames = util::processFramesSpecification(frameSpecs, di.getNumSlices());
     } catch(const CLI::ParseError& e)
     {

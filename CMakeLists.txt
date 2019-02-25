@@ -242,16 +242,16 @@ set_target_properties(
 target_link_libraries(dentk_empty ctiol)
 install (TARGETS dentk_empty RUNTIME DESTINATION .)
 
-SET(DENTK_DIFF_SOURCES src/dentk-diff.cpp)
-add_executable(dentk_diff ${DENTK_DIFF_SOURCES})
+SET(DENTK_CALC_SOURCES src/dentk-calc.cpp)
+add_executable(dentk_calc ${DENTK_CALC_SOURCES})
 set_target_properties(
-    dentk_diff
+    dentk_calc
     PROPERTIES 
-        OUTPUT_NAME "dentk-diff"
+        OUTPUT_NAME "dentk-calc"
         SUFFIX ""
 )
-target_link_libraries(dentk_diff ctiol)
-install (TARGETS dentk_diff RUNTIME DESTINATION .)
+target_link_libraries(dentk_calc ctiol)
+install (TARGETS dentk_calc RUNTIME DESTINATION .)
 
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)
 add_executable(dentk_tohu ${DENTK_TOHU_SOURCES})

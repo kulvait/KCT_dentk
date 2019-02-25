@@ -171,7 +171,8 @@ int main(int argc, char* argv[])
 int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Truncate projections and adjust projection matrices." };
-    app.add_option("-j,--threads", threads, "Number of extra threads that application can use 0 for turn off threading.")
+    app.add_option("-j,--threads", threads,
+                   "Number of extra threads that application can use 0 for turn off threading.")
         ->check(CLI::Range(0, 65535));
     app.add_option("--left_cut", left_cut, "Crop the image from the left by this number of pixels.")
         ->check(CLI::Range(0, 65535));
