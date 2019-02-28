@@ -34,6 +34,7 @@ struct Args
     std::vector<int> frames;
     bool framesSpecified = false;
     bool returnDimensions = false;
+    bool l2norm = false;
 };
 
 template <typename T>
@@ -54,6 +55,29 @@ void printFrameStatistics(const io::Frame2DI<T>& f)
     {
         std::cout << io::xprintf("\tThere is %d non finite numbers. \tFrom that %d NAN.\n\n",
                                  io::sumNonfiniteValues<T>(f), io::sumNanValues<T>(f));
+    }
+}
+
+template <typename T>
+void printBasicStatistics(const io::DenFileInfo& di, const Args& a)
+{
+
+    double min = di.getMinVal<T>();
+    double max = di.getMaxVal<T>();
+    if(di.getDataType() == io::DenSupportedType::uint16_t_)
+    {
+        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d).\n", (int)min,
+                                 (int)max);
+    } else
+    {
+        std::cout << io::xprintf("Global minimum and maximum values are (%0.3f, %0.3f).\n", min,
+                                 max);
+    }
+    if(a.l2norm)
+    {
+        double l2 = di.getl2Square<T>();
+        std::cout << io::xprintf("Global l2 norm is %0.1f and its square is %0.1f.\n",
+                                 std::pow(l2, 0.5), l2);
     }
 }
 
@@ -98,25 +122,17 @@ int main(int argc, char* argv[])
     {
     case io::DenSupportedType::uint16_t_:
     {
-        uint16_t min = di.getMinVal<uint16_t>();
-        uint16_t max = di.getMaxVal<uint16_t>();
-        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d).\n", (int)min,
-                                 (int)max);
+        printBasicStatistics<uint16_t>(di, a);
         break;
     }
     case io::DenSupportedType::float_:
     {
-        float min = di.getMinVal<float>();
-        float max = di.getMaxVal<float>();
-        std::cout << io::xprintf("Global minimum and maximum values are (%f, %f).\n", (double)min,
-                                 (double)max);
+        printBasicStatistics<float>(di, a);
         break;
     }
     case io::DenSupportedType::double_:
     {
-        double min = di.getMinVal<double>();
-        double max = di.getMaxVal<double>();
-        std::cout << io::xprintf("Global minimum and maximum values are (%f, %f).\n", min, max);
+        printBasicStatistics<double>(di, a);
         break;
     }
     default:
@@ -127,6 +143,8 @@ int main(int argc, char* argv[])
     }
     if(a.framesSpecified)
     {
+        double l2 = 0.0;
+        double val;
         switch(t)
         {
         case io::DenSupportedType::uint16_t_:
@@ -136,8 +154,19 @@ int main(int argc, char* argv[])
             for(const int f : a.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
-                auto slicePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<uint16_t>(*slicePtr);
+                std::shared_ptr<io::Frame2DI<uint16_t>> framePtr = denSliceReader->readFrame(f);
+                printFrameStatistics<uint16_t>(*framePtr);
+                if(a.l2norm)
+                {
+                    val = io::l2square<uint16_t>(*framePtr);
+                    l2 += val;
+                }
+            }
+            if(a.l2norm)
+            {
+                std::cout << io::xprintf(
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    std::pow(l2, 0.5));
             }
             break;
         }
@@ -149,8 +178,19 @@ int main(int argc, char* argv[])
             for(const int f : a.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
-                auto slicePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<float>(*slicePtr);
+                std::shared_ptr<io::Frame2DI<float>> framePtr = denSliceReader->readFrame(f);
+                printFrameStatistics<float>(*framePtr);
+                if(a.l2norm)
+                {
+                    val = io::l2square<float>(*framePtr);
+                    l2 += val;
+                }
+            }
+            if(a.l2norm)
+            {
+                std::cout << io::xprintf(
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    std::pow(l2, 0.5));
             }
             break;
         }
@@ -162,8 +202,19 @@ int main(int argc, char* argv[])
             for(const int f : a.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
-                auto slicePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<double>(*slicePtr);
+                std::shared_ptr<io::Frame2DI<double>> framePtr = denSliceReader->readFrame(f);
+                printFrameStatistics<double>(*framePtr);
+                if(a.l2norm)
+                {
+                    val = io::l2square<double>(*framePtr);
+                    l2 += val;
+                }
+            }
+            if(a.l2norm)
+            {
+                std::cout << io::xprintf(
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    std::pow(l2, 0.5));
             }
             break;
         }
@@ -179,13 +230,14 @@ int main(int argc, char* argv[])
 int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Information about DEN file and its individual slices." };
+    app.add_option("input_den_file", input_file, "File in a DEN format to process.")
+        ->required()
+        ->check(CLI::ExistingFile);
     app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
-    app.add_option("input_den_file", input_file, "File in a DEN format to process.")
-        ->required()
-        ->check(CLI::ExistingFile);
+    app.add_flag("--l2norm", l2norm, "Print l2 norm of the frame specs.");
     app.add_flag("--dim", returnDimensions,
                  "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
 
