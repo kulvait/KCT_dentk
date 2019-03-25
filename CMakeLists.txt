@@ -49,6 +49,13 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules/ctpl)
 find_package(MKL)
 include_directories(${MKL_INCLUDE_DIRS})
 
+#Matplotlibcpp
+include_directories(${CMAKE_SOURCE_DIR}/submodules/matplotlib-cpp)
+
+#Python for matplotlib
+find_package(PythonLibs 2.7)
+include_directories(${PYTHON_INCLUDE_DIRS})
+
 #CTIOL IO lib
 FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
 add_library(ctiol_itk ${DENITK_SRC})
@@ -183,6 +190,21 @@ target_link_libraries(dentk_pcomp ctmal)
 target_link_libraries(dentk_pcomp ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_pcomp ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_pcomp RUNTIME DESTINATION .)
+
+SET(DENTK_BASIS_SOURCES src/dentk-basis.cpp)
+add_executable(dentk_basis ${DENTK_BASIS_SOURCES})
+set_target_properties(
+    dentk_basis
+    PROPERTIES 
+        OUTPUT_NAME "dentk-basis"
+        SUFFIX ""
+)
+target_link_libraries(dentk_basis ctiol)
+target_link_libraries(dentk_basis ctmal)
+target_link_libraries(dentk_basis ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_basis ${MKL_CORE_LIBRARY})
+target_link_libraries(dentk_basis ${PYTHON_LIBRARIES})
+install (TARGETS dentk_basis RUNTIME DESTINATION .)
 
 SET(DENTK_TRUNCATE_SOURCES src/dentk-truncate.cpp)
 add_executable(dentk_truncate ${DENTK_TRUNCATE_SOURCES})
