@@ -206,6 +206,21 @@ target_link_libraries(dentk_basis ${MKL_CORE_LIBRARY})
 target_link_libraries(dentk_basis ${PYTHON_LIBRARIES})
 install (TARGETS dentk_basis RUNTIME DESTINATION .)
 
+SET(DENTK_ORTHOGONALIZE_SOURCES src/dentk-orthogonalize.cpp)
+add_executable(dentk_orthogonalize ${DENTK_ORTHOGONALIZE_SOURCES})
+set_target_properties(
+    dentk_orthogonalize
+    PROPERTIES 
+        OUTPUT_NAME "dentk-orthogonalize"
+        SUFFIX ""
+)
+target_link_libraries(dentk_orthogonalize ctiol)
+target_link_libraries(dentk_orthogonalize ctmal)
+target_link_libraries(dentk_orthogonalize ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_orthogonalize ${MKL_CORE_LIBRARY})
+target_link_libraries(dentk_orthogonalize ${PYTHON_LIBRARIES})
+install (TARGETS dentk_orthogonalize RUNTIME DESTINATION .)
+
 SET(DENTK_TRUNCATE_SOURCES src/dentk-truncate.cpp)
 add_executable(dentk_truncate ${DENTK_TRUNCATE_SOURCES})
 set_target_properties(

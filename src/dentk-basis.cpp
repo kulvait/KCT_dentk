@@ -14,8 +14,10 @@
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
+#include "FUN/LegendrePolynomial.h"
 #include "FUN/StepFunction.hpp"
 #include "Frame2DI.hpp"
+#include "SPLINE/SplineFitter.hpp"
 #include "frameop.h"
 #include "rawop.h"
 
@@ -36,27 +38,123 @@ struct Args
     int shiftBasis = 0;
     uint16_t granularity;
     uint16_t baseSize;
+    uint16_t legendrePolynomialsAdded = 0;
 };
 
 template <typename T>
-void printFrameStatistics(const io::Frame2DI<T>& f)
+void shiftBasis(std::string inputFile, std::string outputFile, int shift)
 {
-    double min = (double)io::minFrameValue<T>(f);
-    double max = (double)io::maxFrameValue<T>(f);
-    double avg = io::meanFrameValue<T>(f);
-    double l2norm = io::normFrame<T>(f, 2);
-    std::cout << io::xprintf("\tMinimum, maximum, average values: %.3f, %0.3f, %0.3f.\n", min, max,
-                             avg);
-    std::cout << io::xprintf("\tEuclidean 2-norm of the frame: %E.\n", l2norm);
-    int nonFiniteCount = io::sumNonfiniteValues<T>(f);
-    if(nonFiniteCount == 0)
+    std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
+        = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
+    uint16_t granularity = denSliceReader->dimx();
+    uint16_t baseSize = denSliceReader->dimz();
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, granularity, 1, baseSize);
+    std::shared_ptr<io::Frame2DI<T>> f;
+    io::BufferedFrame2D<T> bf(0.0, granularity, 1);
+    for(uint32_t i = 0; i != baseSize; i++)
     {
-        std::cout << io::xprintf("\tNo NAN or not finite number.\n\n");
-    } else
-    {
-        std::cout << io::xprintf("\tThere is %d non finite numbers. \tFrom that %d NAN.\n\n",
-                                 io::sumNonfiniteValues<T>(f), io::sumNanValues<T>(f));
+        f = denSliceReader->readFrame(i);
+        for(int j = 0; j != granularity; j++)
+        {
+            int index = j + shift;
+            if(index < 0)
+            {
+                index = 0;
+            } else if(index >= granularity)
+            {
+                index = granularity - 1;
+            }
+            bf.set(f->get(index, 0), j, 0);
+        }
+        imagesWritter->writeFrame(bf, i);
     }
+}
+
+template <typename T>
+void resampleFunctions(std::string inputFile, std::string outputFile, uint16_t resampledGranularity)
+{
+    std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
+        = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
+    int granularity = denSliceReader->dimx();
+    uint16_t baseSize = denSliceReader->dimz();
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, resampledGranularity, 1,
+                                                          baseSize);
+    std::shared_ptr<io::Frame2DI<T>> f;
+    io::BufferedFrame2D<T> bf(T(0.0), resampledGranularity, 1);
+    math::SplineFitter* sf = new math::SplineFitter(granularity, DF_PP_CUBIC, DF_PP_AKIMA);
+    double* values = new double[baseSize * granularity];
+    double* times = new double[granularity];
+    double* newTimes = new double[resampledGranularity];
+    double* newValues = new double[resampledGranularity];
+    MKL_INT bc_type = DF_BC_1ST_LEFT_DER | DF_BC_1ST_RIGHT_DER;
+    double bc[2] = { 0.0, 0.0 };
+    for(int i = 0; i != baseSize; i++)
+    {
+        f = denSliceReader->readFrame(i);
+        for(int j = 0; j != granularity; j++)
+        {
+            values[i * granularity + j] = double(f->get(j, 0));
+        }
+    }
+    for(int j = 0; j != granularity; j++)
+    {
+        times[j] = double(j);
+    }
+    for(int j = 0; j != resampledGranularity; j++)
+    {
+        newTimes[j] = double(j) * double(granularity - 1) / double(resampledGranularity - 1);
+    }
+
+    for(uint16_t i = 0; i != baseSize; i++)
+    {
+        sf->buildSpline(times, &values[i * granularity], bc_type, bc);
+        sf->interpolateAt(resampledGranularity, newTimes, newValues);
+        for(uint32_t j = 0; j != resampledGranularity; j++)
+        {
+            bf.set(T(newValues[j]), j, 0);
+        }
+        imagesWritter->writeFrame(bf, i);
+    }
+    delete sf;
+    delete[] newValues;
+    delete[] values;
+    delete[] times;
+    delete[] newTimes;
+}
+
+template <typename T>
+void addLegendrePolynomials(std::string inputFile, std::string outputFile, uint16_t n)
+{
+    std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
+        = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
+    uint16_t granularity = denSliceReader->dimx();
+    uint16_t baseSize = denSliceReader->dimz();
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, granularity, 1, n + baseSize);
+    std::shared_ptr<io::Frame2DI<T>> f;
+    io::BufferedFrame2D<T> bf(0.0, granularity, 1);
+    util::LegendrePolynomial l(n - 1, 0.0, double(granularity - 1));
+    double* values = new double[n * granularity];
+    for(int j = 0; j != granularity; j++)
+    {
+        l.valuesAt(double(j), &values[j * n]);
+    }
+    for(uint32_t i = 0; i != n; i++)
+    {
+        for(int j = 0; j != granularity; j++)
+        {
+            bf.set(T(values[j * n + i]), j, 0);
+        }
+        imagesWritter->writeFrame(bf, i);
+    }
+    for(uint32_t i = 0; i != baseSize; i++)
+    {
+        f = denSliceReader->readFrame(i);
+        imagesWritter->writeFrame(*f, n + i);
+    }
+    delete[] values;
 }
 
 int main(int argc, char* argv[])
@@ -92,7 +190,7 @@ int main(int argc, char* argv[])
     }
     if(a.vizualize)
     {
-	LOGI << io::xprintf("Granularity of %s is %d", a.input_file.c_str(), a.granularity);
+        //      LOGI << io::xprintf("Granularity of %s is %d", a.input_file.c_str(), a.granularity);
         util::StepFunction b(a.baseSize, a.input_file, 0.0, double(a.granularity - 1));
         b.plotFunctions(a.granularity);
     }
@@ -100,44 +198,50 @@ int main(int argc, char* argv[])
     {
     case io::DenSupportedType::uint16_t_:
     {
-        std::cout << io::xprintf("Not implemented yet.\n");
+        if(a.shiftBasis != 0)
+        {
+            shiftBasis<uint16_t>(a.input_file, a.output_file, a.shiftBasis);
+        }
+        if(a.resampledGranularity != 0)
+        {
+            resampleFunctions<uint16_t>(a.input_file, a.output_file, a.resampledGranularity);
+        }
+        if(a.legendrePolynomialsAdded != 0)
+        {
+            addLegendrePolynomials<uint16_t>(a.input_file, a.output_file, a.legendrePolynomialsAdded);
+        }
         break;
     }
     case io::DenSupportedType::float_:
     {
         if(a.shiftBasis != 0)
         {
-            std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
-                = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
-            std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
-                = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_file, a.granularity, 1,
-                                                                      a.baseSize);
-
-            std::shared_ptr<io::Frame2DI<float>> f;
-            io::BufferedFrame2D<float> bf(0.0, a.granularity, 1);
-            for(uint32_t i = 0; i != a.baseSize; i++)
-            {
-                f = denSliceReader->readFrame(i);
-                for(int j = 0; j != a.granularity; j++)
-                {
-                    int index = j + a.shiftBasis;
-                    if(index < 0)
-                    {
-                        index = 0;
-                    } else if(index >= a.granularity)
-                    {
-                        index = a.granularity - 1;
-                    }
-                    bf.set(f->get(index, 0), j, 0);
-                }
-                imagesWritter->writeFrame(bf, i);
-            }
+            shiftBasis<float>(a.input_file, a.output_file, a.shiftBasis);
+        }
+        if(a.resampledGranularity != 0)
+        {
+            resampleFunctions<float>(a.input_file, a.output_file, a.resampledGranularity);
+        }
+        if(a.legendrePolynomialsAdded != 0)
+        {
+            addLegendrePolynomials<float>(a.input_file, a.output_file, a.legendrePolynomialsAdded);
         }
         break;
     }
     case io::DenSupportedType::double_:
     {
-        std::cout << io::xprintf("Not implemented yet.\n");
+        if(a.shiftBasis != 0)
+        {
+            shiftBasis<double>(a.input_file, a.output_file, a.shiftBasis);
+        }
+        if(a.resampledGranularity != 0)
+        {
+            resampleFunctions<double>(a.input_file, a.output_file, a.resampledGranularity);
+        }
+        if(a.legendrePolynomialsAdded != 0)
+        {
+            addLegendrePolynomials<double>(a.input_file, a.output_file, a.legendrePolynomialsAdded);
+        }
         break;
     }
     default:
@@ -162,13 +266,26 @@ int Args::parseArguments(int argc, char* argv[])
     _force->needs(_output);
     CLI::Option* _resample
         = app.add_option("--resample", resampledGranularity,
-                         "Resample discretization to respect new granularity size.");
+                         "Resample discretization to respect new granularity size.")
+              ->check(CLI::Range(1, 65535));
     _resample->needs(_output);
-    CLI::Option* _shift
-        = app.add_option("--shift", shiftBasis, "Shift basis and make it continuous at boundaries. Specify coordinate of 0 in old basis coordinates.");
+    CLI::Option* _shift = app.add_option("--shift", shiftBasis,
+                                         "Shift basis and make it continuous at boundaries. "
+                                         "Specify coordinate of 0 in old basis coordinates.")
+                              ->check(CLI::Range(-65535, 65535));
     _shift->needs(_output);
+    CLI::Option* _addLegendre
+        = app.add_option("--addLegendreBasis", legendrePolynomialsAdded,
+                         "Add given number of members of Legendre polynomial basis. 1 means to add "
+                         "constant, 2 means to add constant and linear function")
+              ->check(CLI::Range(1, 65535));
+    _addLegendre->needs(_output);
     _shift->excludes(_resample);
+    _shift->excludes(_addLegendre);
     _resample->excludes(_shift);
+    _resample->excludes(_addLegendre);
+    _addLegendre->excludes(_resample);
+    _addLegendre->excludes(_shift);
     try
     {
         app.parse(argc, argv);
@@ -186,6 +303,14 @@ int Args::parseArguments(int argc, char* argv[])
         io::DenFileInfo di(input_file);
         granularity = di.dimx();
         baseSize = di.dimz();
+        if(di.dimy() != 1)
+        {
+            std::string msg = io::xprintf(
+                "Error: input file %s has invalid y dimension that must be 1 and is %d!",
+                input_file.c_str(), di.dimy());
+            LOGE << msg;
+            return 1;
+        }
     } catch(const CLI::ParseError& e)
     {
         int exitcode = app.exit(e);

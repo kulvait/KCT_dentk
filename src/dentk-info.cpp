@@ -165,7 +165,7 @@ int main(int argc, char* argv[])
             if(a.l2norm)
             {
                 std::cout << io::xprintf(
-                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
                     std::pow(l2, 0.5));
             }
             break;
@@ -189,7 +189,7 @@ int main(int argc, char* argv[])
             if(a.l2norm)
             {
                 std::cout << io::xprintf(
-                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
                     std::pow(l2, 0.5));
             }
             break;
@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
             if(a.l2norm)
             {
                 std::cout << io::xprintf(
-                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.", l2,
+                    "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
                     std::pow(l2, 0.5));
             }
             break;
