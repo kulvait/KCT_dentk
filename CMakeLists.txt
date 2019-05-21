@@ -191,6 +191,20 @@ target_link_libraries(dentk_pcomp ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_pcomp ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_pcomp RUNTIME DESTINATION .)
 
+SET(DENTK_INSIDE_SOURCES src/dentk-inside.cpp)
+add_executable(dentk_inside ${DENTK_INSIDE_SOURCES})
+set_target_properties(
+    dentk_inside
+    PROPERTIES 
+        OUTPUT_NAME "dentk-inside"
+        SUFFIX ""
+)
+target_link_libraries(dentk_inside ctiol)
+target_link_libraries(dentk_inside ctmal)
+target_link_libraries(dentk_inside ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_inside ${MKL_CORE_LIBRARY})
+install (TARGETS dentk_inside RUNTIME DESTINATION .)
+
 SET(DENTK_BASIS_SOURCES src/dentk-basis.cpp)
 add_executable(dentk_basis ${DENTK_BASIS_SOURCES})
 set_target_properties(

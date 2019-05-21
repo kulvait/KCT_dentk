@@ -209,10 +209,12 @@ int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{ "Point-wise operation on two DEN files with the same dimensions." };
     app.add_option("input_op1", input_op1, "Component A in the equation C=A op B.")
+        ->required()
         ->check(CLI::ExistingFile);
     app.add_option("input_op2", input_op2, "Component B in the equation C=A op B.")
+        ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("output", output, "Component C in the equation C=A-B.");
+    app.add_option("output", output, "Component C in the equation C=A-B.")->required();
     CLI::Option* o_add = app.add_flag("--add", add, "Multiply instead of diff.");
     CLI::Option* o_sub = app.add_flag("--subtract", subtract, "Multiply instead of diff.");
     CLI::Option* o_div = app.add_flag("--divide", divide, "Multiply instead of diff.");
