@@ -28,13 +28,12 @@ struct Args
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel
-        = plog::debug; // Set to debug to see the debug messages, info messages
-    std::string csvLogFile = "/tmp/dentk-fromhu.csv"; // Set NULL to disable
+    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
+    std::string csvLogFile = io::xprintf(
+        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
     bool logToConsole = true;
     plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
     plogSetup.initLogging();
-    LOGI << "dentk-tohu";
     // Process arguments
     Args a;
     int parseResult = a.parseArguments(argc, argv);
