@@ -265,9 +265,9 @@ int Args::parseArguments(int argc, char* argv[])
                             "dimensions (x, y, z) = (%d, %d, %d).\nFile %s of the type %s has "
                             "dimensions (x, y, z) = (%d, %d, %d).",
                             input_op1.c_str(), input_op2.c_str(), input_op1.c_str(),
-                            io::DenSupportedTypeToString(disub.getDataType()), disub.getNumCols(),
+                            io::DenSupportedTypeToString(disub.getDataType()).c_str(), disub.getNumCols(),
                             disub.getNumRows(), disub.getNumSlices(), input_op2.c_str(),
-                            io::DenSupportedTypeToString(dimin.getDataType()), dimin.getNumCols(),
+                            io::DenSupportedTypeToString(dimin.getDataType()).c_str(), dimin.getNumCols(),
                             dimin.getNumRows(), dimin.getNumSlices());
         return 1;
     }
