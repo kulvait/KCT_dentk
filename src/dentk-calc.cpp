@@ -257,18 +257,27 @@ int Args::parseArguments(int argc, char* argv[])
     // Test if minuend and subtraend are of the same type and dimensions
     io::DenFileInfo disub(input_op1);
     io::DenFileInfo dimin(input_op2);
-    if(disub.getNumCols() != dimin.getNumCols() || disub.getNumRows() != dimin.getNumRows()
-       || disub.getNumSlices() != dimin.getNumSlices()
-       || disub.getDataType() != dimin.getDataType())
+    if(disub.getDataType() != dimin.getDataType())
     {
-        LOGE << io::xprintf("The files %s and %s are uncompatible.\nFile %s of the type %s has "
-                            "dimensions (x, y, z) = (%d, %d, %d).\nFile %s of the type %s has "
-                            "dimensions (x, y, z) = (%d, %d, %d).",
-                            input_op1.c_str(), input_op2.c_str(), input_op1.c_str(),
-                            io::DenSupportedTypeToString(disub.getDataType()).c_str(), disub.getNumCols(),
-                            disub.getNumRows(), disub.getNumSlices(), input_op2.c_str(),
-                            io::DenSupportedTypeToString(dimin.getDataType()).c_str(), dimin.getNumCols(),
-                            dimin.getNumRows(), dimin.getNumSlices());
+        LOGE << io::xprintf(
+            "Type incompatibility while the file %s is of type %s and file %s has "
+            "type %s.",
+            input_op1.c_str(), io::DenSupportedTypeToString(disub.getDataType()).c_str(),
+            input_op2.c_str(), io::DenSupportedTypeToString(dimin.getDataType()).c_str());
+        return 1;
+    }
+    if(disub.getNumCols() != dimin.getNumCols() || disub.getNumRows() != dimin.getNumRows()
+       || disub.getNumSlices() != dimin.getNumSlices())
+    {
+        LOGE << io::xprintf(
+            "Files %s and %s have incompatible dimensions.\nFile %s of the type %s has "
+            "dimensions (x, y, z) = (%d, %d, %d).\nFile %s of the type %s has "
+            "dimensions (x, y, z) = (%d, %d, %d).",
+            input_op1.c_str(), input_op2.c_str(), input_op1.c_str(),
+            io::DenSupportedTypeToString(disub.getDataType()).c_str(), disub.getNumCols(),
+            disub.getNumRows(), disub.getNumSlices(), input_op2.c_str(),
+            io::DenSupportedTypeToString(dimin.getDataType()).c_str(), dimin.getNumCols(),
+            dimin.getNumRows(), dimin.getNumSlices());
         return 1;
     }
     if(!add && !subtract && !divide && !multiply)
