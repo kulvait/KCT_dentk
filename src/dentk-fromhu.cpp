@@ -24,6 +24,8 @@ struct Args
     std::string input_file = "";
     std::string output_file = "";
     float water_value = 0.027;
+    /// If the minimum value in hounsfield scale is 1024, then base2=true
+    bool base2 = false;
 };
 
 int main(int argc, char* argv[])
@@ -54,16 +56,25 @@ int main(int argc, char* argv[])
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
     io::DenSupportedType dataType = di.getDataType();
-    std::shared_ptr<io::AsyncFrame2DWritterI<float>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_file, dimx, dimy, dimz);
-    float* buffer = new float[dimx * dimy];
-    std::shared_ptr<io::Frame2DI<float>> x
-        = std::make_shared<io::BufferedFrame2D<float>>(buffer, dimx, dimy);
-    delete[] buffer;
     switch(dataType)
     {
     case io::DenSupportedType::uint16_t_:
     {
+        std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> outputWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(a.output_file, dimx, dimy,
+                                                                     dimz);
+        std::shared_ptr<io::Frame2DI<uint16_t>> x
+            = std::make_shared<io::BufferedFrame2D<uint16_t>>(0, dimx, dimy);
+        double N;
+        if(a.base2)
+        {
+            N = 1024.0;
+        } else
+        {
+            N = 1000.0;
+        }
+        // W / N
+        double WN = a.water_value / N;
         std::shared_ptr<io::Frame2DReaderI<uint16_t>> sliceReader
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
         for(int k = 0; k != dimz; k++)
@@ -72,8 +83,19 @@ int main(int argc, char* argv[])
             for(int i = 0; i != dimx; i++)
                 for(int j = 0; j != dimy; j++)
                 {
-                    float v = (float)f->get(i, j); // From uint16_t
-                    x->set(v * a.water_value * float(1e-3), i, j);
+                    double UINT16MAX = 65535;
+                    double v = f->get(i, j); // From uint16_t
+                    double val = v * WN + 0.5;
+                    if(val < 0.0)
+                    {
+                        x->set(0, i, j); // Do not offset
+                    } else if(val > UINT16MAX)
+                    {
+                        x->set(65535, i, j);
+                    } else
+                    {
+                        x->set((uint16_t)val, i, j);
+                    }
                 }
             outputWritter->writeFrame(*x, k);
         }
@@ -81,16 +103,31 @@ int main(int argc, char* argv[])
     }
     case io::DenSupportedType::float_:
     {
+        std::shared_ptr<io::AsyncFrame2DWritterI<float>> outputWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(a.output_file, dimx, dimy, dimz);
+        std::shared_ptr<io::Frame2DI<float>> x
+            = std::make_shared<io::BufferedFrame2D<float>>(0.0, dimx, dimy);
+        float N;
+        if(a.base2)
+        {
+            N = 1024.0;
+        } else
+        {
+            N = 1000.0;
+        }
+        // W / N
+        float WN = a.water_value / N;
         std::shared_ptr<io::Frame2DReaderI<float>> sliceReader
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
+        float hu;
         for(int k = 0; k != dimz; k++)
         {
             std::shared_ptr<io::Frame2DI<float>> f = sliceReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
                 for(int j = 0; j != dimy; j++)
                 {
-                    float v = f->get(i, j); // From uint16_t
-                    x->set(a.water_value * float(v * 1e-3 + 1.0), i, j);
+                    hu = f->get(i, j);
+                    x->set(hu * WN + a.water_value, i, j);
                 }
             outputWritter->writeFrame(*x, k);
         }
@@ -98,16 +135,31 @@ int main(int argc, char* argv[])
     }
     case io::DenSupportedType::double_:
     {
-        std::shared_ptr<io::Frame2DReaderI<float>> sliceReader
-            = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
+        std::shared_ptr<io::AsyncFrame2DWritterI<double>> outputWritter
+            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_file, dimx, dimy, dimz);
+        std::shared_ptr<io::Frame2DI<double>> x
+            = std::make_shared<io::BufferedFrame2D<double>>(0.0, dimx, dimy);
+        double N;
+        if(a.base2)
+        {
+            N = 1024.0;
+        } else
+        {
+            N = 1000.0;
+        }
+        // W / N
+        double WN = a.water_value / N;
+        std::shared_ptr<io::Frame2DReaderI<double>> sliceReader
+            = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
+        double hu;
         for(int k = 0; k != dimz; k++)
         {
-            std::shared_ptr<io::Frame2DI<float>> f = sliceReader->readFrame(k);
+            std::shared_ptr<io::Frame2DI<double>> f = sliceReader->readFrame(k);
             for(int i = 0; i != dimx; i++)
                 for(int j = 0; j != dimy; j++)
                 {
-                    float v = (float)f->get(i, j); // From double
-                    x->set(a.water_value * float(v * 1e-3 + 1.0), i, j);
+                    hu = f->get(i, j);
+                    x->set(hu * WN + a.water_value, i, j);
                 }
             outputWritter->writeFrame(*x, k);
         }
@@ -124,7 +176,7 @@ int main(int argc, char* argv[])
 int Args::parseArguments(int argc, char* argv[])
 {
     CLI::App app{
-        "Convert DEN file with data in Hounsfield units to the nonscaled format containing floats."
+        "Convert DEN file with data in Hounsfield units to the nonscaled format of the same type."
         "For input_file containing floats or doubles coefs = w*(coefs*10e-3 + 1.0)."
         "For uint16 coefs = w*(coefs*10e-3). Default w=0.027. Ouput den file contains floats."
     };
@@ -134,6 +186,8 @@ int Args::parseArguments(int argc, char* argv[])
         ->required();
     app.add_option("-w,--water-value", water_value, "Water value to use, defaults to 0.027")
         ->check(CLI::Range(0.0, 1.0));
+    app.add_flag("--base2", base2,
+                 "If this flag is specified than the minimum value in HU is -1024.");
     try
     {
         app.parse(argc, argv);
