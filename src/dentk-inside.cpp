@@ -34,6 +34,7 @@ struct Args
     std::string output_den = "";
     std::string frameSpecs = "";
     std::vector<int> frames;
+    float scale = 1.0;
     bool force = false;
 };
 
@@ -107,7 +108,7 @@ void processFiles(Args a)
                     alpha = alpha + 360;
                 }
                 int r = (int)std::sqrt(x * x + y * y);
-                if(r < distancesFromCenter[alpha])
+                if(r < distancesFromCenter[alpha] * a.scale)
                 {
                     f.set(T(1), i, j);
                 }
@@ -181,6 +182,7 @@ int Args::parseArguments(int argc, char* argv[])
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
+    app.add_option("--scale", scale, "Scale size of the detected area.");
     try
     {
         app.parse(argc, argv);
