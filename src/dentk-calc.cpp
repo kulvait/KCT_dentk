@@ -214,16 +214,15 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_op2", input_op2, "Component B in the equation C=A op B.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("output", output, "Component C in the equation C=A-B.")->required();
-    CLI::Option* o_add = app.add_flag("--add", add, "Multiply instead of diff.");
-    CLI::Option* o_sub = app.add_flag("--subtract", subtract, "Multiply instead of diff.");
-    CLI::Option* o_div = app.add_flag("--divide", divide, "Multiply instead of diff.");
-    CLI::Option* o_mul = app.add_flag("--multiply", multiply, "Multiply instead of diff.");
-    o_mul->excludes(o_sub)->excludes(o_add)->excludes(o_div);
-    o_add->excludes(o_sub)->excludes(o_mul)->excludes(o_div);
-    o_sub->excludes(o_add)->excludes(o_add)->excludes(o_div);
-    o_div->excludes(o_sub)->excludes(o_add)->excludes(o_mul);
-    app.add_flag("--force", force, "Owerwrite output file if it exists.");
+    app.add_option("output", output, "Component C in the equation C=A op B.")->required();
+	//Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
+	CLI::Option_group * op_clg = app.add_option_group("Operation", "Mathematical operation to perform.");
+    op_clg->add_flag("--add", add, "op1 + op2");
+    op_clg->add_flag("--subtract", subtract, "op1 - op2");
+    op_clg->add_flag("--multiply", multiply, "op1 * op2");
+    op_clg->add_flag("--divide", divide, "op1 / op2");
+	op_clg->require_option(1);
+    app.add_flag("--force", force, "Overwrite output file if it exists.");
     app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
