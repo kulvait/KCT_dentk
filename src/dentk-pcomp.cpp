@@ -234,7 +234,7 @@ int Args::parseArguments(int argc, char* argv[])
         app.parse(argc, argv);
         if(!forceOverwrite)
         {
-            if(io::fileExists(S_file))
+            if(io::pathExists(S_file))
             {
                 std::string msg = io::xprintf(
                     "Error: output file S_file %s already exists, use -f to force overwrite.",
@@ -242,7 +242,7 @@ int Args::parseArguments(int argc, char* argv[])
                 LOGE << msg;
                 return 1;
             }
-            if(!U_file.empty() && io::fileExists(U_file))
+            if(!U_file.empty() && io::pathExists(U_file))
             {
                 std::string msg = io::xprintf(
                     "Error: output file U_file %s already exists, use -f to force overwrite.",
@@ -250,7 +250,7 @@ int Args::parseArguments(int argc, char* argv[])
                 LOGE << msg;
                 return 1;
             }
-            if(!V_file.empty() && io::fileExists(V_file))
+            if(!V_file.empty() && io::pathExists(V_file))
             {
                 std::string msg = io::xprintf(
                     "Error: output file V_file %s already exists, use -f to force overwrite.",

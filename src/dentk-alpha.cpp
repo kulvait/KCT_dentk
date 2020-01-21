@@ -58,7 +58,7 @@ int Args::parseArguments(int argc, char* argv[])
         app.parse(argc, argv);
         if(!force)
         {
-            if(io::fileExists(outputFile))
+            if(io::pathExists(outputFile))
             {
                 std::string msg
                     = "Error: output file already exists, use --force to force overwrite.";

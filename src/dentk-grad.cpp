@@ -180,7 +180,7 @@ int Args::parseArguments(int argc, char* argv[])
     }
     if(!force)
     {
-        if(io::fileExists(output_x) || io::fileExists(output_y) || io::fileExists(output_z))
+        if(io::pathExists(output_x) || io::pathExists(output_y) || io::pathExists(output_z))
         {
             LOGE << "Error: output file already exists, use -f to force overwrite.";
             return 1;

@@ -219,7 +219,7 @@ int Args::parseArguments(int argc, char* argv[])
         }
         if(!force)
         {
-            if(io::fileExists(output_projections))
+            if(io::pathExists(output_projections))
             {
                 std::string msg = io::xprintf("Error: output projections file %s already exists, "
                                               "use --force to force overwrite.",
@@ -227,7 +227,7 @@ int Args::parseArguments(int argc, char* argv[])
                 LOGE << msg;
                 return -1;
             }
-            if(io::fileExists(output_matrices))
+            if(io::pathExists(output_matrices))
             {
                 std::string msg = io::xprintf("Error: output matrices file %s already exists, use "
                                               "--force to force overwrite.",

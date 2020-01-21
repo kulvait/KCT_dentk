@@ -205,7 +205,7 @@ int Args::parseArguments(int argc, char* argv[])
     }
     if(!force)
     {
-        if(io::fileExists(output_den))
+        if(io::pathExists(output_den))
         {
             LOGE << "Error: output file already exists, use -f to force overwrite.";
             return 1;
