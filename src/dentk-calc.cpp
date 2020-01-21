@@ -78,9 +78,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(
                 a.output, dimx, dimy,
                 dimz); // I write regardless to frame specification to original position
-        uint16_t* buffer = new uint16_t[dimx * dimy];
-        io::BufferedFrame2D<uint16_t> x(buffer, dimx, dimy);
-        delete[] buffer;
+        io::BufferedFrame2D<uint16_t> x(uint16_t(0), dimx, dimy);
         for(const int& k : a.frames)
         {
             uint16_t val;
@@ -120,9 +118,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DWritter<float>>(
                 a.output, dimx, dimy,
                 dimz); // I write regardless to frame specification to original position
-        float* buffer = new float[dimx * dimy];
-        io::BufferedFrame2D<float> x(buffer, dimx, dimy);
-        delete[] buffer;
+        io::BufferedFrame2D<float> x(float(0), dimx, dimy);
         for(const int& k : a.frames)
         {
             float val;
@@ -162,9 +158,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DWritter<double>>(
                 a.output, dimx, dimy,
                 dimz); // I write regardless to frame specification to original position
-        double* buffer = new double[dimx * dimy];
-        io::BufferedFrame2D<double> x(buffer, dimx, dimy);
-        delete[] buffer;
+        io::BufferedFrame2D<double> x(double(0), dimx, dimy);
         for(const int& k : a.frames)
         {
             double val;
