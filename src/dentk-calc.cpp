@@ -14,12 +14,13 @@
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
-#include "ARGPARSE/parseArgs.h"
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
+#include "PROG/Program.hpp"
+#include "PROG/parseArgs.h"
 
 using namespace CTL;
 
@@ -41,26 +42,19 @@ struct Args
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
-    std::string csvLogFile = io::xprintf(
-        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
-    // Argument parsing
+    using namespace CTL::util;
+    Program PRG(argc, argv);
+    // After init parsing arguments
     Args a;
     int parseResult = a.parseArguments(argc, argv);
-    if(parseResult != 0)
+    if(parseResult > 0)
     {
-        if(parseResult > 0)
-        {
-            return 0; // Exited sucesfully, help message printed
-        } else
-        {
-            return -1; // Exited somehow wrong
-        }
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
     }
-    LOGI << io::xprintf("START %s", argv[0]);
+    PRG.startLog();
     io::DenFileInfo di(a.input_op1);
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
@@ -196,7 +190,7 @@ int main(int argc, char* argv[])
         throw std::runtime_error(errMsg);
     }
     }
-    LOGI << io::xprintf("END %s", argv[0]);
+    PRG.endLog();
 }
 
 int Args::parseArguments(int argc, char* argv[])
@@ -209,13 +203,14 @@ int Args::parseArguments(int argc, char* argv[])
         ->required()
         ->check(CLI::ExistingFile);
     app.add_option("output", output, "Component C in the equation C=A op B.")->required();
-	//Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
-	CLI::Option_group * op_clg = app.add_option_group("Operation", "Mathematical operation to perform.");
+    // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
+    CLI::Option_group* op_clg
+        = app.add_option_group("Operation", "Mathematical operation to perform.");
     op_clg->add_flag("--add", add, "op1 + op2");
     op_clg->add_flag("--subtract", subtract, "op1 - op2");
     op_clg->add_flag("--multiply", multiply, "op1 * op2");
     op_clg->add_flag("--divide", divide, "op1 / op2");
-	op_clg->require_option(1);
+    op_clg->require_option(1);
     app.add_flag("--force", force, "Overwrite output file if it exists.");
     app.add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "

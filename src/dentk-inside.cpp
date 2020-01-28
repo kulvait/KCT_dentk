@@ -15,7 +15,7 @@
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
-#include "ARGPARSE/parseArgs.h"
+#include "PROG/parseArgs.h"
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"

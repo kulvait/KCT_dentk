@@ -61,7 +61,7 @@ FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
 add_library(ctiol_itk ${DENITK_SRC})
 include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 
-FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/ARGPARSE/*.cpp)
+FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/PROG/*.cpp)
 add_library(ctiol ${CTIOL_SRC})
 target_link_libraries(ctiol stdc++fs)#include <experimental/filesystem>
 

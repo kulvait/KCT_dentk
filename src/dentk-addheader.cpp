@@ -2,7 +2,7 @@
 #include "PLOG/PlogSetup.h"
 
 // Internal libraries
-#include "ARGPARSE/parseArgs.h"
+#include "PROG/parseArgs.h"
 #include "DEN/DenSupportedType.hpp"
 #include "littleEndianAlignment.h"
 #include "rawop.h"

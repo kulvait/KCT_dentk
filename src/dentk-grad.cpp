@@ -11,7 +11,7 @@
 #include <string>
 
 // External libraries
-#include "ARGPARSE/parseArgs.h"
+#include "PROG/parseArgs.h"
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
