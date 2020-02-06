@@ -14,21 +14,30 @@
 #include "CLI/CLI.hpp"
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "DEN/DenSupportedType.hpp"
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
+#include "PROG/Arguments.hpp"
+#include "PROG/Program.hpp"
+#include "PROG/parseArgs.h"
 #include "frameop.h"
 
 using namespace CTL;
+using namespace CTL::util;
 
 // class declarations
-struct Args
+struct Args : public Arguments
 {
-    int parseArguments(int argc, char* argv[]);
+    void defineArguments();
+    int postParse();
+    int preParse() { return 0; };
+
+public:
+    Args(int argc, char** argv, std::string prgName)
+        : Arguments(argc, argv, prgName){};
     std::string input_file;
     std::string frameSpecs = "";
     std::vector<int> frames;
@@ -59,7 +68,7 @@ void printFrameStatistics(const io::Frame2DI<T>& f)
 }
 
 template <typename T>
-void printBasicStatistics(const io::DenFileInfo& di, const Args& a)
+void printBasicStatistics(const io::DenFileInfo& di, const Args& ARG)
 {
 
     double min = di.getMinVal<T>();
@@ -73,7 +82,7 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& a)
         std::cout << io::xprintf("Global minimum and maximum values are (%0.3f, %0.3f).\n", min,
                                  max);
     }
-    if(a.l2norm)
+    if(ARG.l2norm)
     {
         double l2 = di.getl2Square<T>();
         std::cout << io::xprintf("Global l2 norm is %0.1f and its square is %0.1f.\n",
@@ -83,30 +92,22 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& a)
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
-    std::string csvLogFile = io::xprintf(
-        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
+    Program PRG(argc, argv);
     // Argument parsing
-    Args a;
-    int parseResult = a.parseArguments(argc, argv);
-    if(parseResult != 0)
+    Args ARG(argc, argv, "Information about DEN file and its individual slices.");
+    int parseResult = ARG.parse();
+    if(parseResult > 0)
     {
-        if(parseResult > 0)
-        {
-            return 0; // Exited sucesfully, help message printed
-        } else
-        {
-            return -1; // Exited somehow wrong
-        }
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
     }
-    io::DenFileInfo di(a.input_file);
+    io::DenFileInfo di(ARG.input_file);
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
-    if(a.returnDimensions)
+    if(ARG.returnDimensions)
     {
         std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
         return 0;
@@ -117,22 +118,22 @@ int main(int argc, char* argv[])
     std::cout << io::xprintf(
         "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
         "%d, %d), each cell has x*y=%d pixels.\n",
-        a.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
+        ARG.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
     switch(t)
     {
     case io::DenSupportedType::uint16_t_:
     {
-        printBasicStatistics<uint16_t>(di, a);
+        printBasicStatistics<uint16_t>(di, ARG);
         break;
     }
     case io::DenSupportedType::float_:
     {
-        printBasicStatistics<float>(di, a);
+        printBasicStatistics<float>(di, ARG);
         break;
     }
     case io::DenSupportedType::double_:
     {
-        printBasicStatistics<double>(di, a);
+        printBasicStatistics<double>(di, ARG);
         break;
     }
     default:
@@ -141,7 +142,7 @@ int main(int argc, char* argv[])
         LOGE << errMsg;
         throw std::runtime_error(errMsg);
     }
-    if(a.framesSpecified)
+    if(ARG.framesSpecified)
     {
         double l2 = 0.0;
         double val;
@@ -150,19 +151,19 @@ int main(int argc, char* argv[])
         case io::DenSupportedType::uint16_t_:
         {
             std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
-                = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
-            for(const int f : a.frames)
+                = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.input_file);
+            for(const int f : ARG.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<uint16_t>> framePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<uint16_t>(*framePtr);
-                if(a.l2norm)
+                if(ARG.l2norm)
                 {
                     val = io::l2square<uint16_t>(*framePtr);
                     l2 += val;
                 }
             }
-            if(a.l2norm)
+            if(ARG.l2norm)
             {
                 std::cout << io::xprintf(
                     "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
@@ -174,19 +175,19 @@ int main(int argc, char* argv[])
         {
 
             std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
-                = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
-            for(const int f : a.frames)
+                = std::make_shared<io::DenFrame2DReader<float>>(ARG.input_file);
+            for(const int f : ARG.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<float>> framePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<float>(*framePtr);
-                if(a.l2norm)
+                if(ARG.l2norm)
                 {
                     val = io::l2square<float>(*framePtr);
                     l2 += val;
                 }
             }
-            if(a.l2norm)
+            if(ARG.l2norm)
             {
                 std::cout << io::xprintf(
                     "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
@@ -198,19 +199,19 @@ int main(int argc, char* argv[])
         {
 
             std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
-                = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
-            for(const int f : a.frames)
+                = std::make_shared<io::DenFrame2DReader<double>>(ARG.input_file);
+            for(const int f : ARG.frames)
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<double>> framePtr = denSliceReader->readFrame(f);
                 printFrameStatistics<double>(*framePtr);
-                if(a.l2norm)
+                if(ARG.l2norm)
                 {
                     val = io::l2square<double>(*framePtr);
                     l2 += val;
                 }
             }
-            if(a.l2norm)
+            if(ARG.l2norm)
             {
                 std::cout << io::xprintf(
                     "Square of l2 norm of frames is %0.3f and l2 norm is %0.3f.\n", l2,
@@ -227,46 +228,32 @@ int main(int argc, char* argv[])
     }
 }
 
-int Args::parseArguments(int argc, char* argv[])
+void Args::defineArguments()
 {
-    CLI::App app{ "Information about DEN file and its individual slices." };
-    app.add_option("input_den_file", input_file, "File in a DEN format to process.")
+    cliApp->add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("-f,--frames", frameSpecs,
+    cliApp->add_option("-f,--frames", frameSpecs,
                    "Specify only particular frames to process. You can input range i.e. 0-20 or "
                    "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
-    app.add_flag("--l2norm", l2norm, "Print l2 norm of the frame specs.");
-    app.add_flag("--dim", returnDimensions,
+    cliApp->add_flag("--l2norm", l2norm, "Print l2 norm of the frame specs.");
+    cliApp->add_flag("--dim", returnDimensions,
                  "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
+}
 
-    try
+int Args::postParse()
+{
+    cliApp->parse(argc, argv);
+    if(returnDimensions)
     {
-        app.parse(argc, argv);
-        if(returnDimensions)
-        {
-            return 0; // Do not process frames and print a log message.
-        }
-        if(app.count("--frames") > 0)
-        {
-            framesSpecified = true;
-        }
-        io::DenFileInfo inf(input_file);
-        frames = util::processFramesSpecification(frameSpecs, inf.dimz());
-    } catch(const CLI::ParseError& e)
-    {
-        int exitcode = app.exit(e);
-        if(exitcode == 0) // Help message was printed
-        {
-            return 1;
-        } else
-        {
-            LOGE << "Parse error catched";
-            // Negative value should be returned
-            return -1;
-        }
+        return 0; // Do not process frames and print a log message.
     }
-
+    if(cliApp->count("--frames") > 0)
+    {
+        framesSpecified = true;
+    }
+    io::DenFileInfo inf(input_file);
+    frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     return 0;
 }

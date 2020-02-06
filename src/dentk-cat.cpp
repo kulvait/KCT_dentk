@@ -18,9 +18,9 @@
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-#include "PROG/Arguments.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
-#include "PROG/parseArgs.h"
 
 using namespace CTL;
 using namespace CTL::util;
@@ -28,7 +28,7 @@ using namespace CTL::util;
 // Function declarations (definition at the end of the file)
 
 // class declarations
-struct Args : public Arguments
+struct Args : public ArgumentsFramespec, public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -36,14 +36,10 @@ struct Args : public Arguments
 
 public:
     Args(int argc, char** argv, std::string prgName)
-        : Arguments(argc, argv, prgName){};
+        : Arguments(argc, argv, prgName), ArgumentsFramespec(argc, argv, prgName), ArgumentsThreading(argc, argv, prgName) {};
     std::string input_file;
     std::string output_file;
-    std::string frameSpecs = "";
-    std::vector<int> frames;
     uint32_t threads = 0;
-    int k = 1;
-    bool reverse_order = false;
 };
 
 template <class T>
@@ -70,7 +66,7 @@ int main(int argc, char* argv[])
     {
         return -1; // Exited somehow wrong
     }
-    PRG.startLog();
+    PRG.startLog(true);
     io::DenFileInfo di(ARG.input_file);
     io::DenSupportedType dataType = di.getDataType();
     uint32_t dimx = di.dimx();
@@ -161,30 +157,13 @@ int main(int argc, char* argv[])
 
 void Args::defineArguments()
 {
-    cliApp->add_flag("-r,--reverse_order", reverse_order,
-                     "Output in the reverse order of input or reverse specified frames.");
-    cliApp->add_option(
-        "-f,--frames", frameSpecs,
-        "Specify only particular frames to process. You can input range i.e. 0-20 or "
-        "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
-        "end literal that means total number of slices of the input.");
-    cliApp
-        ->add_option(
-            "-k,--each-kth", k,
-            "Process only each k-th frame specified by k to output. The frames to output "
-            "are then 1st specified, 1+kN, N=1...\\infty if such frame exists. Parametter k "
-            "must be positive integer.")
-        ->check(CLI::Range(1, 65535));
-    cliApp
-        ->add_option("-j,--threads", threads,
-                     "Number of extra threads that cliApplication can use. Defaults to 0, disabled "
-                     "threading.")
-        ->check(CLI::Range(0, 65535));
     cliApp->add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_den_file", output_file, "File in a DEN format to output.")
         ->required();
+	addFramespecArgs();
+	addThreadingArgs();
 }
 
 int Args::postParse()
@@ -197,17 +176,6 @@ int Args::postParse()
         return -1;
     }
     io::DenFileInfo inf(input_file);
-    std::vector<int> f = util::processFramesSpecification(frameSpecs, inf.dimz());
-    if(reverse_order)
-    {
-        std::reverse(f.begin(), f.end()); // It really does!
-    }
-    for(std::size_t i = 0; i != f.size(); i++)
-    {
-        if(i % k == 0)
-        {
-            frames.push_back(f[i]);
-        }
-    }
+	fillFramesVector(inf.dimz());
     return 0;
 }
