@@ -182,8 +182,8 @@ int main(int argc, char* argv[])
             }
             std::sort(x, x + totalSize, std::less<uint32_t>());
             uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(ARG.loq * (totalSize - 1));
-            upqElements = (uint32_t)(ARG.upq * (totalSize - 1));
+            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
+            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
             leq = std::min(leq, x[loqElements]);
             geq = std::max(geq, x[totalSize - 1 - upqElements]);
             delete[] x;
@@ -227,8 +227,8 @@ int main(int argc, char* argv[])
             }
             std::sort(x, x + totalSize, std::less<float>());
             uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(ARG.loq * (totalSize - 1));
-            upqElements = (uint32_t)(ARG.upq * (totalSize - 1));
+            loqElements = (uint32_t)(double(ARG.loq) * double(totalSize - 1));
+            upqElements = (uint32_t)(double(ARG.upq) * double(totalSize - 1));
             leq = std::min(leq, x[loqElements]);
             geq = std::max(geq, x[totalSize - 1 - upqElements]);
             delete[] x;
@@ -268,8 +268,8 @@ int main(int argc, char* argv[])
             }
             std::sort(x, x + totalSize, std::less<double>());
             uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(ARG.loq * (totalSize - 1));
-            upqElements = (uint32_t)(ARG.upq * (totalSize - 1));
+            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
+            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
             leq = std::min(leq, x[loqElements]);
             geq = std::max(geq, x[totalSize - 1 - upqElements]);
             delete[] x;

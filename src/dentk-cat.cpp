@@ -39,7 +39,6 @@ public:
         : Arguments(argc, argv, prgName), ArgumentsFramespec(argc, argv, prgName), ArgumentsThreading(argc, argv, prgName) {};
     std::string input_file;
     std::string output_file;
-    uint32_t threads = 0;
 };
 
 template <class T>

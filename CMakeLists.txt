@@ -283,17 +283,29 @@ target_link_libraries(dentk_merge ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_merge ctiol)
 install (TARGETS dentk_merge RUNTIME DESTINATION .)
 
-SET(DENTK_AVERAGE_SOURCES src/dentk-average.cpp)
-add_executable(dentk_average ${DENTK_AVERAGE_SOURCES})
+SET(DENTK_STAT_SOURCES src/dentk-stat.cpp)
+add_executable(dentk_stat ${DENTK_STAT_SOURCES})
 set_target_properties(
-    dentk_average 
+    dentk_stat 
     PROPERTIES 
-        OUTPUT_NAME "dentk-average"
+        OUTPUT_NAME "dentk-stat"
         SUFFIX ""
 )
-target_link_libraries(dentk_average ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(dentk_average ctiol)
-install (TARGETS dentk_average RUNTIME DESTINATION .)
+target_link_libraries(dentk_stat ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_stat ctiol)
+install (TARGETS dentk_stat RUNTIME DESTINATION .)
+
+SET(DENTK_VALUE_SOURCES src/dentk-value.cpp)
+add_executable(dentk_value ${DENTK_VALUE_SOURCES})
+set_target_properties(
+    dentk_value 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-value"
+        SUFFIX ""
+)
+target_link_libraries(dentk_value ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_value ctiol)
+install (TARGETS dentk_value RUNTIME DESTINATION .)
 
 SET(DENTK_EMPTY_SOURCES src/dentk-empty.cpp)
 add_executable(dentk_empty ${DENTK_EMPTY_SOURCES})

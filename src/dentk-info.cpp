@@ -73,14 +73,16 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& ARG)
 
     double min = di.getMinVal<T>();
     double max = di.getMaxVal<T>();
+    double mean = di.getMean<T>();
+    double variance = di.getVariance<T>();
     if(di.getDataType() == io::DenSupportedType::uint16_t_)
     {
-        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d).\n", (int)min,
-                                 (int)max);
+        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d), mean=%f, stdev=%f.\n", (int)min,
+                                 (int)max, mean, std::pow(variance, 0.5));
     } else
     {
-        std::cout << io::xprintf("Global minimum and maximum values are (%0.3f, %0.3f).\n", min,
-                                 max);
+        std::cout << io::xprintf("Global minimum and maximum values are (%0.3f, %0.3f), mean=%f, stdev=%f.\n", min,
+                                 max, mean, std::pow(variance, 0.5));
     }
     if(ARG.l2norm)
     {
