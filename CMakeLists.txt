@@ -221,6 +221,19 @@ target_link_libraries(dentk_basis ${MKL_CORE_LIBRARY})
 target_link_libraries(dentk_basis ${PYTHON_LIBRARIES})
 install (TARGETS dentk_basis RUNTIME DESTINATION .)
 
+SET(DENTK_NOISE_SOURCES src/dentk-noise.cpp)
+add_executable(dentk_noise ${DENTK_NOISE_SOURCES})
+set_target_properties(
+    dentk_noise
+    PROPERTIES 
+        OUTPUT_NAME "dentk-noise"
+        SUFFIX ""
+)
+target_link_libraries(dentk_noise ctiol)
+target_link_libraries(dentk_noise ctmal)
+target_link_libraries(dentk_noise ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_noise RUNTIME DESTINATION .)
+
 SET(DENTK_ORTHOGONALIZE_SOURCES src/dentk-orthogonalize.cpp)
 add_executable(dentk_orthogonalize ${DENTK_ORTHOGONALIZE_SOURCES})
 set_target_properties(
