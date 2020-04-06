@@ -15,12 +15,12 @@
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
+#include "PROG/parseArgs.h"
 
 #define PI 3.14159265
 
@@ -34,17 +34,35 @@ struct Args
     std::string output_den = "";
     std::string frameSpecs = "";
     std::vector<int> frames;
+    float stopMax = std::numeric_limits<float>::infinity();
+    float stopMin = -std::numeric_limits<float>::infinity();
     float scale = 1.0;
     bool force = false;
 };
 
+
 template <typename T>
-int getMaxAttenuationDistance(double alpha, int dimx, int dimy, std::shared_ptr<io::Frame2DI<T>> A)
+/**
+* Returns the distance from the center in a voxel cut in which there is either maximum or the value lt stopMin or gt stopMax.
+*
+* @param alpha
+* @param stopMin
+* @param stopMax
+* @param A
+*
+* @return 
+*/
+int getMaxAttenuationDistance(double alpha,
+                              float stopMin,
+                              float stopMax,
+                              std::shared_ptr<io::Frame2DI<T>> A)
 {
-    int max_x = dimx / 2;
-    int max_y = dimy / 2;
-    int max_r = 0;
-    int cur_r = 0;
+    uint32_t dimx = A->dimx();
+    uint32_t dimy = A->dimy();
+    uint32_t max_x = dimx / 2;
+    uint32_t max_y = dimy / 2;
+    uint32_t max_r = 0;
+    uint32_t cur_r = 0;
     double maximum = A->get(max_x, max_y);
     double x = double(max_x);
     double y = double(max_y);
@@ -55,9 +73,13 @@ int getMaxAttenuationDistance(double alpha, int dimx, int dimy, std::shared_ptr<
         cur_r++;
         x += x_inc;
         y += y_inc;
-        if((int)x >= 0 && (int)x < dimx && (int)y >= 0 && (int)y < dimy)
+        if((int)x >= 0 && (int)x < (int)dimx && (int)y >= 0 && (int)y < (int)dimy)
         {
             double v = A->get(x, y);
+            if(v > stopMax || v < stopMin)
+            {
+                break;
+            }
             if(v > maximum)
             {
                 max_r = cur_r;
@@ -94,7 +116,7 @@ void processFiles(Args a)
         std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
         for(int alpha = 0; alpha != 360; alpha++)
         {
-            distancesFromCenter[alpha] = getMaxAttenuationDistance(alpha, dimx, dimy, A);
+            distancesFromCenter[alpha] = getMaxAttenuationDistance(alpha, a.stopMin, a.stopMax, A);
         }
         for(int i = 0; i != dimx; i++)
         {
@@ -183,6 +205,10 @@ int Args::parseArguments(int argc, char* argv[])
                    "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
                    "end literal that means total number of slices of the input.");
     app.add_option("--scale", scale, "Scale size of the detected area.");
+    app.add_option("--stop-max", stopMax,
+                   "Stop the search for the maximum when approaching value greater than stop_max.");
+    app.add_option("--stop-min", stopMin,
+                   "Stop the search for the maximum when approaching value less than stop_min.");
     try
     {
         app.parse(argc, argv);
