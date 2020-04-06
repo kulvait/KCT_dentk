@@ -2,11 +2,15 @@
 Toolkit for manipulation with DEN files.
 
 ## Cloning repository:
-Basic clone can be done via
+For developers that have ssh keys to access repository installed clone via
 ```
-git clone https://gitlab.stimulate.ovgu.de/sebastian.bannasch/Projektion_Interpolation.git
+git clone ssh://git@gitlab.stimulate.ovgu.de:2200/vojtech.kulvait/dentk.git
 ```
-However to populate submodules directories it is then needed to issue
+For read only origin clone
+```
+git clone https://gitlab.stimulate.ovgu.de/vojtech.kulvait/dentk.git
+```
+Next populate submodules
 ```
 git submodule init
 git submodule update
