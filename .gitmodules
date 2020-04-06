@@ -1,3 +1,9 @@
+[submodule "submodules/CTIOL"]
+	path = submodules/CTIOL
+	url = ../CTIOL.git
+[submodule "submodules/CTMAL"]
+	path = submodules/CTMAL
+	url = ../CTMAL.git
 [submodule "submodules/CLI11"]
 	path = submodules/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
@@ -7,12 +13,6 @@
 [submodule "submodules/plog"]
 	path = submodules/plog
 	url = https://github.com/SergiusTheBest/plog.git
-[submodule "submodules/CTIOL"]
-	path = submodules/CTIOL
-	url = ssh://git@gitlab.stimulate.ovgu.de:2200/vojtech.kulvait/CTIOL.git
-[submodule "submodules/CTMAL"]
-	path = submodules/CTMAL
-	url = ssh://git@gitlab.stimulate.ovgu.de:2200/vojtech.kulvait/CTMAL.git
 [submodule "submodules/matplotlib-cpp"]
 	path = submodules/matplotlib-cpp
 	url = https://github.com/lava/matplotlib-cpp
