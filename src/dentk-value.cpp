@@ -18,8 +18,8 @@
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-#include "PROG/Program.hpp"
 #include "PROG/Arguments.hpp"
+#include "PROG/Program.hpp"
 
 using namespace CTL;
 using namespace CTL::util;
@@ -38,6 +38,7 @@ public:
         : Arguments(argc, argv, prgName){};
     std::string input_file;
     uint32_t x, y, z;
+    double value = std::numeric_limits<double>::quiet_NaN();
 };
 
 int main(int argc, char* argv[])
@@ -61,24 +62,48 @@ int main(int argc, char* argv[])
     {
         std::shared_ptr<io::Frame2DReaderI<uint16_t>> denFrameReader
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.input_file);
-        uint16_t v = denFrameReader->readFrame(ARG.z)->get(ARG.x, ARG.y);
+        std::shared_ptr<io::Frame2DI<uint16_t>> f = denFrameReader->readFrame(ARG.z);
+        uint16_t v = f->get(ARG.x, ARG.y);
         std::cout << v;
+        if(!std::isnan(ARG.value))
+        {
+            f->set(ARG.value, ARG.x, ARG.y);
+            std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> denFrameWritter
+                = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(ARG.input_file);
+            denFrameWritter->writeFrame(*f, ARG.z);
+        }
         break;
     }
     case io::DenSupportedType::float_:
     {
         std::shared_ptr<io::Frame2DReaderI<float>> denFrameReader
             = std::make_shared<io::DenFrame2DReader<float>>(ARG.input_file);
-        float v = denFrameReader->readFrame(ARG.z)->get(ARG.x, ARG.y);
+        std::shared_ptr<io::Frame2DI<float>> f = denFrameReader->readFrame(ARG.z);
+        float v = f->get(ARG.x, ARG.y);
         std::cout << v;
+        if(!std::isnan(ARG.value))
+        {
+            f->set(ARG.value, ARG.x, ARG.y);
+            std::shared_ptr<io::AsyncFrame2DWritterI<float>> denFrameWritter
+                = std::make_shared<io::DenAsyncFrame2DWritter<float>>(ARG.input_file);
+            denFrameWritter->writeFrame(*f, ARG.z);
+        }
         break;
     }
     case io::DenSupportedType::double_:
     {
         std::shared_ptr<io::Frame2DReaderI<double>> denFrameReader
             = std::make_shared<io::DenFrame2DReader<double>>(ARG.input_file);
-        double v = denFrameReader->readFrame(ARG.z)->get(ARG.x, ARG.y);
+        std::shared_ptr<io::Frame2DI<double>> f = denFrameReader->readFrame(ARG.z);
+        double v = f->get(ARG.x, ARG.y);
         std::cout << v;
+        if(!std::isnan(ARG.value))
+        {
+            f->set(ARG.value, ARG.x, ARG.y);
+            std::shared_ptr<io::AsyncFrame2DWritterI<double>> denFrameWritter
+                = std::make_shared<io::DenAsyncFrame2DWritter<double>>(ARG.input_file);
+            denFrameWritter->writeFrame(*f, ARG.z);
+        }
         break;
     }
     default:
@@ -92,11 +117,13 @@ int main(int argc, char* argv[])
 void Args::defineArguments()
 {
     cliApp->add_option("x", x, "X coordinate.")->required();
-    cliApp->add_option("x", y, "X coordinate.")->required();
-    cliApp->add_option("x", z, "X coordinate.")->required();
+    cliApp->add_option("y", y, "Y coordinate.")->required();
+    cliApp->add_option("z", z, "Z coordinate.")->required();
     cliApp->add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
+    cliApp->add_option("--set-value", value,
+                       "If the parameter is specified, the value of is set for given coordinates.");
 }
 
 int Args::postParse()
