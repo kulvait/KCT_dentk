@@ -20,26 +20,34 @@
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-#include "PROG/parseArgs.h"
+#include "PROG/ArgumentsForce.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/Program.hpp"
 
 #define PI 3.14159265
 
 using namespace CTL;
+using namespace CTL::util;
 
 // class declarations
-struct Args
+// class declarations
+class Args : public ArgumentsFramespec, public ArgumentsForce
 {
-    int parseArguments(int argc, char* argv[]);
+    void defineArguments();
+    int postParse();
+    int preParse() { return 0; };
+
+public:
+    Args(int argc, char** argv, std::string prgName)
+        : Arguments(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
-    std::string frameSpecs = "";
-    std::vector<int> frames;
     float stopMax = std::numeric_limits<float>::infinity();
     float stopMin = -std::numeric_limits<float>::infinity();
     float scale = 1.0;
-    bool force = false;
 };
-
 
 template <typename T>
 /**
@@ -143,43 +151,37 @@ void processFiles(Args a)
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
-    std::string csvLogFile = io::xprintf(
-        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
+    Program PRG(argc, argv);
     // Argument parsing
-    Args a;
-    int parseResult = a.parseArguments(argc, argv);
-    if(parseResult != 0)
+    Args ARG(argc, argv,
+             "Create file with ones inside the area from the center to the highest attenuation in "
+             "given direction.");
+    int parseResult = ARG.parse();
+    if(parseResult > 0)
     {
-        if(parseResult > 0)
-        {
-            return 0; // Exited sucesfully, help message printed
-        } else
-        {
-            return -1; // Exited somehow wrong
-        }
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
     }
-    LOGI << io::xprintf("START %s", argv[0]);
-    io::DenFileInfo di(a.input_den);
+    PRG.startLog(true);
+    io::DenFileInfo di(ARG.input_den);
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
     case io::DenSupportedType::uint16_t_:
     {
-        processFiles<uint16_t>(a);
+        processFiles<uint16_t>(ARG);
         break;
     }
     case io::DenSupportedType::float_:
     {
-        processFiles<float>(a);
+        processFiles<float>(ARG);
         break;
     }
     case io::DenSupportedType::double_:
     {
-        processFiles<double>(a);
+        processFiles<double>(ARG);
         break;
     }
     default:
@@ -190,45 +192,25 @@ int main(int argc, char* argv[])
         throw std::runtime_error(errMsg);
     }
     }
-    LOGI << io::xprintf("END %s", argv[0]);
+    PRG.endLog();
 }
 
-int Args::parseArguments(int argc, char* argv[])
+void Args::defineArguments()
 {
-    CLI::App app{ "Create file with ones inside the area from the center to the highest "
-                  "attenuation in given direction." };
-    app.add_option("input_den", input_den, "Input file.")->check(CLI::ExistingFile)->required();
-    app.add_option("output_den", output_den, "Output file.")->required();
-    app.add_flag("--force", force, "Owerwrite output file if it exists.");
-    app.add_option("-f,--frames", frameSpecs,
-                   "Specify only particular frames to process. You can input range i.e. 0-20 or "
-                   "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
-                   "end literal that means total number of slices of the input.");
-    app.add_option("--scale", scale, "Scale size of the detected area.");
-    app.add_option("--stop-max", stopMax,
-                   "Stop the search for the maximum when approaching value greater than stop_max.");
-    app.add_option("--stop-min", stopMin,
-                   "Stop the search for the maximum when approaching value less than stop_min.");
-    try
-    {
-        app.parse(argc, argv);
-        LOGD << io::xprintf("Input file is %s and output file is %s.", input_den.c_str(),
-                            output_den.c_str());
-        io::DenFileInfo inf(input_den);
-        frames = util::processFramesSpecification(frameSpecs, inf.dimz());
-    } catch(const CLI::ParseError& e)
-    {
-        int exitcode = app.exit(e);
-        if(exitcode == 0) // Help message was printed
-        {
-            return 1;
-        } else
-        {
-            LOGE << "Parse error catched";
-            // Negative value should be returned
-            return -1;
-        }
-    }
+    cliApp->add_option("input_den", input_den, "Input file.")->check(CLI::ExistingFile)->required();
+    cliApp->add_option("output_den", output_den, "Output file.")->required();
+    addForceArgs();
+    cliApp->add_option("--scale", scale, "Scale size of the detected area.");
+    cliApp->add_option(
+        "--stop-max", stopMax,
+        "Stop the search for the maximum when cliApp->oaching value greater than stop_max.");
+    cliApp->add_option(
+        "--stop-min", stopMin,
+        "Stop the search for the maximum when cliApp->oaching value less than stop_min.");
+}
+
+int Args::postParse()
+{
     if(!force)
     {
         if(io::pathExists(output_den))

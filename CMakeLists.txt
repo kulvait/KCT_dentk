@@ -178,6 +178,18 @@ install (TARGETS dentk_todicom RUNTIME DESTINATION .)
 
 ENDIF()
 
+SET(DENTK_RESHAPE_SOURCES src/dentk-reshape.cpp)
+add_executable(dentk_reshape ${DENTK_RESHAPE_SOURCES})
+set_target_properties(
+    dentk_reshape 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-reshape"
+        SUFFIX ""
+)
+target_link_libraries(dentk_reshape ctiol)
+target_link_libraries(dentk_reshape stdc++fs)#<experimental/filesystem>
+install (TARGETS dentk_reshape RUNTIME DESTINATION .)
+
 SET(DENTK_PCOMP_SOURCES src/dentk-pcomp.cpp)
 add_executable(dentk_pcomp ${DENTK_PCOMP_SOURCES})
 set_target_properties(

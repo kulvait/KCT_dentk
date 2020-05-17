@@ -36,7 +36,9 @@ struct Args : public ArgumentsFramespec, public ArgumentsThreading
 
 public:
     Args(int argc, char** argv, std::string prgName)
-        : Arguments(argc, argv, prgName), ArgumentsFramespec(argc, argv, prgName), ArgumentsThreading(argc, argv, prgName) {};
+        : Arguments(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName)
+        , ArgumentsThreading(argc, argv, prgName){};
     std::string input_file;
     std::string output_file;
 };
@@ -161,8 +163,8 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_den_file", output_file, "File in a DEN format to output.")
         ->required();
-	addFramespecArgs();
-	addThreadingArgs();
+    addFramespecArgs();
+    addThreadingArgs();
 }
 
 int Args::postParse()
@@ -175,6 +177,6 @@ int Args::postParse()
         return -1;
     }
     io::DenFileInfo inf(input_file);
-	fillFramesVector(inf.dimz());
+    fillFramesVector(inf.dimz());
     return 0;
 }
