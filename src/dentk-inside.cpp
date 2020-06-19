@@ -200,6 +200,7 @@ void Args::defineArguments()
     cliApp->add_option("input_den", input_den, "Input file.")->check(CLI::ExistingFile)->required();
     cliApp->add_option("output_den", output_den, "Output file.")->required();
     addForceArgs();
+    addFramespecArgs();
     cliApp->add_option("--scale", scale, "Scale size of the detected area.");
     cliApp->add_option(
         "--stop-max", stopMax,
@@ -219,5 +220,7 @@ int Args::postParse()
             return 1;
         }
     }
+    io::DenFileInfo di(input_den);
+    fillFramesVector(di.dimz());
     return 0;
 }
