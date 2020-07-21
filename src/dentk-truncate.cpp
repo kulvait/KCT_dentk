@@ -14,7 +14,6 @@
 #include "ctpl_stl.h" //Threadpool
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
@@ -23,6 +22,7 @@
 #include "Frame2DReaderI.hpp"
 #include "FrameMemoryViewer2D.hpp"
 #include "MATRIX/ProjectionMatrix.hpp"
+#include "PROG/parseArgs.h"
 
 using namespace CTL;
 
@@ -44,17 +44,17 @@ struct Args
 template <typename T>
 void writeReducedFrame(int id,
                        uint16_t k,
-                       std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader,
+                       std::shared_ptr<io::Frame2DReaderI<T>> denFrameReader,
                        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
                        Args a)
 {
-    uint16_t dimx_new = denSliceReader->dimx() - a.left_cut - a.right_cut;
-    uint16_t dimy_new = denSliceReader->dimy() - a.bottom_cut - a.top_cut;
-    std::shared_ptr<io::Frame2DI<T>> origf = denSliceReader->readFrame(k);
+    uint16_t dimx_new = denFrameReader->dimx() - a.left_cut - a.right_cut;
+    uint16_t dimy_new = denFrameReader->dimy() - a.bottom_cut - a.top_cut;
+    std::shared_ptr<io::Frame2DI<T>> origf = denFrameReader->readFrame(k);
     io::BufferedFrame2D<T> f(T(0), dimx_new, dimy_new);
-    for(uint16_t i = a.left_cut; i != denSliceReader->dimx() - a.right_cut; i++)
+    for(uint16_t i = a.left_cut; i != denFrameReader->dimx() - a.right_cut; i++)
     {
-        for(uint16_t j = a.top_cut; j != denSliceReader->dimy() - a.bottom_cut; j++)
+        for(uint16_t j = a.top_cut; j != denFrameReader->dimy() - a.bottom_cut; j++)
         {
             f.set(origf->get(i, j), i - a.left_cut, j - a.top_cut);
         }
@@ -88,26 +88,35 @@ void dentkTruncate(Args a)
     {
         threadpool = new ctpl::thread_pool(a.threads);
     }
-    std::shared_ptr<io::DenProjectionMatrixReader> dcr
-        = std::make_shared<io::DenProjectionMatrixReader>(a.input_matrices);
-    std::shared_ptr<io::AsyncFrame2DWritterI<double>> dcw
-        = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_matrices, 4, 3, dimz);
-    std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
+    std::shared_ptr<io::Frame2DReaderI<T>> denFrameReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_projections);
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(a.output_projections, dimx_new, dimy_new,
                                                           dimz);
+    std::shared_ptr<io::DenProjectionMatrixReader> dcr = nullptr;
+    std::shared_ptr<io::AsyncFrame2DWritterI<double>> dcw = nullptr;
+    if(!a.input_matrices.empty())
+    {
+        dcr = std::make_shared<io::DenProjectionMatrixReader>(a.input_matrices);
+        dcw = std::make_shared<io::DenAsyncFrame2DWritter<double>>(a.output_matrices, 4, 3, dimz);
+    }
     for(uint32_t k = 0; k != dimz; k++)
     {
         if(threadpool != nullptr)
         {
-            threadpool->push(writeReducedFrame<T>, k, denSliceReader, imagesWritter, a);
-            threadpool->push(writeShiftedCammat, k, dcr, dcw, a);
+            threadpool->push(writeReducedFrame<T>, k, denFrameReader, imagesWritter, a);
+            if(dcw != nullptr)
+            {
+                threadpool->push(writeShiftedCammat, k, dcr, dcw, a);
+            }
 
         } else
         {
-            writeReducedFrame<T>(0, k, denSliceReader, imagesWritter, a);
-            writeShiftedCammat(0, k, dcr, dcw, a);
+            writeReducedFrame<T>(0, k, denFrameReader, imagesWritter, a);
+            if(dcw != nullptr)
+            {
+                writeShiftedCammat(0, k, dcr, dcw, a);
+            }
         }
     }
     if(threadpool != nullptr)
@@ -187,35 +196,40 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_projections", input_projections, "Projections in a DEN format.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("input_matrices", input_matrices, "Projection matrices in a DEN format.")
-        ->required()
-        ->check(CLI::ExistingFile);
     app.add_option("output_projections", output_projections,
                    "Projections in a DEN format to output.")
         ->required();
-    app.add_option("output_matrices", output_matrices,
-                   "Projection matrices in a DEN format to output.")
-        ->required();
+    CLI::Option* inpCM
+        = app.add_option("--input_matrices", input_matrices, "Projection matrices in a DEN format.")
+              ->check(CLI::ExistingFile);
+    CLI::Option* outCM = app.add_option("--output_matrices", output_matrices,
+                                        "Projection matrices in a DEN format to output.");
+    inpCM->needs(outCM);
+    outCM->needs(inpCM);
     app.add_flag("-f,--force", force, "Overwrite outputFile if it exists.");
 
     try
     {
         app.parse(argc, argv);
         io::DenFileInfo inf(input_projections);
-        io::DenFileInfo ima(input_matrices);
         uint16_t dimx = inf.dimx();
         uint16_t dimy = inf.dimy();
         uint16_t dimz = inf.dimz();
-        if(dimz != ima.dimz())
+        if(!input_matrices.empty())
         {
-            LOGE << io::xprintf("Projections and matrices do not have the same z dimension.");
-            return -1;
-        }
-        if(ima.dimx() != 4 || ima.dimy() != 3)
-        {
-            LOGE << io::xprintf("Matrices in file %s do not have proper dimension 3x4 but %dx%d.",
-                                input_matrices.c_str(), ima.dimy(), ima.dimx());
-            return -1;
+            io::DenFileInfo ima(input_matrices);
+            if(dimz != ima.dimz())
+            {
+                LOGE << io::xprintf("Projections and matrices do not have the same z dimension.");
+                return -1;
+            }
+            if(ima.dimx() != 4 || ima.dimy() != 3)
+            {
+                LOGE << io::xprintf(
+                    "Matrices in file %s do not have proper dimension 3x4 but %dx%d.",
+                    input_matrices.c_str(), ima.dimy(), ima.dimx());
+                return -1;
+            }
         }
         if(!force)
         {
@@ -227,7 +241,7 @@ int Args::parseArguments(int argc, char* argv[])
                 LOGE << msg;
                 return -1;
             }
-            if(io::pathExists(output_matrices))
+            if(!input_matrices.empty() && io::pathExists(output_matrices))
             {
                 std::string msg = io::xprintf("Error: output matrices file %s already exists, use "
                                               "--force to force overwrite.",
@@ -245,7 +259,7 @@ int Args::parseArguments(int argc, char* argv[])
                 LOGE << msg;
                 return -1;
             }
-            if(input_matrices == output_matrices)
+            if(!input_matrices.empty() && input_matrices == output_matrices)
             {
                 std::string msg = io::xprintf(
                     "Error: output matrices file %s could not be same as input projections file.",
