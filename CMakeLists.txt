@@ -246,6 +246,19 @@ target_link_libraries(dentk_noise ctmal)
 target_link_libraries(dentk_noise ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_noise RUNTIME DESTINATION .)
 
+SET(DENTK_NOISE_SOURCES src/dentk-regression.cpp)
+add_executable(dentk_regression ${DENTK_NOISE_SOURCES})
+set_target_properties(
+    dentk_regression
+    PROPERTIES 
+        OUTPUT_NAME "dentk-regression"
+        SUFFIX ""
+)
+target_link_libraries(dentk_regression ctiol)
+target_link_libraries(dentk_regression ctmal)
+target_link_libraries(dentk_regression ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_regression RUNTIME DESTINATION .)
+
 SET(DENTK_ORTHOGONALIZE_SOURCES src/dentk-orthogonalize.cpp)
 add_executable(dentk_orthogonalize ${DENTK_ORTHOGONALIZE_SOURCES})
 set_target_properties(
@@ -353,6 +366,17 @@ set_target_properties(
 )
 target_link_libraries(dentk_calc ctiol)
 install (TARGETS dentk_calc RUNTIME DESTINATION .)
+
+SET(DENTK_CALC_SOURCES src/dentk-calc1.cpp)
+add_executable(dentk_calc1 ${DENTK_CALC_SOURCES})
+set_target_properties(
+    dentk_calc1
+    PROPERTIES 
+        OUTPUT_NAME "dentk-calc1"
+        SUFFIX ""
+)
+target_link_libraries(dentk_calc1 ctiol)
+install (TARGETS dentk_calc1 RUNTIME DESTINATION .)
 
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)
 add_executable(dentk_tohu ${DENTK_TOHU_SOURCES})

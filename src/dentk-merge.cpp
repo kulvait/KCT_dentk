@@ -14,11 +14,11 @@
 #include "ctpl_stl.h" //Threadpool
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
+#include "PROG/parseArgs.h"
 
 using namespace CTL;
 
@@ -63,18 +63,17 @@ void mergeFiles(Args a)
     {
         denSliceReaders.push_back(std::make_shared<io::DenFrame2DReader<T>>(f));
     }
-    uint16_t dimx = denSliceReaders[0]->dimx();
-    uint16_t dimy = denSliceReaders[0]->dimy();
+    uint32_t dimx = denSliceReaders[0]->dimx();
+    uint32_t dimy = denSliceReaders[0]->dimy();
     ctpl::thread_pool* threadpool = new ctpl::thread_pool(a.threads);
     if(a.interlacing || a.eachkth || !a.frameSpecs.empty())
     {
-
-        uint16_t dimz = denSliceReaders[0]->dimz();
+        uint32_t framesPerInput = a.frames.size();
         LOGD << io::xprintf("From each file will output %d frames.", a.frames.size());
         std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
             = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
                 a.outputFile, dimx, dimy, a.inputFiles.size() * a.frames.size());
-        for(std::size_t i = 0; i != a.frames.size(); i++)
+        for(std::size_t i = 0; i != framesPerInput; i++)
         {
             for(std::size_t j = 0; j != a.inputFiles.size(); j++)
             {
@@ -82,8 +81,8 @@ void mergeFiles(Args a)
                     threadpool->push(writeFrame<T>, a.frames[i], denSliceReaders[j],
                                      i * a.inputFiles.size() + j, imagesWritter);
                 else
-                    threadpool->push(writeFrame<T>, a.frames[i], denSliceReaders[j], j * dimz + i,
-                                     imagesWritter);
+                    threadpool->push(writeFrame<T>, a.frames[i], denSliceReaders[j],
+                                     j * framesPerInput + i, imagesWritter);
             }
         }
     } else // just to merge files with potentially different z dimension

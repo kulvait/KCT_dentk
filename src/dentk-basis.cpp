@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
     if(a.vizualize)
     {
         //      LOGI << io::xprintf("Granularity of %s is %d", a.input_file.c_str(), a.granularity);
-        util::StepFunction b(a.baseSize, a.input_file, 0.0, double(a.granularity - 1));
+        util::StepFunction b(a.input_file, a.baseSize, 0.0, double(a.granularity - 1));
         b.plotFunctions(a.granularity);
     }
     switch(t)
