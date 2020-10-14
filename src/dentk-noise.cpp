@@ -87,7 +87,7 @@ void Args::defineArguments()
     optSpec = io::xprintf("Poisson lambda that equals K0, number of photons per blank scan "
                           "detector [defaults to %f].",
                           K0);
-    CLI::Option* poissonLambda = op_clg->add_option("--k0", mean, optSpec);
+    CLI::Option* poissonLambda = op_clg->add_option("--k0", K0, optSpec);
     poissonLambda->needs(poissonDistribution);
     gaussMean->needs(gaussDistribution);
     gaussSigma->needs(gaussDistribution);
