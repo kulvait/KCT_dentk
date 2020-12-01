@@ -10,6 +10,7 @@
 #include <iostream>
 #include <regex>
 #include <string>
+#include <tuple>
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
@@ -47,19 +48,134 @@ public:
     float stopMax = std::numeric_limits<float>::infinity();
     float stopMin = -std::numeric_limits<float>::infinity();
     float scale = 1.0;
+    bool boundaryFill = false;
 };
+
+uint32_t level = 0;
+
+template <typename T>
+bool boundaryFlip(const Args& a,
+                  uint32_t dimx,
+                  uint32_t dimy,
+                  uint32_t x,
+                  uint32_t y,
+                  const std::shared_ptr<io::Frame2DI<T>>& F,
+                  const std::shared_ptr<io::Frame2DI<T>>& ALPHA)
+{
+    double v = F->get(x, y);
+    double va = ALPHA->get(x, y);
+    if(va != 1 && (!(v > a.stopMax || v < a.stopMin)))
+    {
+        ALPHA->set(T(1), x, y);
+        return true;
+    }
+    return false;
+}
+
+using P = std::tuple<uint32_t, uint32_t>;
+std::deque<P> processingQueue;
+void enquePoint(io::BufferedFrame2D<bool>& visited, uint32_t x, uint32_t y)
+{
+    if(!visited.get(x, y))
+    {
+        P p({ x, y });
+        processingQueue.emplace_back(p);
+        visited.set(true, x, y);
+    }
+}
+
+template <typename T>
+void boundaryFill(const Args& a,
+                  uint32_t dimx,
+                  uint32_t dimy,
+                  uint32_t x,
+                  uint32_t y,
+                  const std::shared_ptr<io::Frame2DI<T>>& F,
+                  const std::shared_ptr<io::Frame2DI<T>>& ALPHA)
+{
+    io::BufferedFrame2D<bool> visited(false, dimx, dimy);
+    enquePoint(visited, x, y);
+    while(!processingQueue.empty())
+    {
+        uint32_t px, py;
+        std::tie(px, py) = processingQueue[0];
+        /*
+                for(auto iter = processingQueue.begin(); iter != processingQueue.end(); ++iter)
+                {
+                    uint32_t a, b;
+                    std::tie(a, b) = *iter;
+                    std::cout << io::xprintf(",[%d, %d]", a, b);
+                }
+                std::cout << std::endl;
+                LOGI << io::xprintf("Processing x=%d, y=%d, length=%d", px, py,
+           processingQueue.size());
+        */
+        processingQueue.pop_front();
+        double v = F->get(px, py);
+        double va = ALPHA->get(px, py);
+        if(va != 1 && (!(v > a.stopMax || v < a.stopMin)))
+        {
+            ALPHA->set(T(1), px, py);
+            if(px != 0)
+            {
+                enquePoint(visited, px - 1, py);
+            }
+            if(px + 1 != dimx)
+            {
+                enquePoint(visited, px + 1, py);
+            }
+            if(py != 0)
+            {
+                enquePoint(visited, px, py - 1);
+            }
+            if(py + 1 != dimy)
+            {
+                enquePoint(visited, px, py + 1);
+            }
+        }
+    }
+}
+
+template <typename T>
+void processBoundaryFill(Args a)
+{
+    io::DenFileInfo di(a.input_den);
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint32_t dimz = di.dimz();
+    uint32_t center_x = dimx / 2;
+    uint32_t center_y = dimy / 2;
+    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
+            a.output_den, dimx, dimy,
+            dimz); // I write regardless to frame specification to original position
+    for(const int& k : a.frames)
+    {
+        LOGI << io::xprintf("Creating frame %d", k);
+        std::shared_ptr<io::Frame2DI<T>> f
+            = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
+        boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, f);
+        io::xprintf("Writing output");
+        outputWritter->writeFrame(*f, k);
+    }
+    // given angle attenuation is maximal
+}
 
 template <typename T>
 /**
-* Returns the distance from the center in a voxel cut in which there is either maximum or the value lt stopMin or gt stopMax.
-*
-* @param alpha
-* @param stopMin
-* @param stopMax
-* @param A
-*
-* @return 
-*/
+ * Returns the distance from the center in a voxel cut in which there is either maximum or the
+ * value lt stopMin or gt stopMax.
+ *
+ * @param alpha
+ * @param stopMin
+ * @param stopMax
+ * @param A
+ *
+ * @return
+ */
 int getMaxAttenuationDistance(double alpha,
                               float stopMin,
                               float stopMax,
@@ -104,6 +220,11 @@ int getMaxAttenuationDistance(double alpha,
 template <typename T>
 void processFiles(Args a)
 {
+    if(a.boundaryFill)
+    {
+        processBoundaryFill<T>(a);
+        return;
+    }
     io::DenFileInfo di(a.input_den);
     int dimx = di.dimx();
     int dimy = di.dimy();
@@ -208,6 +329,7 @@ void Args::defineArguments()
     cliApp->add_option(
         "--stop-min", stopMin,
         "Stop the search for the maximum when cliApp->oaching value less than stop_min.");
+    cliApp->add_flag("--boundary-fill", boundaryFill, "Use boundary fill.");
 }
 
 int Args::postParse()

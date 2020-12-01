@@ -166,10 +166,12 @@ void addPoissonFrame(int id,
     uint32_t dimx = imagesWritter->dimx();
     uint32_t dimy = imagesWritter->dimy();
     uint32_t frameSize = dimx * dimy;
-    MKL_UINT seed = fromId;
+    std::srand(std::time(nullptr)); // use current time as seed for random generator
+    // MKL_UINT seed = fromId;
+    MKL_UINT seed = std::rand();
     MKL_INT status;
     VSLStreamStatePtr stream;
-    vslNewStream(&stream, VSL_BRNG_MCG31, seed);
+    vslNewStream(&stream, VSL_BRNG_WH, seed);
     T* frame = new T[frameSize];
     double K;
     int L;
@@ -179,7 +181,7 @@ void addPoissonFrame(int id,
         for(uint32_t x = 0; x != dimx; x++)
         {
             K = k0lambda * exp(-curframe->get(x, y));
-            status = viRngPoissonV(VSL_RNG_METHOD_POISSONV_POISNORM, stream, 1, &L, &K);
+            status = viRngPoisson(VSL_RNG_METHOD_POISSON_PTPE, stream, 1, &L, K);
             if(status == VSL_STATUS_OK)
             {
                 if(L > k0lambda)
@@ -187,8 +189,8 @@ void addPoissonFrame(int id,
                     frame[y * dimx + x] = 0;
                 } else if(L == 0)
                 {
-                    frame[y * dimx + x] = log(k0lambda/0.5);
-                }else
+                    frame[y * dimx + x] = log(k0lambda / 0.5);
+                } else
                 {
                     frame[y * dimx + x] = log(k0lambda / L);
                 }

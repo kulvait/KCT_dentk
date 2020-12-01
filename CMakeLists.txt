@@ -53,8 +53,11 @@ include_directories(${MKL_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR}/submodules/matplotlib-cpp)
 
 #Python for matplotlib
-find_package(PythonLibs 2.7)
-include_directories(${PYTHON_INCLUDE_DIRS})
+#find_package(PythonLibs 2.7)
+#include_directories(${PYTHON_INCLUDE_DIRS})
+find_package (Python3 COMPONENTS Interpreter Development NumPy)
+include_directories(${Python3_INCLUDE_DIRS})
+include_directories(${Python3_NumPy_INCLUDE_DIRS})
 
 #CTIOL IO lib
 FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
@@ -230,7 +233,7 @@ target_link_libraries(dentk_basis ctiol)
 target_link_libraries(dentk_basis ctmal)
 target_link_libraries(dentk_basis ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_basis ${MKL_CORE_LIBRARY})
-target_link_libraries(dentk_basis ${PYTHON_LIBRARIES})
+target_link_libraries(dentk_basis ${Python3_LIBRARIES})
 install (TARGETS dentk_basis RUNTIME DESTINATION .)
 
 SET(DENTK_NOISE_SOURCES src/dentk-noise.cpp)
@@ -271,7 +274,7 @@ target_link_libraries(dentk_orthogonalize ctiol)
 target_link_libraries(dentk_orthogonalize ctmal)
 target_link_libraries(dentk_orthogonalize ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_orthogonalize ${MKL_CORE_LIBRARY})
-target_link_libraries(dentk_orthogonalize ${PYTHON_LIBRARIES})
+target_link_libraries(dentk_orthogonalize ${Python3_LIBRARIES})
 install (TARGETS dentk_orthogonalize RUNTIME DESTINATION .)
 
 SET(DENTK_TRUNCATE_SOURCES src/dentk-truncate.cpp)

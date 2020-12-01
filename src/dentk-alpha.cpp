@@ -39,6 +39,8 @@ public:
     std::string outputFile;
     float geq = -std::numeric_limits<float>::infinity();
     float leq = std::numeric_limits<float>::infinity();
+    float gt = -std::numeric_limits<float>::infinity();
+    float lt = std::numeric_limits<float>::infinity();
     float upq = 1.0;
     float loq = 1.0;
 };
@@ -59,6 +61,8 @@ void Args::defineArguments()
                        "In alpha channel will be just the items less or equal than x.");
     cliApp->add_option("--geq", geq,
                        "In alpha channel will be just the items greater or equal than x.");
+    cliApp->add_option("--lt", lt, "In alpha channel will be just the items less than x.");
+    cliApp->add_option("--gt", gt, "In alpha channel will be just the items greater than x.");
     cliApp
         ->add_option("--upper-quantile", upq,
                      "In alpha channel will be just the upq highest values.")
@@ -102,7 +106,9 @@ void writeAlphaChannel(int id,
                        int toId,
                        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
                        T leq,
-                       T geq)
+                       T geq,
+                       T lt,
+                       T gt)
 {
     std::shared_ptr<io::Frame2DI<T>> f = denSliceReader->readFrame(fromId);
     io::BufferedFrame2D<T> alpha(T(0), f->dimx(), f->dimy());
@@ -111,7 +117,7 @@ void writeAlphaChannel(int id,
         for(std::size_t j = 0; j != f->dimy(); j++)
         {
             T elm = f->get(i, j);
-            if(elm >= geq && elm <= leq)
+            if(elm >= geq && elm <= leq && elm > gt && elm < lt)
             {
                 alpha.set(T(1), i, j);
             }
@@ -159,9 +165,11 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(ARG.outputFile, dimx, dimy,
                                                                      ARG.frames.size());
 
-        uint16_t geq, leq;
+        uint16_t geq, leq, gt, lt;
         geq = (uint16_t)ARG.geq;
         leq = (uint16_t)ARG.leq;
+        gt = (uint16_t)ARG.gt;
+        lt = (uint16_t)ARG.lt;
         if(ARG.geq == -std::numeric_limits<float>::infinity())
         {
             geq = 0;
@@ -177,7 +185,9 @@ int main(int argc, char* argv[])
             uint32_t frameSize = dimx * dimy;
             for(uint32_t i = 0; i != ARG.frames.size(); i++)
             {
-                io::readBytesFrom(ARG.inputFile, uint64_t(ARG.frames[i]) * frameSize * sizeof(uint16_t) + inputFileInfo.getOffset(),
+                io::readBytesFrom(ARG.inputFile,
+                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(uint16_t)
+                                      + inputFileInfo.getOffset(),
                                   (uint8_t*)&x[i * frameSize], frameSize * sizeof(uint16_t));
             }
             std::sort(x, x + totalSize, std::less<uint32_t>());
@@ -194,12 +204,12 @@ int main(int argc, char* argv[])
             if(threadpool != nullptr)
             {
                 threadpool->push(writeAlphaChannel<uint16_t>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq);
+                                 imagesWritter, leq, geq, lt, gt);
             } else
             {
 
                 writeAlphaChannel<uint16_t>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                            geq);
+                                            geq, lt, gt);
             }
 
             // Try asynchronous calls
@@ -216,13 +226,17 @@ int main(int argc, char* argv[])
                                                                   ARG.frames.size());
         float leq = ARG.leq;
         float geq = ARG.geq;
+        float lt = ARG.lt;
+        float gt = ARG.gt;
         if(ARG.loq != 1.0 || ARG.upq != 1.0)
         {
             float* x = new float[totalSize];
             uint32_t frameSize = dimx * dimy;
             for(uint32_t i = 0; i != ARG.frames.size(); i++)
             {
-                io::readBytesFrom(ARG.inputFile, uint64_t(ARG.frames[i]) * frameSize * sizeof(float) + inputFileInfo.getOffset(),
+                io::readBytesFrom(ARG.inputFile,
+                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(float)
+                                      + inputFileInfo.getOffset(),
                                   (uint8_t*)&x[i * frameSize], frameSize * sizeof(float));
             }
             std::sort(x, x + totalSize, std::less<float>());
@@ -238,12 +252,12 @@ int main(int argc, char* argv[])
             if(threadpool != nullptr)
             {
                 threadpool->push(writeAlphaChannel<float>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq);
+                                 imagesWritter, leq, geq, lt, gt);
             } else
             {
 
                 writeAlphaChannel<float>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                         geq);
+                                         geq, lt, gt);
             }
         }
         break;
@@ -257,13 +271,17 @@ int main(int argc, char* argv[])
                                                                    ARG.frames.size());
         double leq = ARG.leq;
         double geq = ARG.geq;
+        double lt = ARG.lt;
+        double gt = ARG.gt;
         if(ARG.loq != 1.0 || ARG.upq != 1.0)
         {
             double* x = new double[totalSize];
             uint32_t frameSize = dimx * dimy;
             for(uint32_t i = 0; i != ARG.frames.size(); i++)
             {
-                io::readBytesFrom(ARG.inputFile, uint64_t(ARG.frames[i]) * frameSize * sizeof(double) + inputFileInfo.getOffset(),
+                io::readBytesFrom(ARG.inputFile,
+                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(double)
+                                      + inputFileInfo.getOffset(),
                                   (uint8_t*)&x[i * frameSize], frameSize * sizeof(double));
             }
             std::sort(x, x + totalSize, std::less<double>());
@@ -279,12 +297,12 @@ int main(int argc, char* argv[])
             if(threadpool != nullptr)
             {
                 threadpool->push(writeAlphaChannel<double>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq);
+                                 imagesWritter, leq, geq, lt, gt);
             } else
             {
 
                 writeAlphaChannel<double>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                          geq);
+                                          geq, lt, gt);
             }
         }
         break;

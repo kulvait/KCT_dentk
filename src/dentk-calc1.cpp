@@ -46,6 +46,7 @@ public:
     bool exponentiation = false;
     bool squareroot = false;
     bool square = false;
+    bool absoluteValue = false;
     bool multiplyByConstant = false;
     double constantToMultiply = 0.0;
     bool addConstant = false;
@@ -98,6 +99,10 @@ void processFiles(Args a)
                 if(a.addConstant)
                 {
                     f.set(T(A->get(i, j) + a.constantToAdd), i, j);
+                }
+                if(a.absoluteValue)
+                {
+                    f.set(std::abs(A->get(i, j)), i, j);
                 }
             }
         }
@@ -165,6 +170,7 @@ void Args::defineArguments()
     registerOption("exp", op_clg->add_flag("--exp", exponentiation, "Exponentiation."));
     registerOption("sqrt", op_clg->add_flag("--sqrt", squareroot, "Square root."));
     registerOption("square", op_clg->add_flag("--square", square, "Square."));
+    registerOption("abs", op_clg->add_flag("--abs", square, "Absolute value."));
     registerOption(
         "multiply",
         op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));

@@ -38,6 +38,8 @@ struct Args
     bool subtract = false;
     bool divide = false;
     bool multiply = false;
+    bool max = false;
+    bool min = false;
 };
 
 int main(int argc, char* argv[])
@@ -91,9 +93,15 @@ int main(int argc, char* argv[])
                     } else if(a.add)
                     {
                         val = A->get(i, j) + B->get(i, j);
-                    } else // subtract
+                    } else if(a.subtract)
                     {
                         val = A->get(i, j) - B->get(i, j);
+                    } else if(a.max)
+                    {
+                        val = std::max(A->get(i, j), B->get(i, j));
+                    } else if(a.min)
+                    {
+                        val = std::min(A->get(i, j), B->get(i, j));
                     }
                     x.set(val, i, j);
                 }
@@ -131,9 +139,15 @@ int main(int argc, char* argv[])
                     } else if(a.add)
                     {
                         val = A->get(i, j) + B->get(i, j);
-                    } else // subtract
+                    } else if(a.subtract)
                     {
                         val = A->get(i, j) - B->get(i, j);
+                    } else if(a.max)
+                    {
+                        val = std::max(A->get(i, j), B->get(i, j));
+                    } else if(a.min)
+                    {
+                        val = std::min(A->get(i, j), B->get(i, j));
                     }
                     x.set(val, i, j);
                 }
@@ -171,9 +185,15 @@ int main(int argc, char* argv[])
                     } else if(a.add)
                     {
                         val = A->get(i, j) + B->get(i, j);
-                    } else // subtract
+                    } else if(a.subtract)
                     {
                         val = A->get(i, j) - B->get(i, j);
+                    } else if(a.max)
+                    {
+                        val = std::max(A->get(i, j), B->get(i, j));
+                    } else if(a.min)
+                    {
+                        val = std::min(A->get(i, j), B->get(i, j));
                     }
                     x.set(val, i, j);
                 }
@@ -210,6 +230,8 @@ int Args::parseArguments(int argc, char* argv[])
     op_clg->add_flag("--subtract", subtract, "op1 - op2");
     op_clg->add_flag("--multiply", multiply, "op1 * op2");
     op_clg->add_flag("--divide", divide, "op1 / op2");
+    op_clg->add_flag("--max", max, "max(op1, op2)");
+    op_clg->add_flag("--min", min, "min(op1, op2)");
     op_clg->require_option(1);
     app.add_flag("--force", force, "Overwrite output file if it exists.");
     app.add_option("-f,--frames", frameSpecs,
@@ -268,7 +290,7 @@ int Args::parseArguments(int argc, char* argv[])
             dimin.getNumRows(), dimin.getNumSlices());
         return 1;
     }
-    if(!add && !subtract && !divide && !multiply)
+    if(!add && !subtract && !divide && !multiply && !max && !min)
     {
         LOGE << "You must provide one of supported operations (add, subtract, divide, multiply)";
     }
