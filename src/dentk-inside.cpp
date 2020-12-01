@@ -84,6 +84,12 @@ void enquePoint(io::BufferedFrame2D<bool>& visited, uint32_t x, uint32_t y)
     }
 }
 
+void enquePoint(uint32_t x, uint32_t y)
+{
+    P p({ x, y });
+    processingQueue.emplace_back(p);
+}
+
 template <typename T>
 void boundaryFill(const Args& a,
                   uint32_t dimx,
@@ -151,17 +157,79 @@ void processBoundaryFill(Args a)
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
             a.output_den, dimx, dimy,
             dimz); // I write regardless to frame specification to original position
-    for(const int& k : a.frames)
+    uint32_t centerFrameID = a.frames.size() / 2;
+    uint32_t k = a.frames[centerFrameID];
+    std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
+    std::shared_ptr<io::BufferedFrame2D<T>> centerF
+        = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, centerF);
+    outputWritter->writeFrame(*centerF, k);
+    std::shared_ptr<io::Frame2DI<T>> lastF = centerF;
+    for(uint32_t ind = centerFrameID + 1; ind < a.frames.size(); ind++)
     {
-        LOGI << io::xprintf("Creating frame %d", k);
-        std::shared_ptr<io::Frame2DI<T>> f
-            = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, f);
-        io::xprintf("Writing output");
-        outputWritter->writeFrame(*f, k);
+        k = a.frames[ind];
+        int lasti = -1;
+        int lastj = -1;
+        A = denReader->readFrame(k);
+        for(uint32_t i = 0; i != dimx; i++)
+        {
+            for(uint32_t j = 0; j != dimy; j++)
+            {
+                double v = A->get(i, j);
+                double va = lastF->get(i, j);
+                if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                {
+                    enquePoint(i, j);
+                    lasti = i;
+                    lastj = j;
+                }
+            }
+        }
+        lastF = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+        if(lasti != -1)
+        {
+            boundaryFill<T>(a, dimx, dimy, lasti, lastj, A, lastF);
+        }
+        outputWritter->writeFrame(*lastF, k);
     }
-    // given angle attenuation is maximal
+    lastF = centerF;
+    for(int ind = centerFrameID - 1; ind > -1; ind--)
+    {
+        k = a.frames[ind];
+        int lasti = -1;
+        int lastj = -1;
+        A = denReader->readFrame(k);
+        for(uint32_t i = 0; i != dimx; i++)
+        {
+            for(uint32_t j = 0; j != dimy; j++)
+            {
+                double v = A->get(i, j);
+                double va = lastF->get(i, j);
+                if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                {
+                    enquePoint(i, j);
+                    lasti = i;
+                    lastj = j;
+                }
+            }
+        }
+        lastF = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+        if(lasti != -1)
+        {
+            boundaryFill<T>(a, dimx, dimy, lasti, lastj, A, lastF);
+        }
+        outputWritter->writeFrame(*lastF, k);
+    }
+    /*
+for(const int& k : a.frames)
+{
+    LOGI << io::xprintf("Creating frame %d", k);
+    std::shared_ptr<io::Frame2DI<T>> f
+        = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
+    boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, f);
+    io::xprintf("Writing output");
+}*/
 }
 
 template <typename T>
@@ -338,7 +406,7 @@ int Args::postParse()
     {
         if(io::pathExists(output_den))
         {
-            LOGE << "Error: output file already exists, use -f to force overwrite.";
+            LOGE << "Error: output file already exists, use --force to force overwrite.";
             return 1;
         }
     }
