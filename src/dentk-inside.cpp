@@ -48,6 +48,7 @@ public:
     float stopMax = std::numeric_limits<float>::infinity();
     float stopMin = -std::numeric_limits<float>::infinity();
     float scale = 1.0;
+    float bfDiameter = 1.0;
     bool boundaryFill = false;
 };
 
@@ -162,9 +163,25 @@ void processBoundaryFill(Args a)
     std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
     std::shared_ptr<io::BufferedFrame2D<T>> centerF
         = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
+                        center_x, center_y, k, A->get(center_x, center_y));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
+                        center_x+10, center_y+10, k, A->get(center_x+10, center_y+10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
+                        center_x-10, center_y-10, k, A->get(center_x-10, center_y-10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
+                        center_x+10, center_y-10, k, A->get(center_x+10, center_y-10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
+                        center_x-10, center_y+10, k, A->get(center_x-10, center_y+10));
     boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x+10, center_y+10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x-10, center_y-10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x+10, center_y-10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x-10, center_y+10, A, centerF);
     outputWritter->writeFrame(*centerF, k);
     std::shared_ptr<io::Frame2DI<T>> lastF = centerF;
+    float radiusSquare = 0.25 * (dimx * dimx + dimy * dimy);
+    radiusSquare = radiusSquare * a.bfDiameter * a.bfDiameter;
     for(uint32_t ind = centerFrameID + 1; ind < a.frames.size(); ind++)
     {
         k = a.frames[ind];
@@ -175,13 +192,18 @@ void processBoundaryFill(Args a)
         {
             for(uint32_t j = 0; j != dimy; j++)
             {
-                double v = A->get(i, j);
-                double va = lastF->get(i, j);
-                if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                float x0 = float(i) - float(center_x);
+                float y0 = float(j) - float(center_y);
+                if(x0 * x0 + y0 * y0 < radiusSquare)
                 {
-                    enquePoint(i, j);
-                    lasti = i;
-                    lastj = j;
+                    double v = A->get(i, j);
+                    double va = lastF->get(i, j);
+                    if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                    {
+                        enquePoint(i, j);
+                        lasti = i;
+                        lastj = j;
+                    }
                 }
             }
         }
@@ -203,13 +225,18 @@ void processBoundaryFill(Args a)
         {
             for(uint32_t j = 0; j != dimy; j++)
             {
-                double v = A->get(i, j);
-                double va = lastF->get(i, j);
-                if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                float x0 = float(i) - float(center_x);
+                float y0 = float(j) - float(center_y);
+                if(x0 * x0 + y0 * y0 < radiusSquare)
                 {
-                    enquePoint(i, j);
-                    lasti = i;
-                    lastj = j;
+                    double v = A->get(i, j);
+                    double va = lastF->get(i, j);
+                    if(!(v > a.stopMax || v < a.stopMin) && va == 1.0)
+                    {
+                        enquePoint(i, j);
+                        lasti = i;
+                        lastj = j;
+                    }
                 }
             }
         }
@@ -390,14 +417,19 @@ void Args::defineArguments()
     cliApp->add_option("output_den", output_den, "Output file.")->required();
     addForceArgs();
     addFramespecArgs();
-    cliApp->add_option("--scale", scale, "Scale size of the detected area.");
+    cliApp->add_option("--scale", scale, "Scale size of the detected area.")
+        ->check(CLI::Range(0.0, 1.0));
     cliApp->add_option(
         "--stop-max", stopMax,
-        "Stop the search for the maximum when cliApp->oaching value greater than stop_max.");
+        "Stop the search for the maximum when approaching value greater than stop_max.");
     cliApp->add_option(
         "--stop-min", stopMin,
-        "Stop the search for the maximum when cliApp->oaching value less than stop_min.");
+        "Stop the search for the maximum when approaching value less than stop_min.");
     cliApp->add_flag("--boundary-fill", boundaryFill, "Use boundary fill.");
+    cliApp
+        ->add_option("--boundary-fill-seed", bfDiameter,
+                     "Seed of the next layer only inside given circle.")
+        ->check(CLI::Range(0.0, 1.0));
 }
 
 int Args::postParse()
