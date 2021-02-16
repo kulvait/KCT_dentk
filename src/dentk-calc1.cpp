@@ -51,6 +51,7 @@ public:
     double constantToMultiply = 0.0;
     bool addConstant = false;
     double constantToAdd = 0.0;
+    bool invert = false;
 };
 
 template <typename T>
@@ -103,6 +104,10 @@ void processFiles(Args a)
                 if(a.absoluteValue)
                 {
                     f.set(std::abs(A->get(i, j)), i, j);
+                }
+                if(a.invert)
+                {
+                    f.set(1.0 / A->get(i, j), i, j);
                 }
             }
         }
@@ -170,13 +175,12 @@ void Args::defineArguments()
     registerOption("exp", op_clg->add_flag("--exp", exponentiation, "Exponentiation."));
     registerOption("sqrt", op_clg->add_flag("--sqrt", squareroot, "Square root."));
     registerOption("square", op_clg->add_flag("--square", square, "Square."));
-    registerOption("abs", op_clg->add_flag("--abs", square, "Absolute value."));
+    registerOption("abs", op_clg->add_flag("--abs", abs, "Absolute value."));
+    registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
     registerOption(
         "multiply",
         op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));
-    registerOption(
-        "add",
-        op_clg->add_option("--add", constantToAdd, "Add a constant."));
+    registerOption("add", op_clg->add_option("--add", constantToAdd, "Add a constant."));
     op_clg->require_option(1);
 }
 

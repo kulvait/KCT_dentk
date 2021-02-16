@@ -207,6 +207,20 @@ target_link_libraries(dentk_pcomp ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_pcomp ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_pcomp RUNTIME DESTINATION .)
 
+SET(DENTK_BOUNDARYFILL_SOURCES src/dentk-boundaryfill.cpp)
+add_executable(dentk_boundaryfill ${DENTK_BOUNDARYFILL_SOURCES})
+set_target_properties(
+    dentk_boundaryfill
+    PROPERTIES 
+        OUTPUT_NAME "dentk-boundaryfill"
+        SUFFIX ""
+)
+target_link_libraries(dentk_boundaryfill ctiol)
+target_link_libraries(dentk_boundaryfill ctmal)
+target_link_libraries(dentk_boundaryfill ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_boundaryfill ${MKL_CORE_LIBRARY})
+install (TARGETS dentk_boundaryfill RUNTIME DESTINATION .)
+
 SET(DENTK_INSIDE_SOURCES src/dentk-inside.cpp)
 add_executable(dentk_inside ${DENTK_INSIDE_SOURCES})
 set_target_properties(
