@@ -93,6 +93,18 @@ target_link_libraries(dentk_alpha ctiol)
 target_link_libraries(dentk_alpha ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_alpha RUNTIME DESTINATION .)
 
+SET(DENTK_CORELATION_SOURCES src/dentk-corelation.cpp)
+add_executable(dentk_corelation ${DENTK_CORELATION_SOURCES})
+set_target_properties(
+    dentk_corelation
+    PROPERTIES 
+        OUTPUT_NAME "dentk-corelation"
+        SUFFIX ""
+)
+target_link_libraries(dentk_corelation ctiol)
+target_link_libraries(dentk_corelation ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_corelation RUNTIME DESTINATION .)
+
 SET(DENTK_ADDHEADER_SOURCES src/dentk-addheader.cpp)
 add_executable(dentk_addheader ${DENTK_ADDHEADER_SOURCES})
 set_target_properties(
