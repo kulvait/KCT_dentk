@@ -60,8 +60,11 @@ include_directories(${Python3_INCLUDE_DIRS})
 include_directories(${Python3_NumPy_INCLUDE_DIRS})
 
 #CTIOL IO lib
+IF(ITK_FOUND)
 FILE( GLOB DENITK_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/DENITK/*.cpp )
 add_library(ctiol_itk ${DENITK_SRC})
+ENDIF()
+ 
 include_directories("${CMAKE_SOURCE_DIR}/submodules/CTIOL/include")
 
 FILE(GLOB CTIOL_SRC ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/*.cpp ${CMAKE_SOURCE_DIR}/submodules/CTIOL/src/PROG/*.cpp)
