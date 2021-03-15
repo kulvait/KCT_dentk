@@ -11,8 +11,8 @@
 #include <string>
 
 // External libraries
-#include "PROG/parseArgs.h"
 #include "CLI/CLI.hpp" //Command line parser
+#include "PROG/parseArgs.h"
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
@@ -158,7 +158,8 @@ int Args::parseArguments(int argc, char* argv[])
         app.parse(argc, argv);
         if(output_x.empty())
         {
-            std::string prefix = input_file.substr(0, input_file.find(".", 0));
+            std::string prefix
+                = input_file.substr(0, input_file.find_last_of(".", std::string::npos));
             output_x = io::xprintf("%s_x.den", prefix.c_str());
             output_y = io::xprintf("%s_y.den", prefix.c_str());
             output_z = io::xprintf("%s_z.den", prefix.c_str());
