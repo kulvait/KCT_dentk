@@ -7,9 +7,12 @@
 #include <cstdlib>
 #include <ctype.h>
 #include <iostream>
+#include <linux/random.h>
 #include <random>
 #include <regex>
 #include <string>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
@@ -155,6 +158,7 @@ void addGaussFrame(int id,
     delete[] noise;
 }
 
+bool initializeByLinux = true;
 template <typename T>
 void addPoissonFrame(int id,
                      int fromId,
@@ -163,15 +167,34 @@ void addPoissonFrame(int id,
                      std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
                      double k0lambda)
 {
+    MKL_UINT seed = 0;
+    if(initializeByLinux)
+    {
+        syscall(SYS_getrandom, &seed, sizeof(MKL_UINT), 0);
+    } else
+    {
+        std::srand(std::time(nullptr)); // use current time as seed for random generator
+        seed = std::rand();
+    }
+    LOGD << io::xprintf("Seed is %u", seed);
+    // MKL_UINT seed = fromId;
+
     uint32_t dimx = imagesWritter->dimx();
     uint32_t dimy = imagesWritter->dimy();
     uint32_t frameSize = dimx * dimy;
-    std::srand(std::time(nullptr)); // use current time as seed for random generator
-    // MKL_UINT seed = fromId;
-    MKL_UINT seed = std::rand();
+
     MKL_INT status;
+    std::string ERR;
     VSLStreamStatePtr stream;
-    vslNewStream(&stream, VSL_BRNG_WH, seed);
+    status = vslNewStream(&stream, VSL_BRNG_WH, seed);
+    if(status != VSL_STATUS_OK)
+    {
+        ERR = io::xprintf("The status of the generator after calling vslNewStream is %d that is "
+                          "not  VSL_STATUS_OK.",
+                          status);
+        LOGE << ERR;
+        throw std::runtime_error(ERR);
+    }
     T* frame = new T[frameSize];
     double K;
     int L;
