@@ -77,18 +77,26 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& ARG)
     double variance = di.getVariance<T>();
     if(di.getDataType() == io::DenSupportedType::uint16_t_)
     {
-        std::cout << io::xprintf("Global minimum and maximum values are (%d, %d), mean=%f, stdev=%f.\n", (int)min,
-                                 (int)max, mean, std::pow(variance, 0.5));
+        std::cout << io::xprintf(
+            "Global minimum and maximum values are (%d, %d), mean=%f, stdev=%f.\n", (int)min,
+            (int)max, mean, std::pow(variance, 0.5));
     } else
     {
-        std::cout << io::xprintf("Global minimum and maximum values are (%0.3f, %0.3f), mean=%f, stdev=%f.\n", min,
-                                 max, mean, std::pow(variance, 0.5));
+        std::cout << io::xprintf(
+            "Global minimum and maximum values are (%0.3f, %0.3f), mean=%f, stdev=%f.\n", min, max,
+            mean, std::pow(variance, 0.5));
     }
     if(ARG.l2norm)
     {
+        io::DenFileInfo di(ARG.input_file);
+        uint64_t dimx = di.dimx();
+        uint64_t dimy = di.dimy();
+        uint64_t dimz = di.dimz();
+        double RMSEDenominator = std::sqrt(double(dimx * dimy * dimz));
         double l2 = di.getl2Square<T>();
-        std::cout << io::xprintf("Global l2 norm is %0.1f and its square is %0.1f.\n",
-                                 std::pow(l2, 0.5), l2);
+        std::cout << io::xprintf(
+            "Global l2 norm is %0.1f and its square is %0.1f. That imply RMSE=%f\n",
+            std::pow(l2, 0.5), l2, std::pow(l2, 0.5) / RMSEDenominator);
     }
 }
 
@@ -235,13 +243,14 @@ void Args::defineArguments()
     cliApp->add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
-    cliApp->add_option("-f,--frames", frameSpecs,
-                   "Specify only particular frames to process. You can input range i.e. 0-20 or "
-                   "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
-                   "end literal that means total number of slices of the input.");
+    cliApp->add_option(
+        "-f,--frames", frameSpecs,
+        "Specify only particular frames to process. You can input range i.e. 0-20 or "
+        "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
+        "end literal that means total number of slices of the input.");
     cliApp->add_flag("--l2norm", l2norm, "Print l2 norm of the frame specs.");
     cliApp->add_flag("--dim", returnDimensions,
-                 "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
+                     "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
 }
 
 int Args::postParse()

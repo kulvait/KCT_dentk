@@ -42,6 +42,7 @@ public:
         , ArgumentsForce(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
+    bool nanandinftozero = false;
     bool logarithm = false;
     bool exponentiation = false;
     bool squareroot = false;
@@ -108,6 +109,21 @@ void processFiles(Args a)
                 if(a.invert)
                 {
                     f.set(1.0 / A->get(i, j), i, j);
+                }
+                if(a.nanandinftozero)
+                {
+                    T val = A->get(i, j);
+                    double val_double = (double)val;
+                    if(std::isnan(val_double))
+                    {
+                        f.set(T(0), i, j);
+                    } else if(std::isinf(val_double))
+                    {
+                        f.set(T(0), i, j);
+                    }else
+                    {
+                        f.set(val, i, j);
+                    }
                 }
             }
         }
@@ -177,6 +193,8 @@ void Args::defineArguments()
     registerOption("square", op_clg->add_flag("--square", square, "Square."));
     registerOption("abs", op_clg->add_flag("--abs", abs, "Absolute value."));
     registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
+    registerOption("nan-and-inf-to-zero",
+                   op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero, "Convert NaN and Inf values to zero."));
     registerOption(
         "multiply",
         op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));

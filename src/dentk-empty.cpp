@@ -15,6 +15,8 @@
 // Internal libraries
 #include "rawop.h"
 #include "stringFormatter.h"
+#include <BufferedFrame2D.hpp>
+#include <DEN/DenAsyncFrame2DWritter.hpp>
 
 using namespace CTL;
 
@@ -24,6 +26,7 @@ struct Args
     uint16_t dimx, dimy, dimz;
     uint64_t elementByteSize;
     std::string type = "float";
+    double value = 0.0;
     bool force;
     std::string outputFile;
 };
@@ -34,6 +37,7 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("-t,--type", type,
                    "Type of the base data unit in the DEN file, might be float, double or "
                    "uint16_t, default is float.");
+    app.add_option("--value", value, io::xprintf("Default value, defaults to %f", value));
     app.add_option("dimx", dimx, "X dimension.")->required()->check(CLI::Range(0, 65535));
     app.add_option("dimy", dimy, "Y dimension.")->required()->check(CLI::Range(0, 65535));
     app.add_option("dimz", dimz, "Z dimension.")->required()->check(CLI::Range(0, 65535));
@@ -96,6 +100,19 @@ int Args::parseArguments(int argc, char* argv[])
     return 0;
 }
 
+template <typename T>
+void createConstantDEN(
+    std::string fileName, uint32_t sizex, uint32_t sizey, uint32_t sizez, T value)
+{
+    using namespace CTL;
+    io::DenAsyncFrame2DWritter<T> dw(fileName, sizex, sizey, sizez);
+    io::BufferedFrame2D<T> f(value, sizex, sizey);
+    for(uint32_t k = 0; k != sizez; k++)
+    {
+        dw.writeFrame(f, k);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     plog::Severity verbosityLevel = plog::debug; // debug, info, ...
@@ -119,12 +136,17 @@ int main(int argc, char* argv[])
         }
     }
     LOGI << io::xprintf("START %s", argv[0]);
-    uint64_t totalFileSize = uint64_t(6) + uint64_t(a.elementByteSize) * a.dimx * a.dimy * a.dimz;
-    io::createEmptyFile(a.outputFile, totalFileSize, true);
-    uint8_t buffer[6];
-    util::putUint16(a.dimy, &buffer[0]);
-    util::putUint16(a.dimx, &buffer[2]);
-    util::putUint16(a.dimz, &buffer[4]);
-    io::writeFirstBytes(a.outputFile, buffer, 6);
+    if(a.elementByteSize == 2)
+    {
+        createConstantDEN<uint16_t>(a.outputFile, a.dimx, a.dimy, a.dimz, (uint16_t)a.value);
+    }
+    if(a.elementByteSize == 4)
+    {
+        createConstantDEN<float>(a.outputFile, a.dimx, a.dimy, a.dimz, (float)a.value);
+    }
+    if(a.elementByteSize == 8)
+    {
+        createConstantDEN<double>(a.outputFile, a.dimx, a.dimy, a.dimz, a.value);
+    }
     LOGI << io::xprintf("END %s", argv[0]);
 }
