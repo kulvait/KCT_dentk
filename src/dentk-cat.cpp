@@ -58,7 +58,8 @@ int main(int argc, char* argv[])
 {
     Program PRG(argc, argv);
     // Argument parsing
-    Args ARG(argc, argv, "Extract and reorder particular frames from DEN file.");
+    const std::string prgInfo = "Extract and reorder particular frames from DEN file.";
+    Args ARG(argc, argv, prgInfo);
     int parseResult = ARG.parse();
     if(parseResult > 0)
     {

@@ -154,6 +154,18 @@ set_target_properties(
 target_link_libraries(dentk_grad ctiol)
 install (TARGETS dentk_grad RUNTIME DESTINATION .)
 
+SET(DENTK_SVDMATRIX_SOURCES src/dentk-svdmatrix.cpp)
+add_executable(dentk_svdmatrix ${DENTK_SVDMATRIX_SOURCES})
+set_target_properties(
+    dentk_svdmatrix 
+    PROPERTIES 
+        OUTPUT_NAME "dentk-svdmatrix"
+        SUFFIX ""
+)
+target_link_libraries(dentk_svdmatrix ctiol)
+target_link_libraries(dentk_svdmatrix ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_svdmatrix RUNTIME DESTINATION .)
+
 SET(DENTK_CAT_SOURCES src/dentk-cat.cpp)
 add_executable(dentk_cat ${DENTK_CAT_SOURCES})
 set_target_properties(
@@ -221,6 +233,20 @@ target_link_libraries(dentk_pcomp ctmal)
 target_link_libraries(dentk_pcomp ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_pcomp ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_pcomp RUNTIME DESTINATION .)
+
+SET(DENTK_SVD_SOURCES src/dentk-svd.cpp)
+add_executable(dentk_svd ${DENTK_SVD_SOURCES})
+set_target_properties(
+    dentk_svd
+    PROPERTIES 
+        OUTPUT_NAME "dentk-svd"
+        SUFFIX ""
+)
+target_link_libraries(dentk_svd ctiol)
+target_link_libraries(dentk_svd ctmal)
+target_link_libraries(dentk_svd ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_svd ${MKL_CORE_LIBRARY})
+install (TARGETS dentk_svd RUNTIME DESTINATION .)
 
 SET(DENTK_BOUNDARYFILL_SOURCES src/dentk-boundaryfill.cpp)
 add_executable(dentk_boundaryfill ${DENTK_BOUNDARYFILL_SOURCES})

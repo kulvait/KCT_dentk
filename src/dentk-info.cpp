@@ -21,6 +21,7 @@
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/Arguments.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 #include "frameop.h"
@@ -29,7 +30,7 @@ using namespace CTL;
 using namespace CTL::util;
 
 // class declarations
-struct Args : public Arguments
+struct Args : public ArgumentsFramespec
 {
     void defineArguments();
     int postParse();
@@ -37,11 +38,9 @@ struct Args : public Arguments
 
 public:
     Args(int argc, char** argv, std::string prgName)
-        : Arguments(argc, argv, prgName){};
+        : Arguments(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName){};
     std::string input_file;
-    std::string frameSpecs = "";
-    std::vector<int> frames;
-    bool framesSpecified = false;
     bool returnDimensions = false;
     bool l2norm = false;
 };
@@ -104,7 +103,8 @@ int main(int argc, char* argv[])
 {
     Program PRG(argc, argv);
     // Argument parsing
-    Args ARG(argc, argv, "Information about DEN file and its individual slices.");
+    const std::string prgInfo = "Information about DEN file and its individual slices.";
+    Args ARG(argc, argv, prgInfo);
     int parseResult = ARG.parse();
     if(parseResult > 0)
     {
@@ -243,11 +243,7 @@ void Args::defineArguments()
     cliApp->add_option("input_den_file", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
-    cliApp->add_option(
-        "-f,--frames", frameSpecs,
-        "Specify only particular frames to process. You can input range i.e. 0-20 or "
-        "also individual comma separated frames i.e. 1,8,9. Order does matter. Accepts "
-        "end literal that means total number of slices of the input.");
+    addFramespecArgs();
     cliApp->add_flag("--l2norm", l2norm, "Print l2 norm of the frame specs.");
     cliApp->add_flag("--dim", returnDimensions,
                      "Return only the dimensions in a format x\\ty\\tz\\n and quit.");
@@ -265,6 +261,6 @@ int Args::postParse()
         framesSpecified = true;
     }
     io::DenFileInfo inf(input_file);
-    frames = util::processFramesSpecification(frameSpecs, inf.dimz());
+    fillFramesVector(inf.dimz());
     return 0;
 }
