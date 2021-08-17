@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
     case io::DenSupportedType::float_:
     {
         uint64_t totalSize = dimx * dimy * dimz;
-        if(totalSize * sizeof(float) > std::numeric_limits<uint32_t>::max())
+        if(totalSize > std::numeric_limits<uint32_t>::max())
         {
             ERR = io::xprintf("Uint32 is exceeded by the byte size of matrix that is %lu.",
                               totalSize * sizeof(float));
