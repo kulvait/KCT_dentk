@@ -1,9 +1,9 @@
 [submodule "submodules/CTIOL"]
 	path = submodules/CTIOL
-	url = https://bitbucket.org/kulvait/kct_ctiol.git
+	url = ../kct_ctiol.git
 [submodule "submodules/CTMAL"]
 	path = submodules/CTMAL
-	url = https://bitbucket.org/kulvait/kct_ctmal.git
+	url = ../kct_ctmal.git
 [submodule "submodules/CLI11"]
 	path = submodules/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
