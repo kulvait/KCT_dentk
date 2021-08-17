@@ -14,13 +14,13 @@
 #include "ctpl_stl.h" //Threadpool
 
 // Internal libraries
+#include "PROG/Program.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/ArgumentsThreading.hpp"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-#include "PROG/ArgumentsFramespec.hpp"
-#include "PROG/ArgumentsThreading.hpp"
-#include "PROG/Program.hpp"
 
 using namespace CTL;
 using namespace CTL::util;
