@@ -27,12 +27,12 @@ using namespace CTL;
 struct Args
 {
     int parseArguments(int argc, char* argv[]);
-    float h = 1.0;
     std::string input_file = "";
     std::string output_x = "", output_y = "", output_z = "";
     std::string frameSpecs = "";
     std::vector<int> frames;
     bool force = false;
+    float voxelSizeX = 1.0f, voxelSizeY = 1.0f, voxelSizeZ = 1.0f;
 };
 
 std::string program_name = "";
@@ -113,9 +113,9 @@ int main(int argc, char* argv[])
                     float centralDifferenceY = (j + 1 == dimy ? 0.0 : f->get(i, j + 1))
                         - (j - 1 == -1 ? 0.0 : f->get(i, j - 1));
                     float centralDifferenceZ = fnext->get(i, j) - fprev->get(i, j);
-                    x.set(centralDifferenceX / (2 * a.h), i, j);
-                    y.set(centralDifferenceY / (2 * a.h), i, j);
-                    z.set(centralDifferenceZ / (2 * a.h), i, j);
+                    x.set(centralDifferenceX / (2 * a.voxelSizeX), i, j);
+                    y.set(centralDifferenceY / (2 * a.voxelSizeY), i, j);
+                    z.set(centralDifferenceZ / (2 * a.voxelSizeZ), i, j);
                 }
             ox->writeFrame(x, k);
             oy->writeFrame(y, k);
@@ -152,7 +152,27 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_file", input_file, "File to compute gradient from.")
         ->check(CLI::ExistingFile)
         ->required();
-    app.add_option("--pixel-spacing", h, "Spacing of pixels, defaults to 1.0.");
+    CLI::Option_group* og_geometry = app.add_option_group(
+        "Geometry specification", "Specification of the dimensions of the geometry.");
+    CLI::Option* vox
+        = og_geometry
+              ->add_option("--voxel-sizex", voxelSizeX,
+                           io::xprintf("X spacing of voxels in mm, defaults to %0.2f.", voxelSizeX))
+              ->check(CLI::Range(0.0, 10000.00));
+    CLI::Option* voy
+        = og_geometry
+              ->add_option("--voxel-sizey", voxelSizeY,
+                           io::xprintf("Y spacing of voxels in mm, defaults to %0.2f.", voxelSizeY))
+              ->check(CLI::Range(0.0, 10000.00));
+    CLI::Option* voz
+        = og_geometry
+              ->add_option("--voxel-sizez", voxelSizeZ,
+                           io::xprintf("Z spacing of voxels in mm, defaults to %0.2f.", voxelSizeZ))
+              ->check(CLI::Range(0.0, 10000.00));
+    vox->needs(voy)->needs(voz);
+    voy->needs(vox)->needs(voz);
+    voz->needs(vox)->needs(voy);
+
     try
     {
         app.parse(argc, argv);

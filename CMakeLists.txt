@@ -248,6 +248,20 @@ target_link_libraries(dentk_svd ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_svd ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_svd RUNTIME DESTINATION .)
 
+SET(DENTK_SVDVNORMALIZE_SOURCES src/dentk-svdvnormalize.cpp)
+add_executable(dentk_svdvnormalize ${DENTK_SVDVNORMALIZE_SOURCES})
+set_target_properties(
+    dentk_svdvnormalize
+    PROPERTIES 
+        OUTPUT_NAME "dentk-svdvnormalize"
+        SUFFIX ""
+)
+target_link_libraries(dentk_svdvnormalize ctiol)
+target_link_libraries(dentk_svdvnormalize ctmal)
+target_link_libraries(dentk_svdvnormalize ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(dentk_svdvnormalize ${MKL_CORE_LIBRARY})
+install (TARGETS dentk_svdvnormalize RUNTIME DESTINATION .)
+
 SET(DENTK_BOUNDARYFILL_SOURCES src/dentk-boundaryfill.cpp)
 add_executable(dentk_boundaryfill ${DENTK_BOUNDARYFILL_SOURCES})
 set_target_properties(
