@@ -50,6 +50,8 @@ public:
 
     uint32_t dimx, dimy, dimz;
     uint32_t granularity, numVectors;
+    std::vector<int> flipAtPosition;
+    std::vector<int> preserveAtPosition;
 };
 
 void Args::defineArguments()
@@ -64,6 +66,12 @@ void Args::defineArguments()
         ->add_option("output_matrix", outputMatrix,
                      "Output matrix, which can be used as an input for SVD algorithm.")
         ->required();
+    cliApp->add_option("--flip", flipAtPosition,
+                       "Specify intices to multiply vector by -1 at specified positions without "
+                       "further processing.",
+                       true);
+    cliApp->add_option("--preserve", preserveAtPosition,
+                       "Specify indices to preserve vector without further processing.", true);
     addForceArgs();
 }
 
@@ -111,7 +119,18 @@ void processFiles(Args ARG)
         inputFrame = inputReader->readFrame(k);
         min = (double)io::minFrameValue<T>(*inputFrame);
         max = (double)io::maxFrameValue<T>(*inputFrame);
-        if(max < 0.0 || (max > 0 && min < 0 && std::abs(min) > max))
+        if(std::find(ARG.preserveAtPosition.begin(), ARG.preserveAtPosition.end(), k)
+           != ARG.preserveAtPosition.end())
+        {
+            // Do nothing
+        } else if(std::find(ARG.flipAtPosition.begin(), ARG.flipAtPosition.end(), k)
+                  != ARG.flipAtPosition.end())
+        {
+            for(uint32_t i = 0; i != ARG.dimx; i++)
+            {
+                inputFrame->set(-inputFrame->get(i, 0), i, 0);
+            }
+        } else if(max < 0.0 || (max > 0 && min < 0 && std::abs(min) > max))
         {
             for(uint32_t i = 0; i != ARG.dimx; i++)
             {
