@@ -23,7 +23,7 @@
 
 namespace plt = matplotlibcpp;
 
-using namespace CTL;
+using namespace KCT;
 
 // class declarations
 struct Args

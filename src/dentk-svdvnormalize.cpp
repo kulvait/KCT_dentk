@@ -24,11 +24,11 @@
 namespace plt = matplotlibcpp;
 #endif
 
-using namespace CTL;
+using namespace KCT;
 
 /// Arguments of the main function.
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // class declarations
 struct Args : public ArgumentsForce

@@ -27,8 +27,8 @@
 
 #define PI 3.14159265
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // class declarations
 // class declarations

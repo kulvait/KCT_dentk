@@ -26,8 +26,8 @@
 #include "PROG/parseArgs.h"
 #include "frameop.h"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // class declarations
 struct Args : public ArgumentsFramespec

@@ -24,8 +24,8 @@
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/Program.hpp"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // class declarations
 // class declarations

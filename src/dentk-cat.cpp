@@ -22,8 +22,8 @@
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // Function declarations (definition at the end of the file)
 

@@ -25,7 +25,7 @@
 #include "littleEndianAlignment.h"
 #include "rawop.h"
 
-using namespace CTL;
+using namespace KCT;
 
 // class declarations
 struct Args

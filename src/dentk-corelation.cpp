@@ -26,8 +26,8 @@
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 class Args : public ArgumentsFramespec, public ArgumentsThreading
 {

@@ -21,7 +21,7 @@
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 
-using namespace CTL;
+using namespace KCT;
 
 // class declarations
 struct Args

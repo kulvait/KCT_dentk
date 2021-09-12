@@ -22,7 +22,7 @@
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 
-using namespace CTL;
+using namespace KCT;
 
 // class declarations
 struct Args
@@ -44,7 +44,7 @@ struct Args
 
 int main(int argc, char* argv[])
 {
-    using namespace CTL::util;
+    using namespace KCT::util;
     Program PRG(argc, argv);
     // After init parsing arguments
     Args a;

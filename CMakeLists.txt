@@ -18,7 +18,16 @@ find_package (Threads)
 #ITK ... for producing jpg
 find_package(ITK)
 IF(ITK_FOUND)
-	include( ${ITK_USE_FILE} )
+#	message( "Including ${ITK_USE_FILE}")
+#	message( "Include ${ITK_INCLUDE_DIRS}")
+#	message( "Include ${ITK_LIBRARIES}")
+#	message( "Include ${ITK_INCLUDE_DIRS}")
+	SET(ITKBULLSEYE_INCLUDE_DIR "/usr/include/ITK-4.13/")
+	IF(EXISTS ${ITKBULLSEYE_INCLUDE_DIR})
+		include_directories(${ITKBULLSEYE_INCLUDE_DIR})
+	ELSE()
+		include( ${ITK_USE_FILE} )
+	ENDIF()
 ENDIF()
 
 #Header directories for the project

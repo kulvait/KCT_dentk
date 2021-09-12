@@ -19,8 +19,8 @@
 #include "littleEndianAlignment.h"
 #include "rawop.h"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 class Args : public ArgumentsFramespec
 {

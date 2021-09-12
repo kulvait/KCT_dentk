@@ -16,7 +16,7 @@
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
-using namespace CTL;
+using namespace KCT;
 namespace fs = std::experimental::filesystem;
 struct Args
 {

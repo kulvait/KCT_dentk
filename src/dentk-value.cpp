@@ -21,8 +21,8 @@
 #include "PROG/Arguments.hpp"
 #include "PROG/Program.hpp"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 // Function declarations (definition at the end of the file)
 

@@ -1,14 +1,15 @@
-# DENTK
+# KCT DENTK
 Toolkit for manipulation with DEN files.
 
 ## Cloning repository:
-For developers that have ssh keys to access repository installed clone via
+HTTPS
 ```
-git clone ssh://git@gitlab.stimulate.ovgu.de:2200/vojtech.kulvait/dentk.git
+git clone https://github.com/kulvait/KCT_dentk.git
 ```
-For read only origin clone
+
+SSH
 ```
-git clone https://gitlab.stimulate.ovgu.de/vojtech.kulvait/dentk.git
+git clone git@github.com:kulvait/KCT_dentk.git
 ```
 Next populate submodules
 ```
@@ -94,13 +95,23 @@ Converts DEN file into the DICOM format, requires ITK.
 ## dentk-jpg
 Creates jpg from particular slices of DEN file, requires ITK.
 
-# Using IDEs
+## Licensing
 
-## Eclipse
-For eclipse to work, create out of source project that is not child or ancesor of the parent directory.
-Run the following to generate eclipse project
-```
-cmake -G"Eclipse CDT4 - Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug path_to_project
-```
-After each change in CMakeLists.txt remove eclipse project and regenerate it.
-See more at https://gitlab.kitware.com/cmake/community/wikis/doc/editors/Eclipse-CDT4-Generator
+When there is no other licensing and/or copyright information in the source files of this project, the following apply for the source files in the directories include and src and for CMakeLists.txt file:
+
+Copyright (C) 2018-2021 Vojtěch Kulvait
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, version 3 of the License.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+This licensing applies to the direct source files in the directories include and src of this project and not for submodules.

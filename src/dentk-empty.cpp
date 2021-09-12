@@ -18,7 +18,7 @@
 #include <BufferedFrame2D.hpp>
 #include <DEN/DenAsyncFrame2DWritter.hpp>
 
-using namespace CTL;
+using namespace KCT;
 
 struct Args
 {
@@ -83,7 +83,7 @@ int Args::parseArguments(int argc, char* argv[])
             LOGE << err;
             return -1;
         }
-    } catch(const CLI::CallForHelp e)
+    } catch(const CLI::CallForHelp& e)
     {
         app.exit(e); // Prints help message
         return 1;
@@ -104,7 +104,7 @@ template <typename T>
 void createConstantDEN(
     std::string fileName, uint32_t sizex, uint32_t sizey, uint32_t sizez, T value)
 {
-    using namespace CTL;
+    using namespace KCT;
     io::DenAsyncFrame2DWritter<T> dw(fileName, sizex, sizey, sizez);
     io::BufferedFrame2D<T> f(value, sizex, sizey);
     for(uint32_t k = 0; k != sizez; k++)

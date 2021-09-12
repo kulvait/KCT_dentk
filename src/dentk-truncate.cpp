@@ -27,9 +27,9 @@
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 
-using namespace CTL;
-using namespace CTL::util;
-using namespace CTL::io;
+using namespace KCT;
+using namespace KCT::util;
+using namespace KCT::io;
 
 // Function declarations (definition at the end of the file)
 

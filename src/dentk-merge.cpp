@@ -24,8 +24,8 @@
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 
-using namespace CTL;
-using namespace CTL::util;
+using namespace KCT;
+using namespace KCT::util;
 
 struct Args : public ArgumentsFramespec, public ArgumentsForce, public ArgumentsThreading
 {
