@@ -46,7 +46,7 @@ public:
 };
 
 template <typename T>
-void printFrameStatistics(const io::Frame2DI<T>& f)
+void printFrameStatistics(const io::Frame2DI<T>& f, uint32_t index)
 {
     double min = (double)io::minFrameValue<T>(f);
     double max = (double)io::maxFrameValue<T>(f);
@@ -54,7 +54,9 @@ void printFrameStatistics(const io::Frame2DI<T>& f)
     double l2norm = io::normFrame<T>(f, 2);
     std::cout << io::xprintf("\tMinimum, maximum, average values: %.3f, %0.3f, %0.3f.\n", min, max,
                              avg);
-    std::cout << io::xprintf("\tEuclidean 2-norm of the frame: %E.\n", l2norm);
+    double RMSEDenominator = std::sqrt(f.dimx() * f.dimy());
+    std::cout << io::xprintf("\t||frame %d||_2, RMSE: %E, %E\n", index, l2norm,
+                             l2norm / RMSEDenominator);
     int nonFiniteCount = io::sumNonfiniteValues<T>(f);
     if(nonFiniteCount == 0)
     {
@@ -94,8 +96,8 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& ARG)
         double RMSEDenominator = std::sqrt(double(dimx * dimy * dimz));
         double l2 = di.getl2Square<T>();
         std::cout << io::xprintf(
-            "Global l2 norm is %0.1f and its square is %0.1f. That imply RMSE=%f\n",
-            std::pow(l2, 0.5), l2, std::pow(l2, 0.5) / RMSEDenominator);
+            "Global l2 norm is %0.1f and its square is %0.1f. That imply L2=%f, RMSE=%E\n",
+            std::pow(l2, 0.5), l2, std::pow(l2, 0.5), std::pow(l2, 0.5) / RMSEDenominator);
     }
 }
 
@@ -166,7 +168,7 @@ int main(int argc, char* argv[])
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<uint16_t>> framePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<uint16_t>(*framePtr);
+                printFrameStatistics<uint16_t>(*framePtr, f);
                 if(ARG.l2norm)
                 {
                     val = io::l2square<uint16_t>(*framePtr);
@@ -190,7 +192,7 @@ int main(int argc, char* argv[])
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<float>> framePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<float>(*framePtr);
+                printFrameStatistics<float>(*framePtr, f);
                 if(ARG.l2norm)
                 {
                     val = io::l2square<float>(*framePtr);
@@ -214,7 +216,7 @@ int main(int argc, char* argv[])
             {
                 std::cout << io::xprintf("Statistic of %d-th frame:\n", f);
                 std::shared_ptr<io::Frame2DI<double>> framePtr = denSliceReader->readFrame(f);
-                printFrameStatistics<double>(*framePtr);
+                printFrameStatistics<double>(*framePtr, f);
                 if(ARG.l2norm)
                 {
                     val = io::l2square<double>(*framePtr);

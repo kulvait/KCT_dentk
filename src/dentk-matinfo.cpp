@@ -14,7 +14,6 @@
 #include "CLI/CLI.hpp"
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
@@ -23,6 +22,8 @@
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
 #include "MATRIX/ProjectionMatrix.hpp"
+#include "PROG/KCTException.hpp"
+#include "PROG/parseArgs.h"
 #include "frameop.h"
 
 using namespace KCT;
@@ -122,15 +123,18 @@ int Args::parseArguments(int argc, char* argv[])
             "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
             "%d, %d), each cell has x*y=%d pixels.\n",
             input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
+        std::string ERR;
         if(inf.dimx() != 4 || inf.dimy() != 3)
         {
-            io::throwerr("Provided file do not have correct dimensions 3x4 but %dx%d.", inf.dimx(),
-                         inf.dimy());
+            ERR = io::xprintf("Provided file do not have correct dimensions 3x4 but %dx%d.",
+                              inf.dimx(), inf.dimy());
+            KCTERR(ERR);
         }
         if(t != io::DenSupportedType::double_)
         {
-            io::throwerr("Camera matrix must be of the type double but it is of the type %s.",
-                         DenSupportedTypeToString(t));
+            ERR = io::xprintf("Camera matrix must be of the type double but it is of the type %s.",
+                              DenSupportedTypeToString(t).c_str());
+            KCTERR(ERR);
         }
         frames = util::processFramesSpecification(frameSpecs, inf.dimz());
     } catch(const CLI::ParseError& e)
