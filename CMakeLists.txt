@@ -105,6 +105,18 @@ target_link_libraries(dentk_alpha ctiol)
 target_link_libraries(dentk_alpha ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_alpha RUNTIME DESTINATION .)
 
+SET(DENTK_FIND_SOURCES src/dentk-find.cpp)
+add_executable(dentk_find ${DENTK_FIND_SOURCES})
+set_target_properties(
+    dentk_find
+    PROPERTIES 
+        OUTPUT_NAME "dentk-find"
+        SUFFIX ""
+)
+target_link_libraries(dentk_find ctiol)
+target_link_libraries(dentk_find ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_find RUNTIME DESTINATION .)
+
 SET(DENTK_CORELATION_SOURCES src/dentk-corelation.cpp)
 add_executable(dentk_corelation ${DENTK_CORELATION_SOURCES})
 set_target_properties(
