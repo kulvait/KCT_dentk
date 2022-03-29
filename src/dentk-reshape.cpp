@@ -156,8 +156,8 @@ createReshapedFrame(std::shared_ptr<io::Frame2DI<T>> f, uint32_t dimx_after, uin
                     {
                         sum += f->get(q, j);
                     }
-                    if(integerEnd != dimx) // That would happen in case of numerical error where there
-                                         // is overflow
+                    if(integerEnd != dimx) // That would happen in case of numerical error where
+                                           // there is overflow
                     {
                         sum += (indexEnd - integerEnd) * f->get(integerEnd, j);
                     }
@@ -198,8 +198,8 @@ createReshapedFrame(std::shared_ptr<io::Frame2DI<T>> f, uint32_t dimx_after, uin
                     {
                         sum += f->get(i, q);
                     }
-                    if(integerEnd != dimy) // That would happen in case of numerical error where there
-                                         // is overflow
+                    if(integerEnd != dimy) // That would happen in case of numerical error where
+                                           // there is overflow
                     {
                         sum += (indexEnd - integerEnd) * f->get(i, integerEnd);
                     }
@@ -307,27 +307,22 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         rescaleFiles<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         rescaleFiles<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         rescaleFiles<double>(ARG);
         break;
     }
-    default:
-    {
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+    default: {
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
     }
     PRG.endLog();

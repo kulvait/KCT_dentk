@@ -196,8 +196,7 @@ int main(int argc, char* argv[])
     }
     switch(t)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         if(a.shiftBasis != 0)
         {
             shiftBasis<uint16_t>(a.input_file, a.output_file, a.shiftBasis);
@@ -208,12 +207,12 @@ int main(int argc, char* argv[])
         }
         if(a.legendrePolynomialsAdded != 0)
         {
-            addLegendrePolynomials<uint16_t>(a.input_file, a.output_file, a.legendrePolynomialsAdded);
+            addLegendrePolynomials<uint16_t>(a.input_file, a.output_file,
+                                             a.legendrePolynomialsAdded);
         }
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         if(a.shiftBasis != 0)
         {
             shiftBasis<float>(a.input_file, a.output_file, a.shiftBasis);
@@ -228,8 +227,7 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         if(a.shiftBasis != 0)
         {
             shiftBasis<double>(a.input_file, a.output_file, a.shiftBasis);
@@ -246,9 +244,8 @@ int main(int argc, char* argv[])
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+        KCTERR(errMsg);
     }
 }
 

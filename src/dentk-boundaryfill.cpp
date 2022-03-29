@@ -337,27 +337,22 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         processBoundaryFill<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         processBoundaryFill<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         processBoundaryFill<double>(ARG);
         break;
     }
-    default:
-    {
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+    default: {
+        std::string ERR = io::xprintf("Unsupported data type %s.",
+                                      io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(ERR);
     }
     }
     PRG.endLog();

@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
     int i3 = di.getNumSlices();
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
+    case io::DenSupportedType::UINT16:
     {
         std::shared_ptr<io::Frame2DReaderI<uint16_t>> sliceReader
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(a.input_file);
@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::float_:
+    case io::DenSupportedType::FLOAT32:
     {
         std::shared_ptr<io::Frame2DReaderI<float>> sliceReader
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::double_:
+    case io::DenSupportedType::FLOAT64:
     {
         std::shared_ptr<io::Frame2DReaderI<double>> sliceReader
             = std::make_shared<io::DenFrame2DReader<double>>(a.input_file);
@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
         LOGE << errMsg;
         throw std::runtime_error(errMsg);
     }

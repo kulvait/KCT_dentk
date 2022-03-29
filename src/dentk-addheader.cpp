@@ -2,8 +2,8 @@
 #include "PLOG/PlogSetup.h"
 
 // Internal libraries
-#include "PROG/parseArgs.h"
 #include "DEN/DenSupportedType.hpp"
+#include "PROG/parseArgs.h"
 #include "littleEndianAlignment.h"
 #include "rawop.h"
 
@@ -57,19 +57,19 @@ int Args::parseArguments(int argc, char* argv[])
         uint64_t expectedSize = dimx * dimy * dimz;
         if(type == "uint16_t")
         {
-            dataType = io::DenSupportedType::uint16_t_;
+            dataType = io::DenSupportedType::UINT16;
             expectedSize *= 2;
         } else if(type == "float")
         {
-            dataType = io::DenSupportedType::float_;
+            dataType = io::DenSupportedType::FLOAT32;
             expectedSize *= 4;
         } else if(type == "double")
         {
-            dataType = io::DenSupportedType::double_;
+            dataType = io::DenSupportedType::FLOAT64;
             expectedSize *= 8;
         } else
         {
-            LOGE << io::xprintf("Error: unsupported data type %s!", type);
+            LOGE << io::xprintf("Error: unsupported data type %s!", type.c_str());
             return 1;
         }
         inputFileSize = io::getFileSize(inputRawFile);

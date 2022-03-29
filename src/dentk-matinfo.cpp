@@ -130,7 +130,7 @@ int Args::parseArguments(int argc, char* argv[])
                               inf.dimx(), inf.dimy());
             KCTERR(ERR);
         }
-        if(t != io::DenSupportedType::double_)
+        if(t != io::DenSupportedType::FLOAT64)
         {
             ERR = io::xprintf("Camera matrix must be of the type double but it is of the type %s.",
                               DenSupportedTypeToString(t).c_str());

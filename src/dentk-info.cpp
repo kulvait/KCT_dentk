@@ -76,7 +76,7 @@ void printBasicStatistics(const io::DenFileInfo& di, const Args& ARG)
     double max = di.getMaxVal<T>();
     double mean = di.getMean<T>();
     double variance = di.getVariance<T>();
-    if(di.getDataType() == io::DenSupportedType::uint16_t_)
+    if(di.getDataType() == io::DenSupportedType::UINT16)
     {
         std::cout << io::xprintf(
             "Global minimum and maximum values are (%d, %d), mean=%f, stdev=%f.\n", (int)min,
@@ -133,26 +133,22 @@ int main(int argc, char* argv[])
         ARG.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
     switch(t)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         printBasicStatistics<uint16_t>(di, ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         printBasicStatistics<float>(di, ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         printBasicStatistics<double>(di, ARG);
         break;
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+        KCTERR(errMsg);
     }
     if(ARG.framesSpecified)
     {
@@ -160,8 +156,7 @@ int main(int argc, char* argv[])
         double val;
         switch(t)
         {
-        case io::DenSupportedType::uint16_t_:
-        {
+        case io::DenSupportedType::UINT16: {
             std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.input_file);
             for(const int f : ARG.frames)
@@ -183,8 +178,7 @@ int main(int argc, char* argv[])
             }
             break;
         }
-        case io::DenSupportedType::float_:
-        {
+        case io::DenSupportedType::FLOAT32: {
 
             std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<float>>(ARG.input_file);
@@ -207,8 +201,7 @@ int main(int argc, char* argv[])
             }
             break;
         }
-        case io::DenSupportedType::double_:
-        {
+        case io::DenSupportedType::FLOAT64: {
 
             std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
                 = std::make_shared<io::DenFrame2DReader<double>>(ARG.input_file);
@@ -233,9 +226,8 @@ int main(int argc, char* argv[])
         }
         default:
             std::string errMsg = io::xprintf("Frame statistic for %s is unsupported.",
-                                             io::DenSupportedTypeToString(t));
-            LOGE << errMsg;
-            throw std::runtime_error(errMsg);
+                                             io::DenSupportedTypeToString(t).c_str());
+            KCTERR(errMsg);
         }
     }
 }

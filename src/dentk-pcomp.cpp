@@ -86,13 +86,11 @@ int main(int argc, char* argv[])
         a.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
     switch(t)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         std::cout << io::xprintf("Not implemented yet.\n");
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         uint64_t totalSize = dimx * dimy * dimz;
         if(totalSize * sizeof(float) > std::numeric_limits<uint32_t>::max())
         {
@@ -195,16 +193,14 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         std::cout << io::xprintf("Not implemented yet.\n");
         break;
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+        KCTERR(errMsg);
     }
 }
 

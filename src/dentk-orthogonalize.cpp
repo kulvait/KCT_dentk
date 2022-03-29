@@ -129,26 +129,22 @@ int main(int argc, char* argv[])
     std::string elm = io::DenSupportedTypeToString(t);
     switch(t)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         orthonormalize<uint16_t>(a.input_file, a.output_file);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         orthonormalize<float>(a.input_file, a.output_file);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         orthonormalize<double>(a.input_file, a.output_file);
         break;
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+        KCTERR(errMsg);
     }
 }
 

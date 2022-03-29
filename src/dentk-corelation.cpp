@@ -61,8 +61,7 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_flag("--ignore-zeros", ignoreZeros,
                      "Exclude zero values in the files from the computation.");
-    cliApp->add_option("--alpha", alphaFile,
-                     "Specify mask file.");
+    cliApp->add_option("--alpha", alphaFile, "Specify mask file.");
     addFramespecArgs();
 }
 
@@ -203,34 +202,30 @@ int main(int argc, char* argv[])
     {
         return -1; // Exited somehow wrong
     }
-    //PRG.startLog(true);
+    // PRG.startLog(true);
     // Frames to process
     io::DenFileInfo inf(ARG.inputFile1);
     io::DenSupportedType dataType = inf.getDataType();
     double cor;
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         cor = PearsonsCorrelation<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         cor = PearsonsCorrelation<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         cor = PearsonsCorrelation<double>(ARG);
         break;
     }
     default:
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
     std::cout << cor << std::endl;
-    //LOGI << io::xprintf("END %s", argv[0]);
+    // LOGI << io::xprintf("END %s", argv[0]);
 }

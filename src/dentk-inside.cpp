@@ -163,21 +163,21 @@ void processBoundaryFill(Args a)
     std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
     std::shared_ptr<io::BufferedFrame2D<T>> centerF
         = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
-    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
-                        center_x, center_y, k, A->get(center_x, center_y));
-    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
-                        center_x+10, center_y+10, k, A->get(center_x+10, center_y+10));
-    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
-                        center_x-10, center_y-10, k, A->get(center_x-10, center_y-10));
-    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
-                        center_x+10, center_y-10, k, A->get(center_x+10, center_y-10));
-    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f",
-                        center_x-10, center_y+10, k, A->get(center_x-10, center_y+10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f", center_x, center_y, k,
+                        A->get(center_x, center_y));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f", center_x + 10,
+                        center_y + 10, k, A->get(center_x + 10, center_y + 10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f", center_x - 10,
+                        center_y - 10, k, A->get(center_x - 10, center_y - 10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f", center_x + 10,
+                        center_y - 10, k, A->get(center_x + 10, center_y - 10));
+    LOGI << io::xprintf("Seed point [x,y,z] = [%d, %d, %d] with value %f", center_x - 10,
+                        center_y + 10, k, A->get(center_x - 10, center_y + 10));
     boundaryFill<T>(a, dimx, dimy, center_x, center_y, A, centerF);
-    boundaryFill<T>(a, dimx, dimy, center_x+10, center_y+10, A, centerF);
-    boundaryFill<T>(a, dimx, dimy, center_x-10, center_y-10, A, centerF);
-    boundaryFill<T>(a, dimx, dimy, center_x+10, center_y-10, A, centerF);
-    boundaryFill<T>(a, dimx, dimy, center_x-10, center_y+10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x + 10, center_y + 10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x - 10, center_y - 10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x + 10, center_y - 10, A, centerF);
+    boundaryFill<T>(a, dimx, dimy, center_x - 10, center_y + 10, A, centerF);
     outputWritter->writeFrame(*centerF, k);
     std::shared_ptr<io::Frame2DI<T>> lastF = centerF;
     float radiusSquare = 0.25 * (dimx * dimx + dimy * dimy);
@@ -385,27 +385,22 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         processFiles<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         processFiles<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         processFiles<double>(ARG);
         break;
     }
-    default:
-    {
+    default: {
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
     }
     PRG.endLog();

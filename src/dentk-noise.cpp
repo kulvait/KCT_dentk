@@ -304,29 +304,23 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = inf.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         elementWiseNoise<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         elementWiseNoise<double>(ARG);
         break;
     }
-    case io::DenSupportedType::uint16_t_:
-    {
-        // elementWiseNoise<uint16_t>(ARG);
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+    case io::DenSupportedType::UINT16: {
+        std::string ERR
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(ERR);
     }
     default:
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+        std::string ERR
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(ERR);
     }
     LOGI << io::xprintf("END %s", argv[0]);
 }

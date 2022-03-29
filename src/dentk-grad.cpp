@@ -67,8 +67,7 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         std::shared_ptr<io::Frame2DReaderI<float>> reader
             = std::make_shared<io::DenFrame2DReader<float>>(a.input_file);
         std::shared_ptr<io::AsyncFrame2DWritterI<float>> ox
@@ -123,13 +122,11 @@ int main(int argc, char* argv[])
         }
     }
     break;
-    default:
-    {
+    default: {
         std::string errMsg
             = io::xprintf("Unsupported data type %s, currently only float data type is supported.",
-                          io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+                          io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
     }
 }

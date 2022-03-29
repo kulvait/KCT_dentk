@@ -104,7 +104,10 @@ void processFiles(Args a)
                 }
                 if(a.absoluteValue)
                 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wabsolute-value"
                     f.set(std::abs(A->get(i, j)), i, j);
+#pragma GCC diagnostic pop
                 }
                 if(a.invert)
                 {
@@ -120,7 +123,7 @@ void processFiles(Args a)
                     } else if(std::isinf(val_double))
                     {
                         f.set(T(0), i, j);
-                    }else
+                    } else
                     {
                         f.set(val, i, j);
                     }
@@ -152,27 +155,22 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
-    {
+    case io::DenSupportedType::UINT16: {
         processFiles<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::float_:
-    {
+    case io::DenSupportedType::FLOAT32: {
         processFiles<float>(ARG);
         break;
     }
-    case io::DenSupportedType::double_:
-    {
+    case io::DenSupportedType::FLOAT64: {
         processFiles<double>(ARG);
         break;
     }
-    default:
-    {
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+    default: {
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
     }
     PRG.endLog();
@@ -191,10 +189,11 @@ void Args::defineArguments()
     registerOption("exp", op_clg->add_flag("--exp", exponentiation, "Exponentiation."));
     registerOption("sqrt", op_clg->add_flag("--sqrt", squareroot, "Square root."));
     registerOption("square", op_clg->add_flag("--square", square, "Square."));
-    registerOption("abs", op_clg->add_flag("--abs", abs, "Absolute value."));
+    registerOption("abs", op_clg->add_flag("--abs", absoluteValue, "Absolute value."));
     registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
     registerOption("nan-and-inf-to-zero",
-                   op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero, "Convert NaN and Inf values to zero."));
+                   op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero,
+                                    "Convert NaN and Inf values to zero."));
     registerOption(
         "multiply",
         op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));
