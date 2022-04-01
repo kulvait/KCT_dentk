@@ -116,9 +116,12 @@ int main(int argc, char* argv[])
         return -1; // Exited somehow wrong
     }
     io::DenFileInfo di(ARG.input_file);
-    int dimx = di.getNumCols();
-    int dimy = di.getNumRows();
-    int dimz = di.getNumSlices();
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint32_t dimz = di.dimz();
+    uint32_t dimCount = di.dimCount();
+    bool isExtended = di.isExtended();
+    bool isXMajor = di.hasXMajorAlignment();
     if(ARG.returnDimensions)
     {
         std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
@@ -127,10 +130,11 @@ int main(int argc, char* argv[])
     // int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getDataType();
     std::string elm = io::DenSupportedTypeToString(t);
-    std::cout << io::xprintf(
-        "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
-        "%d, %d), each cell has x*y=%d pixels.\n",
-        ARG.input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
+    std::cout << io::xprintf("The %s is %dD %s DEN %s file of dimensions (x,y,z)=(%d, "
+                             "%d, %d). Frames of x*y=%d elements are %s.\n",
+                             ARG.input_file.c_str(), dimCount, (isExtended ? "extended" : "legacy"),
+                             elm.c_str(), dimx, dimy, dimz, dimx * dimy,
+                             (isXMajor ? "xmajor" : "ymajor"));
     switch(t)
     {
     case io::DenSupportedType::UINT16: {
