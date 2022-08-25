@@ -471,6 +471,28 @@ set_target_properties(
 target_link_libraries(dentk_calc1 ctiol)
 install (TARGETS dentk_calc1 RUNTIME DESTINATION .)
 
+SET(DENTK_FRAMECALC1_SOURCES src/dentk-framecalc1.cpp)
+add_executable(dentk_framecalc1 ${DENTK_FRAMECALC1_SOURCES})
+set_target_properties(
+    dentk_framecalc1
+    PROPERTIES 
+        OUTPUT_NAME "dentk-framecalc1"
+        SUFFIX ""
+)
+target_link_libraries(dentk_framecalc1 ctiol)
+install (TARGETS dentk_framecalc1 RUNTIME DESTINATION .)
+
+SET(DENTK_FRAMECALC_SOURCES src/dentk-framecalc.cpp)
+add_executable(dentk_framecalc ${DENTK_FRAMECALC_SOURCES})
+set_target_properties(
+    dentk_framecalc
+    PROPERTIES 
+        OUTPUT_NAME "dentk-framecalc"
+        SUFFIX ""
+)
+target_link_libraries(dentk_framecalc ctiol)
+install (TARGETS dentk_framecalc RUNTIME DESTINATION .)
+
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)
 add_executable(dentk_tohu ${DENTK_TOHU_SOURCES})
 set_target_properties(
