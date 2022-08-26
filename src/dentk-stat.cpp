@@ -18,9 +18,9 @@
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
-#include "FrameMemoryViewer2D.hpp"
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
+#include "FrameMemoryViewer2D.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
@@ -64,7 +64,8 @@ void Args::defineArguments()
     op_clg->add_flag("--mean", mean, "Compute mean of the files");
     // See http://mathworld.wolfram.com/SampleVariance.html
     op_clg->add_flag("--sample-variance", variance, "Compute sample variance");
-    op_clg->add_flag("--sample-standard-deviation", standardDeviation, "Compute sample standard deviation");
+    op_clg->add_flag("--sample-standard-deviation", standardDeviation,
+                     "Compute sample standard deviation");
     op_clg->require_option(1);
     addFramespecArgs();
     addThreadingArgs();
@@ -140,8 +141,9 @@ void computeMean(uint32_t k,
 
 template <typename T>
 void computeSampleVariance(uint32_t k,
-                 std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
-                 T* mean, T* variance)
+                           std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
+                           T* mean,
+                           T* variance)
 {
     T N_minus_1 = denSliceReaders.size() - 1;
     uint32_t dimx = denSliceReaders[0]->dimx();
@@ -179,9 +181,10 @@ void writeMeanFrame(int id,
     uint32_t frameSize = dimx * dimy;
     T* mean = new T[frameSize];
     computeMean(fromId, denSliceReaders, mean);
-    std::unique_ptr<io::Frame2DI<T>> f = std::make_unique<io::FrameMemoryViewer2D<T>>(mean, dimx, dimy);
+    std::unique_ptr<io::Frame2DI<T>> f
+        = std::make_unique<io::FrameMemoryViewer2D<T>>(mean, dimx, dimy);
     imagesWritter->writeFrame(*f, toId);
-	delete[] mean;
+    delete[] mean;
 }
 
 template <typename T>
@@ -198,18 +201,20 @@ void writeVarianceFrame(int id,
     T* variance = new T[frameSize]();
     computeMean(fromId, denSliceReaders, mean);
     computeSampleVariance(fromId, denSliceReaders, mean, variance);
-    std::unique_ptr<io::Frame2DI<T>> f = std::make_unique<io::FrameMemoryViewer2D<T>>(variance, dimx, dimy);
+    std::unique_ptr<io::Frame2DI<T>> f
+        = std::make_unique<io::FrameMemoryViewer2D<T>>(variance, dimx, dimy);
     imagesWritter->writeFrame(*f, toId);
     delete[] mean;
     delete[] variance;
 }
 
 template <typename T>
-void writeSampleStandardDeviationFrame(int id,
-                        int fromId,
-                        std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
-                        int toId,
-                        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter)
+void writeSampleStandardDeviationFrame(
+    int id,
+    int fromId,
+    std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
+    int toId,
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter)
 {
     uint32_t dimx = imagesWritter->dimx();
     uint32_t dimy = imagesWritter->dimy();
@@ -222,7 +227,8 @@ void writeSampleStandardDeviationFrame(int id,
     {
         variance[i] = std::pow(variance[i], 0.5);
     }
-    std::unique_ptr<io::Frame2DI<T>> f = std::make_unique<io::FrameMemoryViewer2D<T>>(variance, dimx, dimy);
+    std::unique_ptr<io::Frame2DI<T>> f
+        = std::make_unique<io::FrameMemoryViewer2D<T>>(variance, dimx, dimy);
     imagesWritter->writeFrame(*f, toId);
     delete[] mean;
     delete[] variance;
@@ -275,11 +281,12 @@ void elementWiseStatistics(Args a)
         {
             if(threadpool != nullptr)
             {
-                threadpool->push(writeSampleStandardDeviationFrame<T>, a.frames[i], denSliceReaders, i,
-                                 imagesWritter);
+                threadpool->push(writeSampleStandardDeviationFrame<T>, a.frames[i], denSliceReaders,
+                                 i, imagesWritter);
             } else
             {
-                writeSampleStandardDeviationFrame<T>(0, a.frames[i], denSliceReaders, i, imagesWritter);
+                writeSampleStandardDeviationFrame<T>(0, a.frames[i], denSliceReaders, i,
+                                                     imagesWritter);
             }
         }
     }
@@ -310,24 +317,21 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = inf.getDataType();
     switch(dataType)
     {
-    case io::DenSupportedType::UINT16:
-    {
+    case io::DenSupportedType::UINT16: {
         elementWiseStatistics<uint16_t>(ARG);
         break;
     }
-    case io::DenSupportedType::FLOAT32:
-    {
+    case io::DenSupportedType::FLOAT32: {
         elementWiseStatistics<float>(ARG);
         break;
     }
-    case io::DenSupportedType::FLOAT64:
-    {
+    case io::DenSupportedType::FLOAT64: {
         elementWiseStatistics<double>(ARG);
         break;
     }
     default:
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
         LOGE << errMsg;
         throw std::runtime_error(errMsg);
     }
