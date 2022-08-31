@@ -255,9 +255,9 @@ int Args::parseArguments(int argc, char* argv[])
                             input_op2_inf.dimz());
         return 1;
     }
-    if(!add && !subtract && !divide && !multiply && !max && !min)
+    if(!add && !subtract && !divide && !multiply && !max && !min && !inverseDivide)
     {
-        LOGE << "You must provide one of supported operations (add, subtract, divide, multiply)";
+        LOGE << "You must provide one of supported operations (add, subtract, divide, multiply, inverse-divide)";
     }
     return 0;
 }
