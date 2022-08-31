@@ -56,11 +56,11 @@ int main(int argc, char* argv[])
     {
         return -1; // Exited somehow wrong
     }
-    PRG.startLog();
+    PRG.startLog(true);
     io::DenFileInfo di(a.input_op1);
-    int dimx = di.getNumCols();
-    int dimy = di.getNumRows();
-    int dimz = di.getNumSlices();
+    int dimx = di.dimx();
+    int dimy = di.dimy();
+    int dimz = di.dimz();
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
     {

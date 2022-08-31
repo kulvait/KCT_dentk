@@ -145,7 +145,7 @@ int main(int argc, char* argv[])
     {
         return -1; // Exited somehow wrong
     }
-    PRG.startLog();
+    PRG.startLog(true);
     io::DenFileInfo di(ARG.input_op1);
     io::DenSupportedType dataType = di.getDataType();
     switch(dataType)
