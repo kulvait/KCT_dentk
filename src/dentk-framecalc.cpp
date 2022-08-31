@@ -38,6 +38,7 @@ struct Args
     bool add = false;
     bool subtract = false;
     bool divide = false;
+    bool inverseDivide = false;
     bool multiply = false;
     bool max = false;
     bool min = false;
@@ -47,8 +48,9 @@ template <typename T>
 void processFiles(Args a)
 {
     io::DenFileInfo di(a.input_op1);
-    int dimx = di.dimx();
-    int dimy = di.dimy();
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint32_t frameSize = dimx * dimy;
     std::shared_ptr<io::Frame2DReaderI<T>> aReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_op1);
     std::shared_ptr<io::Frame2DReaderI<T>> bReader
@@ -57,36 +59,72 @@ void processFiles(Args a)
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
             a.output, dimx, dimy,
             a.frames.size()); // I write regardless to frame specification to original position
-    std::shared_ptr<io::Frame2DI<T>> B = bReader->readFrame(0);
+    std::shared_ptr<io::BufferedFrame2D<T>> B
+        = std::dynamic_pointer_cast<io::BufferedFrame2D<T>>(bReader->readFrame(0));
+    T* B_array = B->getDataPointer();
+    T* A_array;
     io::BufferedFrame2D<T> x(T(0), dimx, dimy);
+    T* x_array = x.getDataPointer();
     for(int k = 0; k != a.frames.size(); k++)
     {
-        double val;
+        /*
         std::shared_ptr<io::Frame2DI<T>> A = aReader->readFrame(a.frames[k]);
-        for(int i = 0; i != dimx; i++)
+        double val;
+                for(int i = 0; i != dimx; i++)
+                {
+                    for(int j = 0; j != dimy; j++)
+                    {
+                        if(a.multiply)
+                        {
+                            val = A->get(i, j) * B->get(i, j);
+                        } else if(a.divide)
+                        {
+                            val = A->get(i, j) / B->get(i, j);
+                        } else if(a.inverseDivide)
+                        {
+                            val = B->get(i, j) / A->get(i, j);
+                        } else if(a.add)
+                        {
+                            val = A->get(i, j) + B->get(i, j);
+                        } else if(a.subtract)
+                        {
+                            val = A->get(i, j) - B->get(i, j);
+                        } else if(a.max)
+                        {
+                            val = std::max(A->get(i, j), B->get(i, j));
+                        } else if(a.min)
+                        {
+                            val = std::min(A->get(i, j), B->get(i, j));
+                        }
+                        x.set(T(val), i, j);
+                    }
+                }*/
+        std::shared_ptr<io::BufferedFrame2D<T>> A
+            = std::dynamic_pointer_cast<io::BufferedFrame2D<T>>(aReader->readFrame(a.frames[k]));
+        A_array = A->getDataPointer();
+        for(uint32_t IND = 0; IND != frameSize; IND++)
         {
-            for(int j = 0; j != dimy; j++)
+            if(a.multiply)
             {
-                if(a.multiply)
-                {
-                    val = A->get(i, j) * B->get(i, j);
-                } else if(a.divide)
-                {
-                    val = A->get(i, j) / B->get(i, j);
-                } else if(a.add)
-                {
-                    val = A->get(i, j) + B->get(i, j);
-                } else if(a.subtract)
-                {
-                    val = A->get(i, j) - B->get(i, j);
-                } else if(a.max)
-                {
-                    val = std::max(A->get(i, j), B->get(i, j));
-                } else if(a.min)
-                {
-                    val = std::min(A->get(i, j), B->get(i, j));
-                }
-                x.set(T(val), i, j);
+                x_array[IND] = A_array[IND] * B_array[IND];
+            } else if(a.divide)
+            {
+                x_array[IND] = A_array[IND] / B_array[IND];
+            } else if(a.inverseDivide)
+            {
+                x_array[IND] = B_array[IND] / A_array[IND];
+            } else if(a.add)
+            {
+                x_array[IND] = A_array[IND] + B_array[IND];
+            } else if(a.subtract)
+            {
+                x_array[IND] = A_array[IND] - B_array[IND];
+            } else if(a.max)
+            {
+                x_array[IND] = std::max(A_array[IND], B_array[IND]);
+            } else if(a.min)
+            {
+                x_array[IND] = std::min(A_array[IND], B_array[IND]);
             }
         }
         outputWritter->writeFrame(x, k);
@@ -151,6 +189,7 @@ int Args::parseArguments(int argc, char* argv[])
     op_clg->add_flag("--subtract", subtract, "op1 - op2");
     op_clg->add_flag("--multiply", multiply, "op1 * op2");
     op_clg->add_flag("--divide", divide, "op1 / op2");
+    op_clg->add_flag("--inverse-divide", inverseDivide, "op2 / op1");
     op_clg->add_flag("--max", max, "max(op1, op2)");
     op_clg->add_flag("--min", min, "min(op1, op2)");
     op_clg->require_option(1);

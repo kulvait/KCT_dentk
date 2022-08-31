@@ -49,6 +49,7 @@ public:
     bool sampleVariance = false;
     bool standardDeviation = false;
     bool sampleStandardDeviation = false;
+    bool mad = false;
     bool min = false;
     bool max = false;
     bool median = false;
@@ -273,7 +274,7 @@ std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
     {
         rowArrays[i] = new T[frameCount];
     }
-    for(int ind = 0; ind != 1 + ((frameSize-1) / arraysCount); ind++)
+    for(int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
     {
         int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
         for(int k = 0; k < frameCount; k++)
@@ -301,6 +302,70 @@ std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
         delete[] rowArrays[i];
     }
     delete[] rowArrays;
+    return F;
+}
+
+template <typename T>
+/**
+ * @brief Here for computation of medians is needed to fill an array with all the values, sort it
+ * and obtain its median. That is memory intensive for the whole dataset. But it would be I/O
+ * intensive for every frame element. So we decided to do I/O row wise.
+ *
+ * @param a
+ *
+ * @return
+ */
+std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
+{
+
+    io::DenFileInfo di(a.input_den);
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint32_t frameCount = a.frames.size();
+    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
+    std::shared_ptr<io::Frame2DI<T>> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    uint32_t frameSize = dimx * dimy;
+    uint32_t maxArrayNum = 2147483647 / frameCount;
+    uint32_t arraysCount = std::min(frameSize, maxArrayNum);
+    // First I compute means of frame
+    T* avg = new T[frameSize];
+    averageFrames(a, avg);
+    T** rowArrays = new T*[arraysCount];
+    for(int i = 0; i != arraysCount; i++)
+    {
+        rowArrays[i] = new T[frameCount];
+    }
+    for(int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
+    {
+        int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
+        for(int k = 0; k < frameCount; k++)
+        {
+            std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
+            for(int jnd = 0; jnd < maxjnd; jnd++)
+            {
+                // Medians of absolute
+                int flatindex = ind * arraysCount + jnd;
+                int xindex = flatindex % dimx;
+                int yindex = flatindex / dimx;
+                rowArrays[jnd][k] = std::abs(avg[flatindex] - A->get(xindex, yindex));
+            }
+        }
+        for(int jnd = 0; jnd < maxjnd; jnd++)
+        {
+            int flatindex = ind * arraysCount + jnd;
+            int xindex = flatindex % dimx;
+            int yindex = flatindex / dimx;
+            T median = getMedian(rowArrays[jnd], frameCount);
+            F->set(median, xindex, yindex);
+        }
+    }
+    for(int i = 0; i != arraysCount; i++)
+    {
+        delete[] rowArrays[i];
+    }
+    delete[] rowArrays;
+    delete[] avg;
     return F;
 }
 
@@ -391,6 +456,12 @@ void processFiles(Args a)
         outputWritter->writeFrame(*f, 0);
     }
 
+    if(a.mad)
+    {
+        std::shared_ptr<io::Frame2DI<T>> f = madFrames<T>(a);
+        outputWritter->writeFrame(*f, 0);
+    }
+
     // given angle attenuation is maximal
 }
 
@@ -467,6 +538,9 @@ void Args::defineArguments()
     registerOption("min", op_clg->add_flag("--min", min, "Min of the data aggregated by frame."));
     registerOption("median",
                    op_clg->add_flag("--median", median, "Median of the data aggregated by frame."));
+    registerOption("mad",
+                   op_clg->add_flag("--mad", mad,
+                                    "Median absolute deviation of the data aggregated by frame."));
     op_clg->require_option(1);
 }
 
