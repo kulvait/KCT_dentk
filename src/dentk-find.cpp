@@ -139,12 +139,12 @@ int main(int argc, char* argv[])
     PRG.startLog(true);
     io::DenFileInfo inputFileInfo(ARG.inputFile);
     io::DenSupportedType dataType = inputFileInfo.getDataType();
-    int dimx = inputFileInfo.dimx();
-    int dimy = inputFileInfo.dimy();
+    uint64_t dimx = inputFileInfo.dimx();
+    uint64_t dimy = inputFileInfo.dimy();
     uint64_t totalSize = dimx * dimy * ARG.frames.size();
     if(totalSize > std::numeric_limits<uint32_t>::max())
     {
-        LOGI << io::xprintf("The size of file %s is %d that is bigger than MAX_UINT32!",
+        LOGI << io::xprintf("The size of file %s is %lu that is bigger than MAX_UINT32!",
                             ARG.inputFile.c_str(), totalSize);
     }
     ctpl::thread_pool* threadpool = nullptr;
