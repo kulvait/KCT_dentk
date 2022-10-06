@@ -11,7 +11,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
@@ -44,7 +44,7 @@ public:
 };
 
 template <class T>
-void writeFrame(int id,
+void writeFrame(int ftpl_id,
                 uint32_t fromId,
                 std::shared_ptr<io::Frame2DReaderI<T>> denFrameReader,
                 uint32_t toId,
@@ -73,10 +73,10 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getDataType();
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    ctpl::thread_pool* threadpool = nullptr;
+    ftpl::thread_pool* threadpool = nullptr;
     if(ARG.threads != 0)
     {
-        threadpool = new ctpl::thread_pool(ARG.threads);
+        threadpool = new ftpl::thread_pool(ARG.threads);
     }
     switch(dataType)
     {

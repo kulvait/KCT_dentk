@@ -2,7 +2,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"

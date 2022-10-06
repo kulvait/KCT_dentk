@@ -11,7 +11,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
@@ -47,7 +47,7 @@ public:
     std::string input_matrices;
     std::string output_projections;
     std::string output_matrices;
-    uint16_t threads = 0;
+    uint32_t threads = 0;
     uint32_t left_cut = 0, bottom_cut = 0, right_cut = 0, top_cut = 0;
 };
 
@@ -58,8 +58,8 @@ void writeReducedFrame(int id,
                        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
                        std::shared_ptr<Args> a)
 {
-    uint16_t dimx_new = denFrameReader->dimx() - a->left_cut - a->right_cut;
-    uint16_t dimy_new = denFrameReader->dimy() - a->bottom_cut - a->top_cut;
+    uint32_t dimx_new = denFrameReader->dimx() - a->left_cut - a->right_cut;
+    uint32_t dimy_new = denFrameReader->dimy() - a->bottom_cut - a->top_cut;
     std::shared_ptr<io::Frame2DI<T>> origf = denFrameReader->readFrame(k);
     io::BufferedFrame2D<T> f(T(0), dimx_new, dimy_new);
     for(uint16_t i = a->left_cut; i != denFrameReader->dimx() - a->right_cut; i++)
@@ -89,15 +89,15 @@ template <typename T>
 void dentkTruncate(std::shared_ptr<Args> a)
 {
     io::DenFileInfo di(a->input_projections);
-    uint16_t dimx = di.dimx();
-    uint16_t dimy = di.dimy();
-    uint16_t dimz = di.dimz();
-    uint16_t dimx_new = dimx - a->left_cut - a->right_cut;
-    uint16_t dimy_new = dimy - a->bottom_cut - a->top_cut;
-    ctpl::thread_pool* threadpool = nullptr;
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint32_t dimz = di.dimz();
+    uint32_t dimx_new = dimx - a->left_cut - a->right_cut;
+    uint32_t dimy_new = dimy - a->bottom_cut - a->top_cut;
+    ftpl::thread_pool* threadpool = nullptr;
     if(a->threads != 0)
     {
-        threadpool = new ctpl::thread_pool(a->threads);
+        threadpool = new ftpl::thread_pool(a->threads);
     }
     std::shared_ptr<io::Frame2DReaderI<T>> denFrameReader
         = std::make_shared<io::DenFrame2DReader<T>>(a->input_projections);

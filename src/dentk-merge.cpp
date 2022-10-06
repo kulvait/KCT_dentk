@@ -11,7 +11,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
@@ -139,10 +139,10 @@ template <typename T>
 void mergeFiles(Args a)
 {
     std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders;
-    ctpl::thread_pool* threadpool = nullptr;
+    ftpl::thread_pool* threadpool = nullptr;
     if(a.threads > 0)
     {
-        threadpool = new ctpl::thread_pool(a.threads);
+        threadpool = new ftpl::thread_pool(a.threads);
     }
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter;
     LOGD << io::xprintf("Will merge file %s from specified files.", a.outputFile.c_str());

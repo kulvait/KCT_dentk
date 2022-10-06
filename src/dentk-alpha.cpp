@@ -2,7 +2,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
@@ -100,7 +100,7 @@ int Args::postParse()
  * @param f
  */
 template <typename T>
-void writeAlphaChannel(int id,
+void writeAlphaChannel(int ftpl_id,
                        int fromId,
                        std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader,
                        int toId,
@@ -150,10 +150,10 @@ int main(int argc, char* argv[])
         LOGI << io::xprintf("The size of file %s is %d that is bigger than MAX_UINT32!",
                             ARG.inputFile.c_str(), totalSize);
     }
-    ctpl::thread_pool* threadpool = nullptr;
+    ftpl::thread_pool* threadpool = nullptr;
     if(ARG.threads > 0)
     {
-        threadpool = new ctpl::thread_pool(ARG.threads);
+        threadpool = new ftpl::thread_pool(ARG.threads);
     }
     switch(dataType)
     {

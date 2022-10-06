@@ -51,8 +51,8 @@ add_definitions("-Dstrtk_no_tr1_or_boost")
 #CLI11 comand line parser library
 include_directories(${CMAKE_SOURCE_DIR}/submodules/CLI11/include)
 
-#Thread pool management lib ctpl from https://github.com/vit-vit/ctpl
-include_directories(${CMAKE_SOURCE_DIR}/submodules/ctpl)
+#Thread pool management
+include_directories(${CMAKE_SOURCE_DIR}/submodules/FTPL)
 
 #Intel MKL
 find_package(MKL)

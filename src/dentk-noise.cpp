@@ -16,7 +16,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 #include "mkl.h"
 
 // Internal libraries
@@ -241,10 +241,10 @@ void elementWiseNoise(Args a)
     inputReader = std::make_shared<io::DenFrame2DReader<T>>(a.inputFile);
     uint32_t dimx = inputReader->dimx();
     uint32_t dimy = inputReader->dimy();
-    ctpl::thread_pool* threadpool = nullptr;
+    ftpl::thread_pool* threadpool = nullptr;
     if(a.threads != 0)
     {
-        threadpool = new ctpl::thread_pool(a.threads);
+        threadpool = new ftpl::thread_pool(a.threads);
     }
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(a.outputFile, dimx, dimy,

@@ -7,12 +7,12 @@
 [submodule "submodules/CLI11"]
 	path = submodules/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
-[submodule "submodules/ctpl"]
-	path = submodules/ctpl
-	url = https://github.com/vit-vit/ctpl
 [submodule "submodules/plog"]
 	path = submodules/plog
 	url = https://github.com/SergiusTheBest/plog.git
 [submodule "submodules/matplotlib-cpp"]
 	path = submodules/matplotlib-cpp
 	url = https://github.com/lava/matplotlib-cpp
+[submodule "submodules/FTPL"]
+	path = submodules/FTPL
+	url = git@github.com:kulvait/FTPL.git

@@ -11,7 +11,7 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ctpl_stl.h" //Threadpool
+#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
@@ -188,7 +188,7 @@ void writeMeanFrame(int id,
 }
 
 template <typename T>
-void writeVarianceFrame(int id,
+void writeVarianceFrame(int ftpl_id,
                         int fromId,
                         std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
                         int toId,
@@ -210,7 +210,7 @@ void writeVarianceFrame(int id,
 
 template <typename T>
 void writeSampleStandardDeviationFrame(
-    int id,
+    int ftpl_id,
     int fromId,
     std::vector<std::shared_ptr<io::Frame2DReaderI<T>>> denSliceReaders,
     int toId,
@@ -243,12 +243,12 @@ void elementWiseStatistics(Args a)
     {
         denSliceReaders.push_back(std::make_shared<io::DenFrame2DReader<T>>(f));
     }
-    uint16_t dimx = denSliceReaders[0]->dimx();
-    uint16_t dimy = denSliceReaders[0]->dimy();
-    ctpl::thread_pool* threadpool = nullptr;
+    uint32_t dimx = denSliceReaders[0]->dimx();
+    uint32_t dimy = denSliceReaders[0]->dimy();
+    ftpl::thread_pool* threadpool = nullptr;
     if(a.threads != 0)
     {
-        threadpool = new ctpl::thread_pool(a.threads);
+        threadpool = new ftpl::thread_pool(a.threads);
     }
     LOGD << io::xprintf("From each file will output %d frames.", a.frames.size());
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
@@ -332,8 +332,7 @@ int main(int argc, char* argv[])
     default:
         std::string errMsg = io::xprintf("Unsupported data type %s.",
                                          io::DenSupportedTypeToString(dataType).c_str());
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+        KCTERR(errMsg);
     }
     LOGI << io::xprintf("END %s", argv[0]);
 }
