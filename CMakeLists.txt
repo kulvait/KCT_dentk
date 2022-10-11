@@ -269,6 +269,19 @@ target_link_libraries(dentk_svd ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(dentk_svd ${MKL_CORE_LIBRARY})
 install (TARGETS dentk_svd RUNTIME DESTINATION .)
 
+SET(DENTK_DIRECTSUM_SOURCES src/dentk-directsum.cpp)
+add_executable(dentk_directsum ${DENTK_DIRECTSUM_SOURCES})
+set_target_properties(
+    dentk_directsum
+    PROPERTIES 
+        OUTPUT_NAME "dentk-directsum"
+        SUFFIX ""
+)
+target_link_libraries(dentk_directsum ctiol)
+target_link_libraries(dentk_directsum ctmal)
+target_link_libraries(dentk_directsum ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_directsum RUNTIME DESTINATION .)
+
 SET(DENTK_SVDVNORMALIZE_SOURCES src/dentk-svdvnormalize.cpp)
 add_executable(dentk_svdvnormalize ${DENTK_SVDVNORMALIZE_SOURCES})
 set_target_properties(
