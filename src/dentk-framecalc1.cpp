@@ -30,7 +30,7 @@ using namespace KCT::util;
 
 // class declarations
 // class declarations
-class Args : public ArgumentsFramespec, public ArgumentsForce
+class Args : public ArgumentsForce, public ArgumentsFramespec
 {
     void defineArguments();
     int postParse();
@@ -39,8 +39,8 @@ class Args : public ArgumentsFramespec, public ArgumentsForce
 public:
     Args(int argc, char** argv, std::string prgName)
         : Arguments(argc, argv, prgName)
-        , ArgumentsFramespec(argc, argv, prgName)
-        , ArgumentsForce(argc, argv, prgName){};
+        , ArgumentsForce(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
     bool sum = false;

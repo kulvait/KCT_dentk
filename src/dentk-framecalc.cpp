@@ -16,25 +16,41 @@
 // Internal libraries
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
+#include "PROG/ArgumentsForce.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
+#include "ftpl.h"
 
 using namespace KCT;
+using namespace KCT::util;
 
 // class declarations
-struct Args
+class Args : public ArgumentsForce, public ArgumentsVerbose, public ArgumentsFramespec, public ArgumentsThreading
 {
-    int parseArguments(int argc, char* argv[]);
+    void defineArguments();
+    int postParse();
+    int preParse() { return 0; };
+
+public:
+    Args(int argc, char** argv, std::string prgName)
+        : Arguments(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName)
+        , ArgumentsVerbose(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName)
+        , ArgumentsThreading(argc, argv, prgName){};
     std::string input_op1 = "";
     std::string input_op2 = "";
     std::string output = "";
     std::string frameSpecs = "";
-    std::vector<int> frames;
     uint32_t dimx, dimy, dimz;
-    bool force = false;
+    uint64_t frameSize;
     bool add = false;
     bool subtract = false;
     bool divide = false;
@@ -44,147 +60,20 @@ struct Args
     bool min = false;
 };
 
-template <typename T>
-void processFiles(Args a)
+void Args::defineArguments()
 {
-    io::DenFileInfo di(a.input_op1);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
-    std::shared_ptr<io::Frame2DReaderI<T>> aReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_op1);
-    std::shared_ptr<io::Frame2DReaderI<T>> bReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_op2);
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
-            a.output, dimx, dimy,
-            a.frames.size()); // I write regardless to frame specification to original position
-    std::shared_ptr<io::BufferedFrame2D<T>> B
-        = std::dynamic_pointer_cast<io::BufferedFrame2D<T>>(bReader->readFrame(0));
-    T* B_array = B->getDataPointer();
-    T* A_array;
-    io::BufferedFrame2D<T> x(T(0), dimx, dimy);
-    T* x_array = x.getDataPointer();
-    for(int k = 0; k != a.frames.size(); k++)
-    {
-        /*
-        std::shared_ptr<io::Frame2DI<T>> A = aReader->readFrame(a.frames[k]);
-        double val;
-                for(int i = 0; i != dimx; i++)
-                {
-                    for(int j = 0; j != dimy; j++)
-                    {
-                        if(a.multiply)
-                        {
-                            val = A->get(i, j) * B->get(i, j);
-                        } else if(a.divide)
-                        {
-                            val = A->get(i, j) / B->get(i, j);
-                        } else if(a.inverseDivide)
-                        {
-                            val = B->get(i, j) / A->get(i, j);
-                        } else if(a.add)
-                        {
-                            val = A->get(i, j) + B->get(i, j);
-                        } else if(a.subtract)
-                        {
-                            val = A->get(i, j) - B->get(i, j);
-                        } else if(a.max)
-                        {
-                            val = std::max(A->get(i, j), B->get(i, j));
-                        } else if(a.min)
-                        {
-                            val = std::min(A->get(i, j), B->get(i, j));
-                        }
-                        x.set(T(val), i, j);
-                    }
-                }*/
-        std::shared_ptr<io::BufferedFrame2D<T>> A
-            = std::dynamic_pointer_cast<io::BufferedFrame2D<T>>(aReader->readFrame(a.frames[k]));
-        A_array = A->getDataPointer();
-        for(uint32_t IND = 0; IND != frameSize; IND++)
-        {
-            if(a.multiply)
-            {
-                x_array[IND] = A_array[IND] * B_array[IND];
-            } else if(a.divide)
-            {
-                x_array[IND] = A_array[IND] / B_array[IND];
-            } else if(a.inverseDivide)
-            {
-                x_array[IND] = B_array[IND] / A_array[IND];
-            } else if(a.add)
-            {
-                x_array[IND] = A_array[IND] + B_array[IND];
-            } else if(a.subtract)
-            {
-                x_array[IND] = A_array[IND] - B_array[IND];
-            } else if(a.max)
-            {
-                x_array[IND] = std::max(A_array[IND], B_array[IND]);
-            } else if(a.min)
-            {
-                x_array[IND] = std::min(A_array[IND], B_array[IND]);
-            }
-        }
-        outputWritter->writeFrame(x, k);
-    }
-}
-
-int main(int argc, char* argv[])
-{
-    using namespace KCT::util;
-    Program PRG(argc, argv);
-    // After init parsing arguments
-    Args ARG;
-    int parseResult = ARG.parseArguments(argc, argv);
-    if(parseResult > 0)
-    {
-        return 0; // Exited sucesfully, help message printed
-    } else if(parseResult != 0)
-    {
-        return -1; // Exited somehow wrong
-    }
-    PRG.startLog(true);
-    io::DenFileInfo di(ARG.input_op1);
-    io::DenSupportedType dataType = di.getDataType();
-    switch(dataType)
-    {
-    case io::DenSupportedType::UINT16: {
-        processFiles<uint16_t>(ARG);
-        break;
-    }
-    case io::DenSupportedType::FLOAT32: {
-        processFiles<float>(ARG);
-        break;
-    }
-    case io::DenSupportedType::FLOAT64: {
-        processFiles<double>(ARG);
-        break;
-    }
-    default: {
-        std::string errMsg = io::xprintf("Unsupported data type %s.",
-                                         io::DenSupportedTypeToString(dataType).c_str());
-        KCTERR(errMsg);
-    }
-    }
-    PRG.endLog();
-}
-
-int Args::parseArguments(int argc, char* argv[])
-{
-    CLI::App app{ "Frame-wise operation C_i = A_i op B  where the same operation is performed with "
-                  "every frame in A." };
-    app.add_option("input_op1", input_op1, "Component A in the equation C=A_i op B.")
+    cliApp->add_option("input_op1", input_op1, "Component A in the equation C=A_i op B.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("input_op2", input_op2, "Component B in the equation C=A_i op B.")
+    cliApp
+        ->add_option("input_op2", input_op2,
+                     "Component B in the equation C=A_i op B, only frame with the index 0 is used.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("output", output, "Component C in the equation C=A op B.")->required();
+    cliApp->add_option("output", output, "Component C in the equation C=A op B.")->required();
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
     CLI::Option_group* op_clg
-        = app.add_option_group("Operation", "Mathematical operation to perform.");
+        = cliApp->add_option_group("Operation", "Mathematical operation to perform.");
     op_clg->add_flag("--add", add, "op1 + op2");
     op_clg->add_flag("--subtract", subtract, "op1 - op2");
     op_clg->add_flag("--multiply", multiply, "op1 * op2");
@@ -193,29 +82,13 @@ int Args::parseArguments(int argc, char* argv[])
     op_clg->add_flag("--max", max, "max(op1, op2)");
     op_clg->add_flag("--min", min, "min(op1, op2)");
     op_clg->require_option(1);
-    app.add_flag("--force", force, "Overwrite output file if it exists.");
-    app.add_option("-f,--frames", frameSpecs,
-                   "Specify only particular frames to process. You can input range i.e. 0-20 or "
-                   "also individual coma separated frames i.e. 1,8,9. Order does matter. Accepts "
-                   "end literal that means total number of slices of the input.");
-    try
-    {
-        app.parse(argc, argv);
-        io::DenFileInfo inf(input_op1);
-        frames = util::processFramesSpecification(frameSpecs, inf.dimz());
-    } catch(const CLI::ParseError& e)
-    {
-        int exitcode = app.exit(e);
-        if(exitcode == 0) // Help message was printed
-        {
-            return 1;
-        } else
-        {
-            LOGE << "Parse error catched";
-            // Negative value should be returned
-            return -1;
-        }
-    }
+    addForceArgs();
+    addFramespecArgs();
+    addThreadingArgs();
+}
+
+int Args::postParse()
+{
     if(!force)
     {
         if(io::pathExists(output))
@@ -251,13 +124,150 @@ int Args::parseArguments(int argc, char* argv[])
     }
     if(input_op2_inf.dimz() != 1)
     {
-        LOGE << io::xprintf("Second operand %s shall have only one frame but has %d.",
-                            input_op2_inf.dimz());
-        return 1;
+        LOGW << io::xprintf("Second operand %s has %d frames but only the first will be used.",
+                            input_op2.c_str(), input_op2_inf.dimz());
     }
     if(!add && !subtract && !divide && !multiply && !max && !min && !inverseDivide)
     {
-        LOGE << "You must provide one of supported operations (add, subtract, divide, multiply, inverse-divide)";
+        LOGE << "You must provide one of supported operations (add, subtract, divide, multiply, "
+                "inverse-divide)";
+        return 1;
     }
+    dimx = input_op1_inf.dimx();
+    dimy = input_op1_inf.dimy();
+    dimz = input_op1_inf.dimz();
+    frameSize = (uint64_t)dimx * (uint64_t)dimy;
+    fillFramesVector(dimz);
     return 0;
+}
+
+template <typename T>
+void processFrame(int _FTPLID,
+                  Args ARG,
+                  uint32_t k_in,
+                  uint32_t k_out,
+                  std::shared_ptr<io::DenFrame2DReader<T>>& aReader,
+                  std::shared_ptr<io::BufferedFrame2D<T>>& B,
+                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+{
+    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(k_in);
+    io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
+    T* A_array = A->getDataPointer();
+    T* B_array = B->getDataPointer();
+    T* x_array = x.getDataPointer();
+    if(ARG.multiply)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::multiplies());
+    } else if(ARG.divide)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::divides());
+    } else if(ARG.inverseDivide)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
+                       [](T i, T j) { return j / i; });
+    } else if(ARG.add)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::plus());
+    } else if(ARG.subtract)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::minus());
+    } else if(ARG.max)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
+                       [](T i, T j) { return std::max(i, j); });
+    } else if(ARG.min)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
+                       [](T i, T j) { return std::min(i, j); });
+    }
+    outputWritter->writeBufferedFrame(x, k_out);
+    if(ARG.verbose)
+    {
+        if(k_in == k_out)
+        {
+            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->dimz());
+        } else
+        {
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->dimz());
+        }
+    }
+}
+
+template <typename T>
+void processFiles(Args ARG)
+{
+    ftpl::thread_pool* threadpool = nullptr;
+    if(ARG.threads > 0)
+    {
+        threadpool = new ftpl::thread_pool(ARG.threads);
+    }
+    std::shared_ptr<io::DenFrame2DReader<T>> aReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op1, ARG.threads);
+    io::DenFrame2DReader<T> bReader(ARG.input_op2);
+    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader.readBufferedFrame(0);
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
+        = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
+                                                          ARG.frames.size());
+    const int dummy_FTPLID = 0;
+    uint32_t k_in, k_out;
+    for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
+    {
+        k_in = ARG.frames[IND];
+        k_out = IND;
+        if(threadpool)
+        {
+            threadpool->push(processFrame<T>, ARG, k_in, k_out, aReader, B, outputWritter);
+        } else
+        {
+            processFrame<T>(dummy_FTPLID, ARG, k_in, k_out, aReader, B, outputWritter);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->stop(true);
+        delete threadpool;
+    }
+}
+
+int main(int argc, char* argv[])
+{
+    Program PRG(argc, argv);
+    // Argument parsing
+    const std::string prgInfo
+        = "Frame-wise operation C_i = A_i op B  where the same operation is performed with "
+          "every frame in A.";
+    Args ARG(argc, argv, prgInfo);
+    int parseResult = ARG.parse();
+    if(parseResult > 0)
+    {
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
+    }
+    PRG.startLog(true);
+    // After init parsing arguments
+    io::DenFileInfo di(ARG.input_op1);
+    io::DenSupportedType dataType = di.getDataType();
+    switch(dataType)
+    {
+    case io::DenSupportedType::UINT16: {
+        processFiles<uint16_t>(ARG);
+        break;
+    }
+    case io::DenSupportedType::FLOAT32: {
+        processFiles<float>(ARG);
+        break;
+    }
+    case io::DenSupportedType::FLOAT64: {
+        processFiles<double>(ARG);
+        break;
+    }
+    default: {
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
+    }
+    }
+    PRG.endLog();
 }

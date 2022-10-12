@@ -471,6 +471,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_calc ctiol)
+target_link_libraries(dentk_calc ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_calc RUNTIME DESTINATION .)
 
 SET(DENTK_CALC_SOURCES src/dentk-calc1.cpp)
@@ -482,6 +483,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_calc1 ctiol)
+target_link_libraries(dentk_calc1 ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_calc1 RUNTIME DESTINATION .)
 
 SET(DENTK_FRAMECALC1_SOURCES src/dentk-framecalc1.cpp)
@@ -504,6 +506,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_framecalc ctiol)
+target_link_libraries(dentk_framecalc ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_framecalc RUNTIME DESTINATION .)
 
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)

@@ -16,20 +16,24 @@
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/ArgumentsForce.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
+#include "ftpl.h"
 
 using namespace KCT;
 using namespace KCT::util;
 
 // class declarations
 // class declarations
-class Args : public ArgumentsFramespec, public ArgumentsForce
+class Args : public ArgumentsForce, public ArgumentsVerbose, public ArgumentsFramespec, public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -38,10 +42,14 @@ class Args : public ArgumentsFramespec, public ArgumentsForce
 public:
     Args(int argc, char** argv, std::string prgName)
         : Arguments(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName)
+        , ArgumentsVerbose(argc, argv, prgName)
         , ArgumentsFramespec(argc, argv, prgName)
-        , ArgumentsForce(argc, argv, prgName){};
+        , ArgumentsThreading(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
+    uint32_t dimx, dimy, dimz;
+    uint64_t frameSize;
     bool nanandinftozero = false;
     bool logarithm = false;
     bool exponentiation = false;
@@ -55,84 +63,204 @@ public:
     bool invert = false;
 };
 
-template <typename T>
-void processFiles(Args a)
+void Args::defineArguments()
 {
-    io::DenFileInfo di(a.input_den);
-    int dimx = di.dimx();
-    int dimy = di.dimy();
-    int dimz = di.dimz();
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
-            a.output_den, dimx, dimy,
-            dimz); // I write regardless to frame specification to original position
-    for(const int& k : a.frames)
+    cliApp->add_option("input_den", input_den, "Input file.")->check(CLI::ExistingFile)->required();
+    cliApp->add_option("output_den", output_den, "Output file.")->required();
+    addForceArgs();
+    addVerboseArgs();
+    addFramespecArgs();
+    addThreadingArgs();
+    CLI::Option_group* op_clg = cliApp->add_option_group(
+        "Operation", "Mathematical operation f to perform element wise to get OUTPUT=f(INPUT).");
+    registerOptionGroup("operation", op_clg);
+    registerOption("log", op_clg->add_flag("--log", logarithm, "Natural logarithm."));
+    registerOption("exp", op_clg->add_flag("--exp", exponentiation, "Exponentiation."));
+    registerOption("sqrt", op_clg->add_flag("--sqrt", squareroot, "Square root."));
+    registerOption("square", op_clg->add_flag("--square", square, "Square."));
+    registerOption("abs", op_clg->add_flag("--abs", absoluteValue, "Absolute value."));
+    registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
+    registerOption("nan-and-inf-to-zero",
+                   op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero,
+                                    "Convert NaN and Inf values to zero."));
+    registerOption(
+        "multiply",
+        op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));
+    registerOption("add", op_clg->add_option("--add", constantToAdd, "Add a constant."));
+    op_clg->require_option(1);
+}
+
+int handleFileExistence(std::string f, bool force, bool removeIfExist)
+{
+    std::string ERR;
+    if(io::pathExists(f))
     {
-        io::BufferedFrame2D<T> f(T(0), dimx, dimy);
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        for(int i = 0; i != dimx; i++)
+        if(force)
         {
-            for(int j = 0; j != dimy; j++)
+            if(removeIfExist)
             {
-                if(a.logarithm)
-                {
-                    f.set(std::log(A->get(i, j)), i, j);
-                }
-                if(a.exponentiation)
-                {
-                    f.set(std::exp(A->get(i, j)), i, j);
-                }
-                if(a.squareroot)
-                {
-                    f.set(std::sqrt(A->get(i, j)), i, j);
-                }
-                if(a.square)
-                {
-                    T val = A->get(i, j);
-                    val = val * val;
-                    f.set(val, i, j);
-                }
-                if(a.multiplyByConstant)
-                {
-                    f.set(T(A->get(i, j) * a.constantToMultiply), i, j);
-                }
-                if(a.addConstant)
-                {
-                    f.set(T(A->get(i, j) + a.constantToAdd), i, j);
-                }
-                if(a.absoluteValue)
-                {
+                LOGI << io::xprintf("Removing existing file %s", f.c_str());
+                std::remove(f.c_str());
+            }
+        } else
+        {
+            ERR = io::xprintf(
+                "Error: output file %s already exists, use --force to force overwrite.", f.c_str());
+            LOGE << ERR;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int Args::postParse()
+{
+    int e = handleFileExistence(output_den, force, force);
+    if(e != 0)
+    {
+        return e;
+    }
+    if(getRegisteredOption("multiply")->count() > 0)
+    {
+        multiplyByConstant = true;
+    }
+    if(getRegisteredOption("add")->count() > 0)
+    {
+        addConstant = true;
+    }
+    io::DenFileInfo inf(input_den);
+    dimx = inf.dimx();
+    dimy = inf.dimy();
+    dimz = inf.dimz();
+    frameSize = (uint64_t)dimx * (uint64_t)dimy;
+    fillFramesVector(dimz);
+    return 0;
+}
+
+template <typename T>
+using Transform = T (*)(const T&);
+
+template <typename T>
+void processFrame(int _FTPLID,
+                  Args ARG,
+                  uint32_t k_in,
+                  uint32_t k_out,
+                  std::shared_ptr<io::DenFrame2DReader<T>>& denReader,
+                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+{
+    io::BufferedFrame2D<T> f(T(0), ARG.dimx, ARG.dimy);
+    std::shared_ptr<io::BufferedFrame2D<T>> A = denReader->readBufferedFrame(k_in);
+    T* A_array = A->getDataPointer();
+    T* x_array = f.getDataPointer();
+    Transform<T> o = nullptr;
+    T constantToMultiply;
+    T constantToAdd;
+
+    if(ARG.logarithm)
+    {
+        o = [](const T& x) { return T(std::log(x)); };
+    }
+    if(ARG.exponentiation)
+    {
+        o = [](const T& x) { return T(std::exp(x)); };
+    }
+    if(ARG.squareroot)
+    {
+        o = [](const T& x) { return T(std::sqrt(x)); };
+    }
+    if(ARG.square)
+    {
+        o = [](const T& x) { return T(x * x); };
+    }
+    if(ARG.absoluteValue)
+    {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wabsolute-value"
-                    f.set(std::abs(A->get(i, j)), i, j);
+        o = [](const T& x) { return T(std::abs(x)); };
 #pragma GCC diagnostic pop
-                }
-                if(a.invert)
-                {
-                    f.set(1.0 / A->get(i, j), i, j);
-                }
-                if(a.nanandinftozero)
-                {
-                    T val = A->get(i, j);
-                    double val_double = (double)val;
-                    if(std::isnan(val_double))
-                    {
-                        f.set(T(0), i, j);
-                    } else if(std::isinf(val_double))
-                    {
-                        f.set(T(0), i, j);
-                    } else
-                    {
-                        f.set(val, i, j);
-                    }
-                }
-            }
-        }
-        outputWritter->writeFrame(f, k);
     }
-    // given angle attenuation is maximal
+    if(ARG.invert)
+    {
+        o = [](const T& x) { return T(T(1) / x); };
+    }
+    if(ARG.nanandinftozero)
+    {
+        o = [](const T& x) {
+            double val_double = (double)x;
+            if(std::isnan(val_double))
+            {
+                return T(0);
+            } else if(std::isinf(val_double))
+            {
+                return T(0);
+            } else
+            {
+                return x;
+            }
+        };
+    }
+    if(o != nullptr)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, x_array, o);
+    }
+    if(ARG.multiplyByConstant)
+    {
+        constantToMultiply = ARG.constantToMultiply;
+        std::transform(A_array, A_array + ARG.frameSize, x_array,
+                       [constantToMultiply](const T& x) { return T(constantToMultiply * x); });
+    }
+    if(ARG.addConstant)
+    {
+        constantToAdd = ARG.constantToAdd;
+        std::transform(A_array, A_array + ARG.frameSize, x_array,
+                       [constantToAdd](const T& x) { return T(constantToAdd * x); });
+    }
+    outputWritter->writeBufferedFrame(f, k_out);
+    if(ARG.verbose)
+    {
+        if(k_in == k_out)
+        {
+            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->dimz());
+        } else
+        {
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->dimz());
+        }
+    }
+}
+
+template <typename T>
+void processFiles(Args ARG)
+{
+    ftpl::thread_pool* threadpool = nullptr;
+    if(ARG.threads > 0)
+    {
+        threadpool = new ftpl::thread_pool(ARG.threads);
+    }
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_den, ARG.threads);
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
+        = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+            ARG.output_den, ARG.dimx, ARG.dimy,
+            ARG.frames.size()); // I write regardless to frame specification to original position
+    const int dummy_FTPLID = 0;
+    uint32_t k_in, k_out;
+    for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
+    {
+        k_in = ARG.frames[IND];
+        k_out = IND;
+        if(threadpool)
+        {
+            threadpool->push(processFrame<T>, ARG, k_in, k_out, denReader, outputWritter);
+        } else
+        {
+            processFrame<T>(dummy_FTPLID, ARG, k_in, k_out, denReader, outputWritter);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->stop(true);
+        delete threadpool;
+    }
 }
 
 int main(int argc, char* argv[])
@@ -173,53 +301,6 @@ int main(int argc, char* argv[])
         KCTERR(errMsg);
     }
     }
-    PRG.endLog();
+    PRG.endLog(true);
 }
 
-void Args::defineArguments()
-{
-    cliApp->add_option("input_den", input_den, "Input file.")->check(CLI::ExistingFile)->required();
-    cliApp->add_option("output_den", output_den, "Output file.")->required();
-    addForceArgs();
-    addFramespecArgs();
-    CLI::Option_group* op_clg = cliApp->add_option_group(
-        "Operation", "Mathematical operation f to perform element wise to get OUTPUT=f(INPUT).");
-    registerOptionGroup("operation", op_clg);
-    registerOption("log", op_clg->add_flag("--log", logarithm, "Natural logarithm."));
-    registerOption("exp", op_clg->add_flag("--exp", exponentiation, "Exponentiation."));
-    registerOption("sqrt", op_clg->add_flag("--sqrt", squareroot, "Square root."));
-    registerOption("square", op_clg->add_flag("--square", square, "Square."));
-    registerOption("abs", op_clg->add_flag("--abs", absoluteValue, "Absolute value."));
-    registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
-    registerOption("nan-and-inf-to-zero",
-                   op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero,
-                                    "Convert NaN and Inf values to zero."));
-    registerOption(
-        "multiply",
-        op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));
-    registerOption("add", op_clg->add_option("--add", constantToAdd, "Add a constant."));
-    op_clg->require_option(1);
-}
-
-int Args::postParse()
-{
-    if(!force)
-    {
-        if(io::pathExists(output_den))
-        {
-            LOGE << "Error: output file already exists, use --force to force overwrite.";
-            return 1;
-        }
-    }
-    if(getRegisteredOption("multiply")->count() > 0)
-    {
-        multiplyByConstant = true;
-    }
-    if(getRegisteredOption("add")->count() > 0)
-    {
-        addConstant = true;
-    }
-    io::DenFileInfo di(input_den);
-    fillFramesVector(di.dimz());
-    return 0;
-}

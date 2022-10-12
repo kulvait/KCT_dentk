@@ -7,6 +7,7 @@
 
 //#include "FittingExecutor.hpp"
 #include "AsyncFrame2DWritterI.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DCachedReader.hpp"
@@ -16,6 +17,7 @@
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
 #include "SVD/TikhonovInverse.hpp"
 #include "frameop.h"
 #include "ftpl.h"
@@ -34,7 +36,10 @@ using namespace KCT;
 using namespace KCT::util;
 
 // class declarations
-struct Args : public ArgumentsForce, public ArgumentsFramespec, public ArgumentsThreading
+class Args : public ArgumentsForce,
+             public ArgumentsVerbose,
+             public ArgumentsFramespec,
+             public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -44,6 +49,7 @@ public:
     Args(int argc, char** argv, std::string prgName)
         : Arguments(argc, argv, prgName)
         , ArgumentsForce(argc, argv, prgName)
+        , ArgumentsVerbose(argc, argv, prgName)
         , ArgumentsFramespec(argc, argv, prgName)
         , ArgumentsThreading(argc, argv, prgName){};
 
@@ -85,7 +91,9 @@ void Args::defineArguments()
     cliApp->add_option("--scalar-product-info", scalarProductInfo,
                        "If specified, writes scalar products with selected components of the basis "
                        "into the file.");
+    cliApp->add_flag("--verbose", verbose, "Increase program verbosity.");
     addForceArgs();
+    addVerboseArgs();
     addFramespecArgs();
     addThreadingArgs();
 }
@@ -176,14 +184,15 @@ void a_equals_a_plus_c_times_b(std::shared_ptr<io::BufferedFrame2D<T>> a,
 }
 
 template <typename T>
-void processFrame(int _FTPLID,
-                  Args ARG,
-                  uint32_t k,
-                  std::shared_ptr<io::DenFrame2DCachedReader<T>>& basisReader,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& imgReader,
-                  std::shared_ptr<io::AsyncFrame2DWritterI<T>>& orthogonalProjectionWritter,
-                  std::shared_ptr<io::AsyncFrame2DWritterI<T>>& orthogonalComplementWritter,
-                  std::shared_ptr<io::AsyncFrame2DWritterI<T>>& infoWritter)
+void processFrame(
+    int _FTPLID,
+    Args ARG,
+    uint32_t k,
+    std::shared_ptr<io::DenFrame2DCachedReader<T>>& basisReader,
+    std::shared_ptr<io::DenFrame2DReader<T>>& imgReader,
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& orthogonalProjectionWritter,
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& orthogonalComplementWritter,
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>>& infoWritter)
 {
     std::shared_ptr<io::BufferedFrame2D<T>> imgFrame = imgReader->readBufferedFrame(k);
     std::shared_ptr<io::BufferedFrame2D<T>> orthogonalProjectionFrame
@@ -201,11 +210,15 @@ void processFrame(int _FTPLID,
         a_equals_a_plus_c_times_b<T>(orthogonalProjectionFrame, v, product);
     }
     a_equals_a_plus_c_times_b<T>(orthogonalComplementFrame, orthogonalProjectionFrame, T(-1));
-    orthogonalProjectionWritter->writeFrame(*orthogonalProjectionFrame, k);
-    orthogonalComplementWritter->writeFrame(*orthogonalComplementFrame, k);
+    orthogonalProjectionWritter->writeBufferedFrame(*orthogonalProjectionFrame, k);
+    orthogonalComplementWritter->writeBufferedFrame(*orthogonalComplementFrame, k);
     if(infoWritter != nullptr)
     {
         infoWritter->writeFrame(*infoFrame, k);
+    }
+    if(ARG.verbose)
+    {
+        LOGI << io::xprintf("Processed frame %d of %d", k, ARG.dimz);
     }
 }
 
@@ -219,14 +232,11 @@ void processFiles(Args ARG)
     }
     std::shared_ptr<io::DenFrame2DCachedReader<T>> basisReader
         = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.inputBasis, 0, ARG.frames.size());
-    //= std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.inputBasis);
-    // std::shared_ptr<io::DenFrame2DReader<T>> basisReader
-    //    = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputBasis);
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> orthogonalProjectionWritter;
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> orthogonalComplementWritter;
-    orthogonalProjectionWritter = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> orthogonalProjectionWritter;
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> orthogonalComplementWritter;
+    orthogonalProjectionWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
         ARG.outputOrthogonalProjection, ARG.dimx, ARG.dimy, ARG.dimz);
-    orthogonalComplementWritter = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
+    orthogonalComplementWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
         ARG.outputOrthogonalComplement, ARG.dimx, ARG.dimy, ARG.dimz);
     std::shared_ptr<io::DenFrame2DReader<T>> imgReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputImages);
@@ -239,7 +249,11 @@ void processFiles(Args ARG)
     // This will set up the cache
     for(uint64_t ind = 0; ind != ARG.frames.size(); ind++)
     {
-        LOGD << io::xprintf("Reading frame %d from %d", ARG.frames[ind], ARG.basis_dimz);
+        if(ARG.verbose)
+        {
+            LOGI << io::xprintf("Reading %s frame %d from %d to the cache.", ARG.inputBasis.c_str(),
+                                ARG.frames[ind], ARG.basis_dimz);
+        }
         basisReader->readFrame(ARG.frames[ind]);
     }
     const int dummy_FTPLID = 0;
@@ -301,5 +315,5 @@ int main(int argc, char* argv[])
         KCTERR(errMsg);
     }
     }
-    PRG.endLog();
+    PRG.endLog(true);
 }
