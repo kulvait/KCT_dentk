@@ -78,7 +78,7 @@ int main(int argc, char* argv[])
     int dimy = di.dimy();
     int dimz = di.dimz();
     // int elementSize = di.elementByteSize();
-    io::DenSupportedType t = di.getDataType();
+    io::DenSupportedType t = di.getElementType();
     std::string elm = io::DenSupportedTypeToString(t);
     std::cout << io::xprintf(
         "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "

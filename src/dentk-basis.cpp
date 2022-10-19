@@ -180,7 +180,7 @@ int main(int argc, char* argv[])
     }
     io::DenFileInfo di(a.input_file);
     // int elementSize = di.elementByteSize();
-    io::DenSupportedType t = di.getDataType();
+    io::DenSupportedType t = di.getElementType();
     std::string elm = io::DenSupportedTypeToString(t);
     if(a.info)
     {

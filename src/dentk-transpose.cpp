@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
         }
     }
     io::DenFileInfo di(a.input_file);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     int i3 = di.getNumSlices();
     switch(dataType)
     {

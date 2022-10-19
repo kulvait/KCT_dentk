@@ -100,13 +100,13 @@ int Args::postParse()
     // Test if minuend and subtraend are of the same type and dimensions
     io::DenFileInfo input_op1_inf(input_op1);
     io::DenFileInfo input_op2_inf(input_op2);
-    if(input_op1_inf.getDataType() != input_op2_inf.getDataType())
+    if(input_op1_inf.getElementType() != input_op2_inf.getElementType())
     {
         LOGE << io::xprintf(
             "Type incompatibility while the file %s is of type %s and file %s has "
             "type %s.",
-            input_op1.c_str(), io::DenSupportedTypeToString(input_op1_inf.getDataType()).c_str(),
-            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getDataType()).c_str());
+            input_op1.c_str(), io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
+            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
         return 1;
     }
     if(input_op1_inf.dimx() != input_op2_inf.dimx() || input_op1_inf.dimy() != input_op2_inf.dimy())
@@ -116,9 +116,9 @@ int Args::postParse()
             "dimensions (x, y, z) = (%d, %d, %d).\nFile %s of the type %s has "
             "dimensions (x, y, z) = (%d, %d, %d).",
             input_op1.c_str(), input_op2.c_str(), input_op1.c_str(),
-            io::DenSupportedTypeToString(input_op1_inf.getDataType()).c_str(),
+            io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
             input_op1_inf.getNumCols(), input_op1_inf.getNumRows(), input_op1_inf.getNumSlices(),
-            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getDataType()).c_str(),
+            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str(),
             input_op2_inf.getNumCols(), input_op2_inf.getNumRows(), input_op2_inf.getNumSlices());
         return 1;
     }
@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
     PRG.startLog(true);
     // After init parsing arguments
     io::DenFileInfo di(ARG.input_op1);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::UINT16: {

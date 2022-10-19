@@ -301,7 +301,7 @@ int main(int argc, char* argv[])
     PRG.startLog(true);
     // Frames to process
     io::DenFileInfo inf(ARG.inputFile);
-    io::DenSupportedType dataType = inf.getDataType();
+    io::DenSupportedType dataType = inf.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::FLOAT32: {

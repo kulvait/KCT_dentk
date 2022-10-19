@@ -117,7 +117,7 @@ int Args::parseArguments(int argc, char* argv[])
         int dimy = inf.dimy();
         int dimz = inf.dimz();
         // int elementSize = di.elementByteSize();
-        io::DenSupportedType t = inf.getDataType();
+        io::DenSupportedType t = inf.getElementType();
         std::string elm = io::DenSupportedTypeToString(t);
         std::cout << io::xprintf(
             "The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "

@@ -55,7 +55,7 @@ int main(int argc, char* argv[])
         return -1; // Exited somehow wrong
     }
     io::DenFileInfo di(ARG.input_file);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::UINT16: {

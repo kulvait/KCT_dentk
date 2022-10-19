@@ -52,11 +52,13 @@ Comand line parser CLI11. It is licensed under 3 Clause BSD License.
 
 
 ## Dependencies
-Some of the tools, namely dentk-todicom and dentk-jpg use [ITK library](https://itk.org/Doxygen410/html/index.html). It is required to have this library in the system installed and headers reachable. On Debian it is sufficient to run
-
+Some of the tools, namely dentk-todicom and dentk-jpg use [ITK library](https://itk.org/Doxygen410/html/index.html). 
+In order to compile these tools it is recommended to have this library in the system installed and headers reachable. 
+On Debian it is sufficient to run
 ```
 apt-get install libinsighttoolkit4-dev
 ```
+
 # Tools included
 
 ## dentk-cat 
@@ -95,11 +97,11 @@ Converts DEN file into the DICOM format, requires ITK.
 ## dentk-jpg
 Creates jpg from particular slices of DEN file, requires ITK.
 
-## Licensing
+# License
 
 When there is no other licensing and/or copyright information in the source files of this project, the following apply for the source files in the directories include and src and for CMakeLists.txt file:
 
-Copyright (C) 2018-2021 Vojtěch Kulvait
+Copyright (C) 2018-2022 Vojtěch Kulvait
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

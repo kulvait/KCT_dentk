@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
     }
     PRG.startLog(true);
     io::DenFileInfo di(ARG.input_file);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
     ftpl::thread_pool* threadpool = nullptr;

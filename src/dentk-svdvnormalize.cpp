@@ -158,7 +158,7 @@ int main(int argc, char* argv[])
     }
     PRG.startLog(true);
     io::DenFileInfo di(ARG.inputMatrix);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::UINT16: {

@@ -64,7 +64,7 @@ int main(int argc, char* argv[])
     int dimx = di.getNumCols();
     int dimy = di.getNumRows();
     int dimz = di.getNumSlices();
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::FLOAT32: {

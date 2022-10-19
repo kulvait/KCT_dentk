@@ -81,7 +81,7 @@ int Args::postParse()
         LOGE << ERR;
         return 1;
     }
-    if(ix.getDataType() != iy.getDataType())
+    if(ix.getElementType() != iy.getElementType())
     {
         ERR = io::xprintf("Error: incompatible data types of files %s and %s.", inputFileX.c_str(),
                           inputFileY.c_str());
@@ -98,7 +98,7 @@ int Args::postParse()
             LOGE << ERR;
             return 1;
         }
-        if(ix.getDataType() != ia.getDataType())
+        if(ix.getElementType() != ia.getElementType())
         {
             ERR = io::xprintf("Error: incompatible data types of files %s and %s.",
                               inputFileX.c_str(), inputFileAlpha.c_str());
@@ -123,13 +123,13 @@ double getSumOfSquares(std::shared_ptr<io::DenFileInfo> X,
                        std::vector<int> frames,
                        std::shared_ptr<io::DenFileInfo> ALPHA)
 {
-    io::DenSupportedType dataType = X->getDataType();
+    io::DenSupportedType dataType = X->getElementType();
     uint64_t dim_x = X->dimx();
     uint64_t dim_y = X->dimy();
     uint64_t offset = X->getOffset();
     uint64_t totalSize = 0;
     uint64_t currentPosition;
-    uint32_t elementSize = X->elementByteSize();
+    uint32_t elementSize = X->getElementByteSize();
     double sum = 0.0;
     double valX;
     uint8_t* bufferX = new uint8_t[dim_x * dim_y * elementSize];
@@ -194,13 +194,13 @@ double getMeanOfOffsettedProducts(std::shared_ptr<io::DenFileInfo> X,
                                   std::vector<int> frames,
                                   std::shared_ptr<io::DenFileInfo> ALPHA)
 {
-    io::DenSupportedType dataType = X->getDataType();
+    io::DenSupportedType dataType = X->getElementType();
     uint64_t dim_x = X->dimx();
     uint64_t dim_y = X->dimy();
     uint64_t offset = X->getOffset();
     uint64_t totalSize = 0;
     uint64_t currentPosition;
-    uint32_t elementSize = X->elementByteSize();
+    uint32_t elementSize = X->getElementByteSize();
     double sum = 0.0;
     double valX, valY;
     uint8_t* bufferX = new uint8_t[dim_x * dim_y * elementSize];
@@ -257,13 +257,13 @@ double getMean(std::shared_ptr<io::DenFileInfo> X,
                std::vector<int> frames,
                std::shared_ptr<io::DenFileInfo> ALPHA)
 {
-    io::DenSupportedType dataType = X->getDataType();
+    io::DenSupportedType dataType = X->getElementType();
     uint64_t dim_x = X->dimx();
     uint64_t dim_y = X->dimy();
     uint64_t offset = X->getOffset();
     uint64_t totalSize = 0;
     uint64_t currentPosition;
-    uint32_t elementSize = X->elementByteSize();
+    uint32_t elementSize = X->getElementByteSize();
     double sum = 0.0;
     double val;
     uint8_t* buffer = new uint8_t[dim_x * dim_y * elementSize];
@@ -330,13 +330,13 @@ double getMeanSquareResiduum(std::shared_ptr<io::DenFileInfo> X,
                              std::vector<int> frames,
                              std::shared_ptr<io::DenFileInfo> ALPHA)
 {
-    io::DenSupportedType dataType = X->getDataType();
+    io::DenSupportedType dataType = X->getElementType();
     uint64_t dim_x = X->dimx();
     uint64_t dim_y = X->dimy();
     uint64_t offset = X->getOffset();
     uint64_t totalSize = 0;
     uint64_t currentPosition;
-    uint32_t elementSize = X->elementByteSize();
+    uint32_t elementSize = X->getElementByteSize();
     double sum = 0.0;
     double valX, valY, val;
     uint8_t* bufferX = new uint8_t[dim_x * dim_y * elementSize];
@@ -443,7 +443,7 @@ int main(int argc, char* argv[])
     }
     PRG.startLog(true);
     io::DenFileInfo di(ARG.inputFileX);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     switch(dataType)
     {
     case io::DenSupportedType::UINT16: {

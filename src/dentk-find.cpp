@@ -138,7 +138,7 @@ int main(int argc, char* argv[])
     }
     PRG.startLog(true);
     io::DenFileInfo inputFileInfo(ARG.inputFile);
-    io::DenSupportedType dataType = inputFileInfo.getDataType();
+    io::DenSupportedType dataType = inputFileInfo.getElementType();
     uint64_t dimx = inputFileInfo.dimx();
     uint64_t dimy = inputFileInfo.dimy();
     uint64_t totalSize = dimx * dimy * ARG.frames.size();

@@ -71,14 +71,14 @@ int Args::postParse()
     std::string err;
     // How many projection matrices is there in total
     io::DenFileInfo di(inputFile1);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     dimx = di.dimx();
     dimy = di.dimy();
     dimz = di.dimz();
     std::string f = inputFile2;
     {
         io::DenFileInfo df(f);
-        if(df.getDataType() != dataType)
+        if(df.getElementType() != dataType)
         {
             err = io::xprintf("File %s and %s are of different element types.", inputFile1.c_str(),
                               f.c_str());
@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
     // PRG.startLog(true);
     // Frames to process
     io::DenFileInfo inf(ARG.inputFile1);
-    io::DenSupportedType dataType = inf.getDataType();
+    io::DenSupportedType dataType = inf.getElementType();
     double cor;
     switch(dataType)
     {

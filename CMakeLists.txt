@@ -149,6 +149,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_info ctiol)
+target_link_libraries(dentk_info ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_info RUNTIME DESTINATION .)
 
 SET(DENTK_MATINFO_SOURCES src/dentk-matinfo.cpp)

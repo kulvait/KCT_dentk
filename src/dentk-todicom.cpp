@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
     //    LOGD << io::xprintf("Global min=%f, min=%f, global max=%f, max=%f", globalMinValue, min,
     //    globalMaxValue, max);
     io::DenFileInfo di(a.input_file);
-    io::DenSupportedType dataType = di.getDataType();
+    io::DenSupportedType dataType = di.getElementType();
     std::vector<int> framesToOutput = util::processFramesSpecification(a.frames, di.getNumSlices());
     switch(dataType)
     {

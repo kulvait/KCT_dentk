@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
     uint64_t dimz = di.dimz();
     uint64_t offset = di.getOffset();
     // int elementSize = di.elementByteSize();
-    io::DenSupportedType t = di.getDataType();
+    io::DenSupportedType t = di.getElementType();
     std::string elm = io::DenSupportedTypeToString(t);
     LOGI << io::xprintf("The file %s of type %s has dimensions (x,y,z)=(cols,rows,slices)=(%d, "
                         "%d, %d), each cell has x*y=%d pixels.\n",
