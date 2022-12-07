@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
     Program PRG(argc, argv);
     // Argument parsing
     Args ARG(argc, argv, "Create alpha channel or mask based on the DEN file.");
-    int parseResult = ARG.parse();
+    int parseResult = ARG.parse(false);
     if(parseResult > 0)
     {
         return 0; // Exited sucesfully, help message printed

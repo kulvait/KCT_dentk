@@ -21,9 +21,9 @@
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/ArgumentsForce.hpp"
-#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 #include "ftpl.h"
@@ -32,7 +32,10 @@ using namespace KCT;
 using namespace KCT::util;
 
 // class declarations
-class Args : public ArgumentsForce, public ArgumentsVerbose, public ArgumentsFramespec, public ArgumentsThreading
+class Args : public ArgumentsForce,
+             public ArgumentsVerbose,
+             public ArgumentsFramespec,
+             public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -79,7 +82,6 @@ void Args::defineArguments()
     op_clg->add_flag("--max", max, "max(op1, op2)");
     op_clg->add_flag("--min", min, "min(op1, op2)");
     op_clg->require_option(1);
-    cliApp->add_flag("--verbose", verbose, "Increase program verbosity.");
     addForceArgs();
     addVerboseArgs();
     addFramespecArgs();
@@ -101,11 +103,12 @@ int Args::postParse()
     io::DenFileInfo input_op2_inf(input_op2);
     if(input_op1_inf.getElementType() != input_op2_inf.getElementType())
     {
-        LOGE << io::xprintf(
-            "Type incompatibility while the file %s is of type %s and file %s has "
-            "type %s.",
-            input_op1.c_str(), io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
-            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
+        LOGE << io::xprintf("Type incompatibility while the file %s is of type %s and file %s has "
+                            "type %s.",
+                            input_op1.c_str(),
+                            io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
+                            input_op2.c_str(),
+                            io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
         return 1;
     }
     if(input_op1_inf.dimx() != input_op2_inf.dimx() || input_op1_inf.dimy() != input_op2_inf.dimy()
@@ -236,7 +239,7 @@ int main(int argc, char* argv[])
     // Argument parsing
     const std::string prgInfo = "Element-wise operation on two DEN files with the same dimensions.";
     Args ARG(argc, argv, prgInfo);
-    int parseResult = ARG.parse();
+    int parseResult = ARG.parse(false);
     if(parseResult > 0)
     {
         return 0; // Exited sucesfully, help message printed

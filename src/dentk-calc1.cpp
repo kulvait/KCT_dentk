@@ -90,29 +90,6 @@ void Args::defineArguments()
     op_clg->require_option(1);
 }
 
-int handleFileExistence(std::string f, bool force, bool removeIfExist)
-{
-    std::string ERR;
-    if(io::pathExists(f))
-    {
-        if(force)
-        {
-            if(removeIfExist)
-            {
-                LOGI << io::xprintf("Removing existing file %s", f.c_str());
-                std::remove(f.c_str());
-            }
-        } else
-        {
-            ERR = io::xprintf(
-                "Error: output file %s already exists, use --force to force overwrite.", f.c_str());
-            LOGE << ERR;
-            return 1;
-        }
-    }
-    return 0;
-}
-
 int Args::postParse()
 {
     int e = handleFileExistence(output_den, force, force);
@@ -270,7 +247,7 @@ int main(int argc, char* argv[])
     Args ARG(argc, argv,
              "Calculate an unary operation or transformation pointwise on the input file to "
              "produce output file.");
-    int parseResult = ARG.parse();
+    int parseResult = ARG.parse(false);
     if(parseResult > 0)
     {
         return 0; // Exited sucesfully, help message printed

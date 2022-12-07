@@ -510,6 +510,18 @@ target_link_libraries(dentk_framecalc ctiol)
 target_link_libraries(dentk_framecalc ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_framecalc RUNTIME DESTINATION .)
 
+SET(DENTK_FRAMENORMALIZE_SOURCES src/dentk-framenormalize.cpp)
+add_executable(dentk_framenormalize ${DENTK_FRAMENORMALIZE_SOURCES})
+set_target_properties(
+    dentk_framenormalize
+    PROPERTIES 
+        OUTPUT_NAME "dentk-framenormalize"
+        SUFFIX ""
+)
+target_link_libraries(dentk_framenormalize ctiol)
+target_link_libraries(dentk_framenormalize ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_framenormalize RUNTIME DESTINATION .)
+
 SET(DENTK_TOHU_SOURCES src/dentk-tohu.cpp)
 add_executable(dentk_tohu ${DENTK_TOHU_SOURCES})
 set_target_properties(

@@ -91,7 +91,6 @@ void Args::defineArguments()
     cliApp->add_option("--scalar-product-info", scalarProductInfo,
                        "If specified, writes scalar products with selected components of the basis "
                        "into the file.");
-    cliApp->add_flag("--verbose", verbose, "Increase program verbosity.");
     addForceArgs();
     addVerboseArgs();
     addFramespecArgs();
