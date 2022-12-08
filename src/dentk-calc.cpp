@@ -97,6 +97,8 @@ int Args::postParse()
             LOGE << "Error: output file already exists, use --force to force overwrite.";
             return 1;
         }
+    } else
+    {
     }
     // Test if minuend and subtraend are of the same type and dimensions
     io::DenFileInfo input_op1_inf(input_op1);
@@ -134,6 +136,17 @@ int Args::postParse()
     dimx = input_op1_inf.dimx();
     dimy = input_op1_inf.dimy();
     dimz = input_op1_inf.dimz();
+    if(io::pathExists(output))
+    {
+        io::DenFileInfo output_inf(output);
+        if(output_inf.dimx() != dimx || output_inf.dimy() != dimy || output_inf.dimz() != dimz)
+        {
+            LOGI << io::xprintf("Existing output file %s has incompatible dimensions and will be "
+                                 "romoved before dentk-calc calclulation.",
+                                 output.c_str());
+            std::remove(output.c_str());
+        }
+    }
     frameSize = (uint64_t)dimx * (uint64_t)dimy;
     fillFramesVector(dimz);
     return 0;
@@ -211,13 +224,15 @@ void processFiles(Args ARG)
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op2, ARG.threads);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
-                                                                  ARG.frames.size());
+                                                                  ARG.dimz);
     const int dummy_FTPLID = 0;
     uint32_t k_in, k_out;
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
         k_in = ARG.frames[IND];
         k_out = IND;
+        k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den BETA.den
+                      // BETA.den
         if(threadpool)
         {
             threadpool->push(processFrame<T>, ARG, k_in, k_out, aReader, bReader, outputWritter);
