@@ -16,7 +16,7 @@ set(BUILD_SHARED_LIBS False)
 find_package (Threads)
 
 #ITK ... for producing jpg
-find_package(ITK)
+find_package(ITK HINTS $ENV{HOME}/BIG/local/lib/cmake/ITK-5.4)
 IF(ITK_FOUND)
 #	message( "Including ${ITK_USE_FILE}")
 #	message( "Include ${ITK_INCLUDE_DIRS}")

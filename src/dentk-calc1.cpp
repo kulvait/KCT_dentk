@@ -22,9 +22,9 @@
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/ArgumentsForce.hpp"
-#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
 #include "ftpl.h"
 
@@ -33,7 +33,10 @@ using namespace KCT::util;
 
 // class declarations
 // class declarations
-class Args : public ArgumentsForce, public ArgumentsVerbose, public ArgumentsFramespec, public ArgumentsThreading
+class Args : public ArgumentsForce,
+             public ArgumentsVerbose,
+             public ArgumentsFramespec,
+             public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -190,7 +193,7 @@ void processFrame(int _FTPLID,
     {
         constantToAdd = ARG.constantToAdd;
         std::transform(A_array, A_array + ARG.frameSize, x_array,
-                       [constantToAdd](const T& x) { return T(constantToAdd * x); });
+                       [constantToAdd](const T& x) { return T(x + constantToAdd); });
     }
     outputWritter->writeBufferedFrame(f, k_out);
     if(ARG.verbose)

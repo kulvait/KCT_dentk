@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
     std::vector<int> framesToOutput = util::processFramesSpecification(a.frames, di.getNumSlices());
     switch(dataType)
     {
-    case io::DenSupportedType::uint16_t_:
+    case io::DenSupportedType::UINT16:
     {
         uint16_t globalMinValue = di.getMinVal<uint16_t>();
         uint16_t globalMaxValue = di.getMaxVal<uint16_t>();
@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::float_:
+    case io::DenSupportedType::FLOAT32:
     {
         float globalMinValue = di.getMinVal<float>();
         float globalMaxValue = di.getMaxVal<float>();
@@ -212,7 +212,7 @@ int main(int argc, char* argv[])
         }
         break;
     }
-    case io::DenSupportedType::double_:
+    case io::DenSupportedType::FLOAT64:
     {
         double globalMinValue = di.getMinVal<double>();
         double globalMaxValue = di.getMaxVal<double>();
@@ -278,9 +278,8 @@ int main(int argc, char* argv[])
     }
     default:
         std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType));
-        LOGE << errMsg;
-        throw std::runtime_error(errMsg);
+            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        KCTERR(errMsg);
     }
 }
 
