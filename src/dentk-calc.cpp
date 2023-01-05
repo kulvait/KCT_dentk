@@ -53,6 +53,7 @@ public:
     std::string output = "";
     uint32_t dimx, dimy, dimz;
     uint64_t frameSize;
+    bool outputFileExists = false;
     bool add = false;
     bool subtract = false;
     bool divide = false;
@@ -90,19 +91,18 @@ void Args::defineArguments()
 
 int Args::postParse()
 {
-    if(!force)
-    {
-        if(io::pathExists(output))
-        {
-            LOGE << "Error: output file already exists, use --force to force overwrite.";
-            return 1;
-        }
-    } else
-    {
-    }
-    // Test if minuend and subtraend are of the same type and dimensions
     io::DenFileInfo input_op1_inf(input_op1);
     io::DenFileInfo input_op2_inf(input_op2);
+    // If output exists, force is true and is compatible, leave it
+    int existFlag = handleFileExistence(output, force, input_op1);
+    if(existFlag == 1)
+    {
+        return 1;
+    } else if(existFlag == -1)
+    {
+        outputFileExists = true;
+    }
+    // Test if minuend and subtraend are of the same type and dimensions
     if(input_op1_inf.getElementType() != input_op2_inf.getElementType())
     {
         LOGE << io::xprintf("Type incompatibility while the file %s is of type %s and file %s has "
@@ -142,8 +142,8 @@ int Args::postParse()
         if(output_inf.dimx() != dimx || output_inf.dimy() != dimy || output_inf.dimz() != dimz)
         {
             LOGI << io::xprintf("Existing output file %s has incompatible dimensions and will be "
-                                 "romoved before dentk-calc calclulation.",
-                                 output.c_str());
+                                "romoved before dentk-calc calclulation.",
+                                output.c_str());
             std::remove(output.c_str());
         }
     }
@@ -222,17 +222,29 @@ void processFiles(Args ARG)
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op1, ARG.threads);
     std::shared_ptr<io::DenFrame2DReader<T>> bReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op2, ARG.threads);
-    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
-                                                                  ARG.dimz);
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter;
+    if(ARG.outputFileExists)
+    {
+        outputWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+            ARG.output, ARG.dimx, ARG.dimy, ARG.dimz);
+    } else
+    {
+        outputWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+            ARG.output, ARG.dimx, ARG.dimy, ARG.frames.size());
+    }
     const int dummy_FTPLID = 0;
     uint32_t k_in, k_out;
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
         k_in = ARG.frames[IND];
-        k_out = IND;
-        k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den BETA.den
-                      // BETA.den
+        if(ARG.outputFileExists)
+        {
+            k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
+                          // BETA.den BETA.den
+        } else
+        {
+            k_out = IND;
+        }
         if(threadpool)
         {
             threadpool->push(processFrame<T>, ARG, k_in, k_out, aReader, bReader, outputWritter);
