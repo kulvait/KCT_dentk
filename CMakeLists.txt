@@ -1,5 +1,23 @@
-cmake_minimum_required(VERSION 3.1)
-project(ImageRegistration)
+cmake_minimum_required(VERSION 3.19)
+project(dentk LANGUAGES CXX)
+#Conditionally enable CUDA
+#before cmake
+#module load cuda/11.3
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+	message(STATUS "CUDA compiler found")
+	enable_language(CUDA)
+else()
+	message(STATUS "No CUDA compiler found")
+endif()
+find_package(CUDAToolkit 11.4)
+#set(CUDAToolkit_ROOT "/software/cuda/cuda-11.4/include")
+#find_package(CUDAToolkit 11.4)
+#IF(CUDAToolkit_FOUND)
+#	set(CMAKE_CUDA_COMPILER "${CUDAToolkit_BIN_DIR}/nvcc")
+#	enable_language(CUDA)
+#ENDIF()
 
 set(CMAKE_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
 set(CMAKE_CXX_STANDARD 17)#Supported values are 98, 11 and 14.
@@ -19,7 +37,6 @@ find_package (Threads)
 find_package(ITK HINTS $ENV{HOME}/BIG/local/lib/cmake/ITK-5.4)
 IF(ITK_FOUND)
 #	message( "Including ${ITK_USE_FILE}")
-#	message( "Include ${ITK_INCLUDE_DIRS}")
 #	message( "Include ${ITK_LIBRARIES}")
 #	message( "Include ${ITK_INCLUDE_DIRS}")
 	SET(ITKBULLSEYE_INCLUDE_DIR "/usr/include/ITK-4.13/")
@@ -29,6 +46,7 @@ IF(ITK_FOUND)
 		include( ${ITK_USE_FILE} )
 	ENDIF()
 ENDIF()
+
 
 #Header directories for the project
 set(GLOBAL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
@@ -200,6 +218,37 @@ target_link_libraries(dentk_cat ctiol)
 target_link_libraries(dentk_cat ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_cat RUNTIME DESTINATION .)
 
+IF(TARGET CUDA::cufft)
+	include_directories(CUDAToolkit_INCLUDE_DIRS)
+
+	SET(DENTK_POISSON_CUDASOURCES cuda/poissonEquation.cu)
+	add_library(cuda_poisson_equation ${DENTK_POISSON_CUDASOURCES})
+#	target_compile_features(cuda_poisson_equation PUBLIC cxx_std_11)
+	set_target_properties(cuda_poisson_equation 
+		PROPERTIES
+				CUDA_SEPARABLE_COMPILATION ON
+				CUDA_ARCHITECTURES "70")
+
+	SET(DENTK_POISSON_SOURCES src/dentk-poisson.cpp)
+	add_executable(dentk_poisson ${DENTK_POISSON_SOURCES})
+	set_target_properties(
+		dentk_poisson 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-poisson"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES "70"
+	)
+	target_link_libraries(dentk_poisson ctiol)
+	target_link_libraries(dentk_poisson cuda_poisson_equation)
+	target_link_libraries(dentk_poisson ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_poisson CUDA::cudart)
+	target_link_libraries(dentk_poisson CUDA::cufft)
+	target_link_libraries(dentk_poisson CUDA::cuda_driver)
+	install (TARGETS dentk_poisson RUNTIME DESTINATION .)
+ELSE()
+	message("TARGET CUDA::cufftw unknown, will not compile dentk-poisson")
+ENDIF()
 
 IF(ITK_FOUND)
 	SET(DENTK_JPG_SOURCES src/dentk-jpg.cpp)
@@ -209,7 +258,7 @@ IF(ITK_FOUND)
 			PROPERTIES 
 			OUTPUT_NAME "dentk-jpg"
 			SUFFIX ""
-			)
+	)
 	target_link_libraries(dentk_jpg ctiol)
 	target_link_libraries(dentk_jpg ctiol_itk)
 	target_link_libraries(dentk_jpg ${ITK_LIBRARIES} )
