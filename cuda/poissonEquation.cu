@@ -57,3 +57,72 @@ void CUDAspectralDivision(dim3 threads,
            threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
     spectralDivision<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, pixel_size_y);
 }
+
+__global__ void
+dirichletExtension(float* __restrict__ f, float* __restrict__ fx, const int SIZEX, const int SIZEY)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    if((PX >= SIZEX) || (PY >= SIZEY))
+        return;
+    const int SIZEXEXT = 2 * SIZEX;
+    const int SIZEYEXT = 2 * SIZEY;
+    const int IDX = SIZEX * PY + PX;
+    float val = f[IDX];
+    fx[PY * SIZEXEXT + PX] = val;
+    fx[PY * SIZEXEXT + SIZEXEXT - PX - 1] = -val;
+    fx[(SIZEYEXT - PY - 1) * SIZEXEXT + PX] = -val;
+    fx[(SIZEYEXT - PY - 1) * SIZEXEXT + SIZEXEXT - PX - 1] = val;
+}
+
+void CUDADirichletExtension(
+    dim3 threads, dim3 blocks, void* GPU_f, void* GPU_extendedf, const int SIZEX, const int SIZEY)
+{
+    printf("CUDADirichletExtension threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
+           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
+    dirichletExtension<<<blocks, threads>>>((float*)GPU_f, (float*)GPU_extendedf, SIZEX, SIZEY);
+}
+
+__global__ void
+neumannExtension(float* __restrict__ f, float* __restrict__ fx, const int SIZEX, const int SIZEY)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    if((PX >= SIZEX) || (PY >= SIZEY))
+        return;
+    const int SIZEXEXT = 2 * SIZEX;
+    const int SIZEYEXT = 2 * SIZEY;
+    const int IDX = SIZEX * PY + PX;
+    float val = f[IDX];
+    fx[PY * SIZEXEXT + SIZEXEXT - PX - 1] = val;
+    fx[(SIZEYEXT - PY - 1) * SIZEXEXT + PX] = val;
+    fx[(SIZEYEXT - PY - 1) * SIZEXEXT + SIZEXEXT - PX - 1] = val;
+    fx[PY * SIZEXEXT + PX] = val;
+}
+
+void CUDANeumannExtension(
+    dim3 threads, dim3 blocks, void* GPU_f, void* GPU_extendedf, const int SIZEX, const int SIZEY)
+{
+    printf("CUDANeumannExtension threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
+           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
+    neumannExtension<<<blocks, threads>>>((float*)GPU_f, (float*)GPU_extendedf, SIZEX, SIZEY);
+}
+
+__global__ void
+functionRestriction(float* __restrict__ fx, float* __restrict__ f, const int SIZEX, const int SIZEY)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    if((PX >= SIZEX) || (PY >= SIZEY))
+        return;
+    const int SIZEXEXT = 2 * SIZEX;
+    f[SIZEX * PY + PX] = fx[SIZEXEXT * PY + PX];
+}
+
+void CUDAFunctionRestriction(
+    dim3 threads, dim3 blocks, void* GPU_extendedf, void* GPU_f, const int SIZEX, const int SIZEY)
+{
+    printf("CUDAFunctionRestriction threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
+           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
+    functionRestriction<<<blocks, threads>>>((float*)GPU_extendedf, (float*)GPU_f, SIZEX, SIZEY);
+}

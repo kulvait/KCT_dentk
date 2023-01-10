@@ -64,6 +64,9 @@ public:
     std::string frameSpecs = "";
     uint32_t dimx, dimy, dimz;
     uint64_t frameSize;
+    bool periodicBCs = false;
+    bool neumannBCs = false;
+    bool dirichletBCs = false;
     bool outputFileExists = false;
 };
 
@@ -75,6 +78,12 @@ void Args::defineArguments()
     cliApp->add_option("output_x", output_x, "Component x in the equation \\Delta x = f.")
         ->required();
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
+    CLI::Option_group* op_clg
+        = cliApp->add_option_group("Boundary conditions", "Boundary conditions to use.");
+    op_clg->add_flag("--bc-neumann", neumannBCs, "Neumann boundary conditions.");
+    op_clg->add_flag("--bc-dirichlet", dirichletBCs, "Dirichlet boundary conditions.");
+    op_clg->add_flag("--bc-periodic", periodicBCs, "Periodic boundary conditions.");
+    op_clg->require_option(1);
     addForceArgs();
     // Natural derivatives
     addPixelSizeArgs(1.0, 1.0);
@@ -186,15 +195,15 @@ void _assert_CUFFT(cufftResult inf, const char* file, int line, bool abort = tru
 #define EXECUFFT(INF) _assert_CUFFT(INF, __FILE__, __LINE__)
 
 template <typename T>
-void processFrame(int _FTPLID,
-                  Args ARG,
-                  io::DenSupportedType dataType,
-                  cufftHandle FFT,
-                  cufftHandle IFT,
-                  uint32_t k_in,
-                  uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
-                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+void processFramePeriodic(int _FTPLID,
+                          Args ARG,
+                          io::DenSupportedType dataType,
+                          cufftHandle FFT,
+                          cufftHandle IFT,
+                          uint32_t k_in,
+                          uint32_t k_out,
+                          std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
+                          std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
     std::shared_ptr<io::BufferedFrame2D<T>> F = fReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
@@ -213,7 +222,7 @@ void processFrame(int _FTPLID,
     EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
     EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
                        cudaMemcpyHostToDevice));
-    uint64_t complexBufferSize = (ARG.frameSize / 2) + 1;
+    uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
     EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
 
     if(dataType == io::DenSupportedType::FLOAT32)
@@ -258,6 +267,118 @@ void processFrame(int _FTPLID,
 }
 
 template <typename T>
+void processFrameNonperiodic(int _FTPLID,
+                             Args ARG,
+                             io::DenSupportedType dataType,
+                             cufftHandle FFT,
+                             cufftHandle IFT,
+                             uint32_t k_in,
+                             uint32_t k_out,
+                             std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
+                             std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+{
+    std::shared_ptr<io::BufferedFrame2D<T>> F = fReader->readBufferedFrame(k_in);
+    io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
+    T* F_array = F->getDataPointer();
+    T* x_array = x.getDataPointer();
+    uint32_t THREADSIZE1 = 32;
+    uint32_t THREADSIZE2 = 32;
+    dim3 threads(THREADSIZE1, THREADSIZE2);
+    // Do something here
+    // Try without distinguishing types
+    void* GPU_f;
+    void* GPU_extendedf;
+    void* GPU_FTf;
+    EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
+    EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
+                       cudaMemcpyHostToDevice));
+
+    EXECUDA(cudaMalloc((void**)&GPU_extendedf, ARG.frameSize * 4 * sizeof(T)));
+    if(ARG.dirichletBCs)
+    {
+        dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                    (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
+        CUDADirichletExtension(threads, blocks, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy);
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+    } else if(ARG.neumannBCs)
+    {
+        dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                    (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
+        CUDANeumannExtension(threads, blocks, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy);
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+    }
+    int xSizeHermitan = 2 * ARG.dimx / 2 + 1;
+    uint64_t complexBufferSize = 2 * ARG.dimy * xSizeHermitan;
+    EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
+
+    if(dataType == io::DenSupportedType::FLOAT32)
+    {
+        EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_extendedf, (cufftComplex*)GPU_FTf));
+        // Now divide by (k_x^2+k_y^2)
+        int xSizeHermitan = 2 * ARG.dimx / 2 + 1;
+        dim3 blocks((2 * ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                    (xSizeHermitan + THREADSIZE2 - 1) / THREADSIZE2);
+        CUDAspectralDivision(threads, blocks, GPU_FTf, 2 * ARG.dimx, 2 * ARG.dimy, ARG.pixelSizeX,
+                             ARG.pixelSizeY);
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+
+        EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_extendedf));
+
+    } else if(dataType == io::DenSupportedType::FLOAT64)
+    {
+        EXECUFFT(cufftExecD2Z(FFT, (cufftDoubleReal*)GPU_f, (cufftDoubleComplex*)GPU_FTf));
+        // Now divide by (k_x^2+k_y^2)
+        EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf, (cufftDoubleReal*)GPU_f));
+    }
+    dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
+    CUDAFunctionRestriction(threads, blocks, GPU_extendedf, GPU_f, ARG.dimx, ARG.dimy);
+    EXECUDA(cudaPeekAtLastError());
+    EXECUDA(cudaDeviceSynchronize());
+    EXECUDA(cudaMemcpy((void*)x_array, (void*)(GPU_f), ARG.frameSize * sizeof(T),
+                       cudaMemcpyDeviceToHost));
+    EXECUDA(cudaFree(GPU_f));
+    EXECUDA(cudaFree(GPU_extendedf));
+    EXECUDA(cudaFree(GPU_FTf));
+    outputWritter->writeBufferedFrame(x, k_out);
+    if(ARG.verbose)
+    {
+        if(k_in == k_out)
+        {
+            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->dimz());
+        } else
+        {
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->dimz());
+        }
+    }
+}
+
+template <typename T>
+void processFrame(int _FTPLID,
+                  Args ARG,
+                  io::DenSupportedType dataType,
+                  cufftHandle FFT,
+                  cufftHandle IFT,
+                  uint32_t k_in,
+                  uint32_t k_out,
+                  std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
+                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+{
+    if(ARG.periodicBCs)
+    {
+        processFramePeriodic<T>(_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, fReader,
+                                outputWritter);
+    } else
+    {
+        processFrameNonperiodic<T>(_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, fReader,
+                                   outputWritter);
+    }
+}
+
+template <typename T>
 void processFiles(Args ARG, io::DenSupportedType dataType)
 {
     ftpl::thread_pool* threadpool = nullptr;
@@ -281,9 +402,15 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     uint32_t k_in, k_out;
     cufftHandle FFT, IFT;
     // First is  slowest changing dimension, last is  slowest changing dimension
-    EXECUFFT(cufftPlan2d(&FFT, ARG.dimy, ARG.dimx, CUFFT_R2C));
-    EXECUFFT(cufftPlan2d(&IFT, ARG.dimy, ARG.dimx, CUFFT_C2R));
-
+    if(ARG.periodicBCs)
+    {
+        EXECUFFT(cufftPlan2d(&FFT, ARG.dimy, ARG.dimx, CUFFT_R2C));
+        EXECUFFT(cufftPlan2d(&IFT, ARG.dimy, ARG.dimx, CUFFT_C2R));
+    } else
+    {
+        EXECUFFT(cufftPlan2d(&FFT, 2 * ARG.dimy, 2 * ARG.dimx, CUFFT_R2C));
+        EXECUFFT(cufftPlan2d(&IFT, 2 * ARG.dimy, 2 * ARG.dimx, CUFFT_C2R));
+    }
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
         k_in = ARG.frames[IND];
