@@ -1,7 +1,6 @@
 // Logging
 #include "PLOG/PlogSetup.h"
 
-#define PI 3.14159265358979323846
 // External libraries
 #include <algorithm>
 #include <cmath>
