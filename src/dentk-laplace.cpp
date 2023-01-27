@@ -233,7 +233,7 @@ void processFramePeriodic(int _FTPLID,
                             cufftComplex *GPU_FTf;*/
         EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
         // Now divide by (k_x^2+k_y^2)
-        CUDAspectralDivision(threads, blocks, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
+        CUDAspectralMultiplication(threads, blocks, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
                              ARG.pixelSizeY);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
@@ -320,7 +320,7 @@ void processFrameNonperiodic(int _FTPLID,
         int xSizeHermitan = 2 * ARG.dimx / 2 + 1;
         dim3 blocks((2 * ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
                     (xSizeHermitan + THREADSIZE2 - 1) / THREADSIZE2);
-        CUDAspectralDivision(threads, blocks, GPU_FTf, 2 * ARG.dimx, 2 * ARG.dimy, ARG.pixelSizeX,
+        CUDAspectralMultiplication(threads, blocks, GPU_FTf, 2 * ARG.dimx, 2 * ARG.dimy, ARG.pixelSizeX,
                              ARG.pixelSizeY);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
@@ -445,7 +445,7 @@ int main(int argc, char* argv[])
     Program PRG(argc, argv);
     // Argument parsing
     const std::string prgInfo
-        = "Solve Poisson's equation \\Delta x = f using FFT frame-wise with CUDA.";
+        = "Compute 2D Laplace's operator \\Delta f using spectral method frame-wise with CUDA.";
     Args ARG(argc, argv, prgInfo);
     int parseResult = ARG.parse();
     if(parseResult > 0)

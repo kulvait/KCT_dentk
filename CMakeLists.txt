@@ -221,10 +221,10 @@ install (TARGETS dentk_cat RUNTIME DESTINATION .)
 IF(TARGET CUDA::cufft)
 	include_directories(CUDAToolkit_INCLUDE_DIRS)
 
-	SET(DENTK_POISSON_CUDASOURCES cuda/poissonEquation.cu)
-	add_library(cuda_poisson_equation ${DENTK_POISSON_CUDASOURCES})
+	SET(CUDA_SPECTRAL_SOURCES cuda/spectralMethod.cu)
+	add_library(cuda_spectral_method ${CUDA_SPECTRAL_SOURCES})
 #	target_compile_features(cuda_poisson_equation PUBLIC cxx_std_11)
-	set_target_properties(cuda_poisson_equation 
+	set_target_properties(cuda_spectral_method 
 		PROPERTIES
 				CUDA_SEPARABLE_COMPILATION ON
 				CUDA_ARCHITECTURES "70")
@@ -240,14 +240,34 @@ IF(TARGET CUDA::cufft)
 			CUDA_ARCHITECTURES "70"
 	)
 	target_link_libraries(dentk_poisson ctiol)
-	target_link_libraries(dentk_poisson cuda_poisson_equation)
+	target_link_libraries(dentk_poisson cuda_spectral_method)
 	target_link_libraries(dentk_poisson ${CMAKE_THREAD_LIBS_INIT})
 	target_link_libraries(dentk_poisson CUDA::cudart)
 	target_link_libraries(dentk_poisson CUDA::cufft)
 	target_link_libraries(dentk_poisson CUDA::cuda_driver)
 	install (TARGETS dentk_poisson RUNTIME DESTINATION .)
+
+
+	SET(DENTK_LAPLACE_SOURCES src/dentk-laplace.cpp)
+	add_executable(dentk_laplace ${DENTK_LAPLACE_SOURCES})
+	set_target_properties(
+		dentk_laplace 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-laplace"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES "70"
+	)
+	target_link_libraries(dentk_laplace ctiol)
+	target_link_libraries(dentk_laplace cuda_spectral_method)
+	target_link_libraries(dentk_laplace ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_laplace CUDA::cudart)
+	target_link_libraries(dentk_laplace CUDA::cufft)
+	target_link_libraries(dentk_laplace CUDA::cuda_driver)
+	install (TARGETS dentk_laplace RUNTIME DESTINATION .)
+
 ELSE()
-	message("TARGET CUDA::cufftw unknown, will not compile dentk-poisson")
+	message("TARGET CUDA::cufftw unknown, will not compile dentk-poisson and dentk-laplace")
 ENDIF()
 
 IF(ITK_FOUND)
