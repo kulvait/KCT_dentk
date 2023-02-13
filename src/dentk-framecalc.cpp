@@ -15,15 +15,15 @@
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/ArgumentsForce.hpp"
-#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
 #include "ftpl.h"
@@ -32,7 +32,10 @@ using namespace KCT;
 using namespace KCT::util;
 
 // class declarations
-class Args : public ArgumentsForce, public ArgumentsVerbose, public ArgumentsFramespec, public ArgumentsThreading
+class Args : public ArgumentsForce,
+             public ArgumentsVerbose,
+             public ArgumentsFramespec,
+             public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -53,8 +56,9 @@ public:
     uint64_t frameSize;
     bool add = false;
     bool subtract = false;
+    bool flippedSubtract = false;
     bool divide = false;
-    bool inverseDivide = false;
+    bool flippedDivide = false;
     bool multiply = false;
     bool max = false;
     bool min = false;
@@ -76,9 +80,10 @@ void Args::defineArguments()
         = cliApp->add_option_group("Operation", "Mathematical operation to perform.");
     op_clg->add_flag("--add", add, "op1 + op2");
     op_clg->add_flag("--subtract", subtract, "op1 - op2");
+    op_clg->add_flag("--flipped-subtract", flippedSubtract, "op2 - op1");
     op_clg->add_flag("--multiply", multiply, "op1 * op2");
     op_clg->add_flag("--divide", divide, "op1 / op2");
-    op_clg->add_flag("--inverse-divide", inverseDivide, "op2 / op1");
+    op_clg->add_flag("--flipped-divide", flippedDivide, "op2 / op1");
     op_clg->add_flag("--max", max, "max(op1, op2)");
     op_clg->add_flag("--min", min, "min(op1, op2)");
     op_clg->require_option(1);
@@ -102,11 +107,12 @@ int Args::postParse()
     io::DenFileInfo input_op2_inf(input_op2);
     if(input_op1_inf.getElementType() != input_op2_inf.getElementType())
     {
-        LOGE << io::xprintf(
-            "Type incompatibility while the file %s is of type %s and file %s has "
-            "type %s.",
-            input_op1.c_str(), io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
-            input_op2.c_str(), io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
+        LOGE << io::xprintf("Type incompatibility while the file %s is of type %s and file %s has "
+                            "type %s.",
+                            input_op1.c_str(),
+                            io::DenSupportedTypeToString(input_op1_inf.getElementType()).c_str(),
+                            input_op2.c_str(),
+                            io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
         return 1;
     }
     if(input_op1_inf.dimx() != input_op2_inf.dimx() || input_op1_inf.dimy() != input_op2_inf.dimy())
@@ -127,10 +133,10 @@ int Args::postParse()
         LOGW << io::xprintf("Second operand %s has %d frames but only the first will be used.",
                             input_op2.c_str(), input_op2_inf.dimz());
     }
-    if(!add && !subtract && !divide && !multiply && !max && !min && !inverseDivide)
+    if(!add && !subtract && !divide && !multiply && !max && !min && !flippedDivide && !flippedSubtract)
     {
         LOGE << "You must provide one of supported operations (add, subtract, divide, multiply, "
-                "inverse-divide)";
+                "flipped-divide, flipped-subtract)";
         return 1;
     }
     dimx = input_op1_inf.dimx();
@@ -161,7 +167,7 @@ void processFrame(int _FTPLID,
     } else if(ARG.divide)
     {
         std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::divides());
-    } else if(ARG.inverseDivide)
+    } else if(ARG.flippedDivide)
     {
         std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
                        [](T i, T j) { return j / i; });
@@ -171,6 +177,10 @@ void processFrame(int _FTPLID,
     } else if(ARG.subtract)
     {
         std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::minus());
+    } else if(ARG.flippedSubtract)
+    {
+        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
+                       [](T i, T j) { return j - i; });
     } else if(ARG.max)
     {
         std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
@@ -207,7 +217,7 @@ void processFiles(Args ARG)
     std::shared_ptr<io::BufferedFrame2D<T>> B = bReader.readBufferedFrame(0);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
-                                                          ARG.frames.size());
+                                                                  ARG.frames.size());
     const int dummy_FTPLID = 0;
     uint32_t k_in, k_out;
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
