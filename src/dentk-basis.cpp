@@ -1,4 +1,3 @@
-#define DEBUG
 // Logging
 #include "PLOG/PlogSetup.h"
 

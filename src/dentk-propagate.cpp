@@ -91,7 +91,7 @@ void Args::defineArguments()
                      "Componenent I(x,y,propagation_distance) in E = I e^{i \\Phi}.")
         ->required();
     cliApp
-        ->add_option("output_phase", output_intensity,
+        ->add_option("output_phase", output_phase,
                      "Component \\Phi(x,y,propagation_distance) in E = I e^{i \\Phi}.")
         ->required();
     cliApp->add_option(
@@ -425,6 +425,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     {
         outputIntensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
             ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.frames.size());
+
         outputPhaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
             ARG.output_phase, ARG.dimx, ARG.dimy, ARG.frames.size());
     }
