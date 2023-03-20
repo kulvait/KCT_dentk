@@ -265,6 +265,32 @@ IF(TARGET CUDA::cufft)
 	target_link_libraries(dentk_laplace CUDA::cufft)
 	target_link_libraries(dentk_laplace CUDA::cuda_driver)
 	install (TARGETS dentk_laplace RUNTIME DESTINATION .)
+	
+	SET(CUDA_DIFFRACTION_SOURCES cuda/diffractionPhysics.cu)
+	add_library(cuda_diffraction_physics ${CUDA_DIFFRACTION_SOURCES})
+#	target_compile_features(cuda_poisson_equation PUBLIC cxx_std_11)
+	set_target_properties(cuda_diffraction_physics 
+		PROPERTIES
+				CUDA_SEPARABLE_COMPILATION ON
+				CUDA_ARCHITECTURES "70")
+	
+	SET(DENTK_PROPAGATE_SOURCES src/dentk-propagate.cpp)
+	add_executable(dentk_propagate ${DENTK_PROPAGATE_SOURCES})
+	set_target_properties(
+		dentk_propagate 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-propagate"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES "70"
+	)
+	target_link_libraries(dentk_propagate ctiol)
+	target_link_libraries(dentk_propagate cuda_diffraction_physics)
+	target_link_libraries(dentk_propagate ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_propagate CUDA::cudart)
+	target_link_libraries(dentk_propagate CUDA::cufft)
+	target_link_libraries(dentk_propagate CUDA::cuda_driver)
+	install (TARGETS dentk_propagate RUNTIME DESTINATION .)
 
 ELSE()
 	message("TARGET CUDA::cufftw unknown, will not compile dentk-poisson and dentk-laplace")
