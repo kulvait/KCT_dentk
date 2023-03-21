@@ -319,12 +319,13 @@ void processFrameFloat(int _FTPLID,
     {
         CUDAspectralMultiplicationFresnel(threads, blocks, GPU_FTenvelope, ARG.lambda,
                                           ARG.propagationDistance, dimx_padded, dimy_padded,
-                                          ARG.pixelSizeX, ARG.pixelSizeY);
+                                          ARG.pixelSizeX*10e-4, ARG.pixelSizeY*10e-4);
+
     } else if(ARG.propagatorRayleigh)
     {
         CUDAspectralMultiplicationRayleigh(threads, blocks, GPU_FTenvelope, ARG.lambda,
                                            ARG.propagationDistance, dimx_padded, dimy_padded,
-                                           ARG.pixelSizeX, ARG.pixelSizeY);
+                                           ARG.pixelSizeX*10e-4, ARG.pixelSizeY*10e-4);
     } else
     {
         KCTERR("No propagator specified");
@@ -425,7 +426,6 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     {
         outputIntensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
             ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.frames.size());
-
         outputPhaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
             ARG.output_phase, ARG.dimx, ARG.dimy, ARG.frames.size());
     }

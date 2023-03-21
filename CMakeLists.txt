@@ -28,6 +28,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAG} -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -DDEBUG")
 message("Current value of flags is ${CMAKE_CXX_FLAGS} and debug is ${CMAKE_CXX_FLAGS_DEBUG} and release is ${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_BUILD_TYPE Debug)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+	set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -g -G cuda/diffractionPhysics.cu -G cuda/spectralMethod.cu")
+endif()
+message("Current value of CUDA_NVCC_FLAGS is ${CUDA_NVCC_FLAGS}")
+
 
 set(BUILD_SHARED_LIBS False)
 

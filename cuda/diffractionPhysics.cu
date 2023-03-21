@@ -60,7 +60,8 @@ __global__ void envelopeDecomposition(float* __restrict__ GPU_intensity,
                                       const int dimx,
                                       const int dimy,
                                       const int dimx_padded,
-                                      const int dimy_padded)
+                                      const int dimy_padded,
+                                      const float normalizationFactor)
 {
     const int PX = threadIdx.y + blockIdx.y * blockDim.y;
     const int PY = threadIdx.x + blockIdx.x * blockDim.x;
@@ -72,6 +73,8 @@ __global__ void envelopeDecomposition(float* __restrict__ GPU_intensity,
         IDX = dimx * PY + PX;
         IDX_padded = dimx_padded * PY + PX;
         v = GPU_envelope[IDX_padded];
+        v.x *= normalizationFactor;
+        v.y *= normalizationFactor;
         intensity = v.x * v.x + v.y * v.y;
         phase = atan2(v.y, v.x);
         GPU_intensity[IDX] = intensity;
@@ -91,9 +94,11 @@ void CUDAenvelopeDecomposition(dim3 threads,
 {
     printf("CUDAenvelopeDecomposition threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
            threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, dimx, dimy);
+    float normalizationFactor = 1.0f / ((float)dimx_padded * (float)dimy_padded);
+    //    normalizationFactor = 1.0f;
     envelopeDecomposition<<<blocks, threads>>>((float*)GPU_intensity, (float*)GPU_phase,
                                                (float2*)GPU_envelope, dimx, dimy, dimx_padded,
-                                               dimy_padded);
+                                               dimy_padded, normalizationFactor);
 }
 
 __global__ void spectralMultiplicationFresnel(float2* __restrict__ GPU_FTenvelope,
@@ -113,17 +118,18 @@ __global__ void spectralMultiplicationFresnel(float2* __restrict__ GPU_FTenvelop
         float kx, ky;
         float detectorSizeX, detectorSizeY;
         float exponentPrefactor, exponentPhase, exponent;
+        float2 kernelMultiplier;
         v_in = GPU_FTenvelope[IDX];
         detectorSizeX = dimx * pixel_size_x;
         detectorSizeY = dimy * pixel_size_y;
-        if(PX <= dimy / 2)
+        if(PX <= dimx / 2)
         {
             kx = PX;
         } else
         {
             kx = PX - dimx;
         }
-        if(PY <= dimx / 2)
+        if(PY <= dimy / 2)
         {
             ky = PY;
         } else
@@ -135,8 +141,10 @@ __global__ void spectralMultiplicationFresnel(float2* __restrict__ GPU_FTenvelop
         exponentPhase = kx * kx + ky * ky;
         exponentPrefactor = -lambda * PI * propagationDistance;
         exponent = exponentPrefactor * exponentPhase;
-        v_out.x = v_in.x * cosf(exponent);
-        v_out.y = v_in.y * sinf(exponent);
+        kernelMultiplier.x = cosf(exponent);
+        kernelMultiplier.y = sinf(exponent);
+        v_out.x = (v_in.x * kernelMultiplier.x - v_in.y * kernelMultiplier.y);
+        v_out.y = (v_in.x * kernelMultiplier.y + v_in.y * kernelMultiplier.x);
         GPU_FTenvelope[IDX] = v_out;
     }
 }
@@ -151,6 +159,7 @@ void CUDAspectralMultiplicationFresnel(dim3 threads,
                                        const float pixel_size_x,
                                        const float pixel_size_y)
 {
+    printf("pixel_size_x=%f pixel_size_y=%f\n", pixel_size_x, pixel_size_y);
     spectralMultiplicationFresnel<<<blocks, threads>>>((float2*)GPU_FTenvelope, lambda,
                                                        propagationDistance, dimx_padded,
                                                        dimy_padded, pixel_size_x, pixel_size_y);
@@ -176,16 +185,17 @@ __global__ void spectralMultiplicationRayleigh(float2* __restrict__ GPU_FTenvelo
         float detectorSizeX, detectorSizeY;
         float phaseLambdaBall;
         float exponentPrefactor, exponentPostfactor, exponent;
+        float2 kernelMultiplier;
         detectorSizeX = dimx * pixel_size_x;
         detectorSizeY = dimy * pixel_size_y;
-        if(PX <= dimy / 2)
+        if(PX <= dimx / 2)
         {
             kx = PX;
         } else
         {
             kx = PX - dimx;
         }
-        if(PY <= dimx / 2)
+        if(PY <= dimy / 2)
         {
             ky = PY;
         } else
@@ -208,8 +218,10 @@ __global__ void spectralMultiplicationRayleigh(float2* __restrict__ GPU_FTenvelo
             exponentPrefactor = 2 * PI * propagationDistance / lambda;
             exponent = exponentPrefactor
                 * (exponentPostfactor - 1); // To get a wave envelope without e^ikz
-            v_out.x = v_in.x * cosf(exponent);
-            v_out.y = v_in.y * sinf(exponent);
+            kernelMultiplier.x = cosf(exponent);
+            kernelMultiplier.y = sinf(exponent);
+            v_out.x = (v_in.x * kernelMultiplier.x - v_in.y * kernelMultiplier.y);
+            v_out.y = (v_in.x * kernelMultiplier.y + v_in.y * kernelMultiplier.x);
             GPU_FTenvelope[IDX] = v_out;
         }
     }
