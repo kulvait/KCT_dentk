@@ -1,5 +1,3 @@
-// Logging
-
 #include "diffractionPhysics.cuh"
 
 __global__ void envelopeConstruction(float* __restrict__ GPU_intensity,
@@ -47,8 +45,10 @@ void CUDAenvelopeConstruction(dim3 threads,
                               const int dimx_padded,
                               const int dimy_padded)
 {
-    printf("CUDAenvelopeConstruction threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
-           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, dimx, dimy);
+    printf("CUDAenvelopeConstruction dimx=%d dimx_padded=%d dimy=%d dimy_padded=%d "
+           "threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
+           dimx, dimx_padded, dimy, dimy_padded, threads.x, threads.y, threads.z, blocks.x,
+           blocks.y, blocks.z, dimx, dimy);
     envelopeConstruction<<<blocks, threads>>>((float*)GPU_intensity, (float*)GPU_phase,
                                               (float2*)GPU_envelope, dimx, dimy, dimx_padded,
                                               dimy_padded);
@@ -95,7 +95,6 @@ void CUDAenvelopeDecomposition(dim3 threads,
     printf("CUDAenvelopeDecomposition threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
            threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, dimx, dimy);
     float normalizationFactor = 1.0f / ((float)dimx_padded * (float)dimy_padded);
-    //    normalizationFactor = 1.0f;
     envelopeDecomposition<<<blocks, threads>>>((float*)GPU_intensity, (float*)GPU_phase,
                                                (float2*)GPU_envelope, dimx, dimy, dimx_padded,
                                                dimy_padded, normalizationFactor);
@@ -159,7 +158,8 @@ void CUDAspectralMultiplicationFresnel(dim3 threads,
                                        const float pixel_size_x,
                                        const float pixel_size_y)
 {
-    printf("pixel_size_x=%f pixel_size_y=%f\n", pixel_size_x, pixel_size_y);
+    printf("dimx_padded=%d dimy_padded=%d pixel_size_x=%f 10^-6m pixel_size_y=%f 10^-6m\n",
+           dimx_padded, dimy_padded, pixel_size_x * 1e6, pixel_size_y * 1e6);
     spectralMultiplicationFresnel<<<blocks, threads>>>((float2*)GPU_FTenvelope, lambda,
                                                        propagationDistance, dimx_padded,
                                                        dimy_padded, pixel_size_x, pixel_size_y);
@@ -180,11 +180,11 @@ __global__ void spectralMultiplicationRayleigh(float2* __restrict__ GPU_FTenvelo
     if(PX < dimx && PY < dimy)
     {
         int IDX = dimx * PY + PX;
-        float kx, ky;
+        double kx, ky;
         float2 v_in, v_out;
-        float detectorSizeX, detectorSizeY;
-        float phaseLambdaBall;
-        float exponentPrefactor, exponentPostfactor, exponent;
+        double detectorSizeX, detectorSizeY;
+        double phaseLambdaBall;
+        double exponentPrefactor, exponentPartialSum, exponent;
         float2 kernelMultiplier;
         detectorSizeX = dimx * pixel_size_x;
         detectorSizeY = dimy * pixel_size_y;
@@ -214,12 +214,21 @@ __global__ void spectralMultiplicationRayleigh(float2* __restrict__ GPU_FTenvelo
         } else
         {
             v_in = GPU_FTenvelope[IDX];
-            exponentPostfactor = sqrt(1.0 - phaseLambdaBall);
             exponentPrefactor = 2 * PI * propagationDistance / lambda;
-            exponent = exponentPrefactor
-                * (exponentPostfactor - 1); // To get a wave envelope without e^ikz
-            kernelMultiplier.x = cosf(exponent);
-            kernelMultiplier.y = sinf(exponent);
+            double x_partial = phaseLambdaBall *0.5;
+            double x_cur = x_partial;
+            exponentPartialSum = -x_partial;
+            x_cur = x_cur * x_partial * 0.5;
+            exponentPartialSum -= x_cur; // x^2/8
+            x_cur = x_cur * x_partial;
+            exponentPartialSum -= x_cur; // x^3/16
+            x_cur = x_cur * x_partial * 1.25;
+            exponentPartialSum -= x_cur; // 5x^4/128
+            x_cur = x_cur * x_partial * 1.4;
+            exponentPartialSum -= x_cur; // 7x^5/256
+            exponent = exponentPrefactor * exponentPartialSum;
+            kernelMultiplier.x = cos(exponent);
+            kernelMultiplier.y = sin(exponent);
             v_out.x = (v_in.x * kernelMultiplier.x - v_in.y * kernelMultiplier.y);
             v_out.y = (v_in.x * kernelMultiplier.y + v_in.y * kernelMultiplier.x);
             GPU_FTenvelope[IDX] = v_out;
@@ -240,4 +249,172 @@ void CUDAspectralMultiplicationRayleigh(dim3 threads,
     spectralMultiplicationRayleigh<<<blocks, threads>>>((float2*)GPU_FTenvelope, lambda,
                                                         propagationDistance, dimx_padded,
                                                         dimy_padded, pixel_size_x, pixel_size_y);
+}
+
+// Debugging routines to export kernels
+
+__global__ void exportKernelFresnel(float* __restrict__ GPU_kernel_re,
+                                    float* __restrict__ GPU_kernel_im,
+                                    const float lambda,
+                                    const float propagationDistance,
+                                    const int dimx,
+                                    const int dimy,
+                                    const float pixel_size_x,
+                                    const float pixel_size_y)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    if(PX < dimx && PY < dimy)
+    {
+        int IDX = dimx * PY + PX;
+        float kx, ky;
+        float detectorSizeX, detectorSizeY;
+        float exponentPrefactor, exponentPhase, exponent;
+        float2 kernelMultiplier;
+        detectorSizeX = dimx * pixel_size_x;
+        detectorSizeY = dimy * pixel_size_y;
+        if(PX <= dimx / 2)
+        {
+            kx = PX;
+        } else
+        {
+            kx = PX - dimx;
+        }
+        if(PY <= dimy / 2)
+        {
+            ky = PY;
+        } else
+        {
+            ky = PY - dimy;
+        }
+        kx /= detectorSizeX;
+        ky /= detectorSizeY;
+        exponentPhase = kx * kx + ky * ky;
+        exponentPrefactor = -lambda * PI * propagationDistance;
+        exponent = exponentPrefactor * exponentPhase;
+        kernelMultiplier.x = cosf(exponent);
+        kernelMultiplier.y = sinf(exponent);
+        GPU_kernel_re[IDX] = kernelMultiplier.x;
+        GPU_kernel_im[IDX] = kernelMultiplier.y;
+    }
+}
+
+void CUDAexportKernelFresnel(dim3 threads,
+                             dim3 blocks,
+                             void* GPU_kernel_re,
+                             void* GPU_kernel_im,
+                             const float lambda,
+                             const float propagationDistance,
+                             const int dimx_padded,
+                             const int dimy_padded,
+                             const float pixel_size_x,
+                             const float pixel_size_y)
+{
+    printf("CUDAexportKernelFresnel dimx_padded=%d dimy_padded=%d pixel_size_x=%f 10^-6m "
+           "pixel_size_y=%f 10^-6m\n",
+           dimx_padded, dimy_padded, pixel_size_x * 1e6, pixel_size_y * 1e6);
+    exportKernelFresnel<<<blocks, threads>>>((float*)GPU_kernel_re, (float*)GPU_kernel_im, lambda,
+                                             propagationDistance, dimx_padded, dimy_padded,
+                                             pixel_size_x, pixel_size_y);
+}
+
+__global__ void exportKernelRayleigh(float* __restrict__ GPU_kernel_re,
+                                     float* __restrict__ GPU_kernel_im,
+                                     const float lambda,
+                                     const float propagationDistance,
+                                     const int dimx,
+                                     const int dimy,
+                                     const float pixel_size_x,
+                                     const float pixel_size_y)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    if(PX < dimx && PY < dimy)
+    {
+        int IDX = dimx * PY + PX;
+        double kx, ky;
+        double detectorSizeX, detectorSizeY;
+        double phaseLambdaBall;
+        double exponentPrefactor, exponent;
+        float2 kernelMultiplier;
+        detectorSizeX = dimx * pixel_size_x;
+        detectorSizeY = dimy * pixel_size_y;
+        if(PX <= dimx / 2)
+        {
+            kx = PX;
+        } else
+        {
+            kx = PX - dimx;
+        }
+        if(PY <= dimy / 2)
+        {
+            ky = PY;
+        } else
+        {
+            ky = PY - dimy;
+        }
+        kx /= detectorSizeX;
+        ky /= detectorSizeY;
+        phaseLambdaBall = kx * kx + ky * ky;
+        phaseLambdaBall = phaseLambdaBall * lambda * lambda;
+        if(phaseLambdaBall >= 1.0f)
+        {
+            GPU_kernel_re[IDX] = 0.0f;
+            GPU_kernel_im[IDX] = 0.0f;
+            printf("Filterring evanescent wave for PX=%d PY=%d", PX, PY);
+        } else
+        {
+            exponentPrefactor = 2 * PI * propagationDistance / lambda;
+            /*
+                exponentPostfactor = sqrt(1.0 - phaseLambdaBall);
+                exponent = exponentPrefactor * (exponentPostfactor - 1); 
+                //Very bad implementation since exponentPostfactor \ sim 1
+            */
+
+            // Implement sqrt(1-x) - 1 = -x/2 - x^2/8 - x^3/16-5x^4/128-7x^5/256
+            double exponentPartialSum;
+            double x_partial = phaseLambdaBall *0.5;
+            double x_cur = x_partial;
+            exponentPartialSum = -x_partial;
+            x_cur = x_cur * x_partial * 0.5;
+            exponentPartialSum -= x_cur; // x^2/8
+            x_cur = x_cur * x_partial;
+            exponentPartialSum -= x_cur; // x^3/16
+            x_cur = x_cur * x_partial * 1.25;
+            exponentPartialSum -= x_cur; // 5x^4/128
+            x_cur = x_cur * x_partial * 1.4;
+            exponentPartialSum -= x_cur; // 7x^5/256
+            exponent = exponentPrefactor * exponentPartialSum;
+
+            // Fresnel like approximation
+            // exponentPrefactor = -PI * lambda * propagationDistance;
+            // exponent = exponentPrefactor * (kx * kx + ky * ky);
+
+            kernelMultiplier.x = cos(exponent);
+            kernelMultiplier.y = sin(exponent);
+            GPU_kernel_re[IDX] = kernelMultiplier.x;
+            GPU_kernel_im[IDX] = kernelMultiplier.y;
+        }
+    }
+}
+
+void CUDAexportKernelRayleigh(dim3 threads,
+                              dim3 blocks,
+                              void* GPU_kernel_re,
+                              void* GPU_kernel_im,
+                              const float lambda,
+                              const float propagationDistance,
+                              const int dimx_padded,
+                              const int dimy_padded,
+                              const float pixel_size_x,
+                              const float pixel_size_y)
+{
+    printf("CUDAexportKernelRayleigh threads=[%d %d %d] blocks=[%d %d %d], DIMX=%d DIMY=%d "
+           "dimx_padded=%d "
+           "dimy_padded=%d pixel_size_x=%f 10^-6m pixel_size_y=%f 10^-6m\n",
+           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, threads.x * blocks.x,
+           threads.y * blocks.y, dimx_padded, dimy_padded, pixel_size_x * 1e6, pixel_size_y * 1e6);
+    exportKernelRayleigh<<<blocks, threads>>>((float*)GPU_kernel_re, (float*)GPU_kernel_im, lambda,
+                                              propagationDistance, dimx_padded, dimy_padded,
+                                              pixel_size_x, pixel_size_y);
 }

@@ -24,22 +24,22 @@ void CUDAenvelopeConstruction(dim3 threads,
                               const int dimy_padded);
 
 __global__ void envelopeDecomposition(float* __restrict__ GPU_intensity,
-                                     float* __restrict__ GPU_phase,
-                                     float2* __restrict__ GPU_envelope,
-                                     const int dimx,
-                                     const int dimy,
-                                     const int dimx_padded,
-                                     const int dimy_padded);
+                                      float* __restrict__ GPU_phase,
+                                      float2* __restrict__ GPU_envelope,
+                                      const int dimx,
+                                      const int dimy,
+                                      const int dimx_padded,
+                                      const int dimy_padded);
 
 void CUDAenvelopeDecomposition(dim3 threads,
-                              dim3 blocks,
-                              void* GPU_intensity,
-                              void* GPU_phase,
-                              void* GPU_envelope,
-                              const int dimx,
-                              const int dimy,
-                              const int dimx_padded,
-                              const int dimy_padded);
+                               dim3 blocks,
+                               void* GPU_intensity,
+                               void* GPU_phase,
+                               void* GPU_envelope,
+                               const int dimx,
+                               const int dimy,
+                               const int dimx_padded,
+                               const int dimy_padded);
 
 __global__ void spectralMultiplicationFresnel(float* __restrict__ GPU_FTenvelope,
                                               const float lambda,
@@ -76,3 +76,43 @@ void CUDAspectralMultiplicationRayleigh(dim3 threads,
                                         const int dimy_padded,
                                         const float pixel_size_x,
                                         const float pixel_size_y);
+
+__global__ void exportKernelFresnel(float* __restrict__ GPU_kernel_re,
+                                    float* __restrict__ GPU_kernel_im,
+                                    const float lambda,
+                                    const float propagationDistance,
+                                    const int dimx,
+                                    const int dimy,
+                                    const float pixel_size_x,
+                                    const float pixel_size_y);
+
+void CUDAexportKernelFresnel(dim3 threads,
+                             dim3 blocks,
+                             void* GPU_kernel_re,
+                             void* GPU_kernel_im,
+                             const float lambda,
+                             const float propagationDistance,
+                             const int dimx_padded,
+                             const int dimy_padded,
+                             const float pixel_size_x,
+                             const float pixel_size_y);
+
+__global__ void exportKernelRayleigh(float* __restrict__ GPU_kernel_re,
+                                     float* __restrict__ GPU_kernel_im,
+                                     const float lambda,
+                                     const float propagationDistance,
+                                     const int dimx,
+                                     const int dimy,
+                                     const float pixel_size_x,
+                                     const float pixel_size_y);
+
+void CUDAexportKernelRayleigh(dim3 threads,
+                              dim3 blocks,
+                              void* GPU_kernel_re,
+                              void* GPU_kernel_im,
+                              const float lambda,
+                              const float propagationDistance,
+                              const int dimx_padded,
+                              const int dimy_padded,
+                              const float pixel_size_x,
+                              const float pixel_size_y);
