@@ -64,6 +64,7 @@ public:
     std::string output_phase = "";
     uint32_t dimx, dimy, dimz;
     uint64_t frameSize;
+    io::DenSupportedType dataType;
 
     double propagationDistance = 1;
     double waveEnergyKeV = 20;
@@ -72,6 +73,10 @@ public:
 
     bool paddingNone = false;
     bool paddingZero = false;
+    bool paddingSymmetric = false;
+    bool paddingSymmetricxZeroy = false;
+    bool paddingSymmetricyZerox = false;
+
     bool propagatorFresnel = false;
     bool propagatorRayleigh = false;
     bool exportKernel = false;
@@ -107,6 +112,12 @@ void Args::defineArguments()
                      "Use no padding and perform cyclic convolution.");
     op_clg->add_flag("--padding-zero", paddingZero,
                      "Use zero padding to perform linear convolution.");
+    op_clg->add_flag("--padding-symmetric", paddingSymmetric,
+                     "Use symmetric padding to mitigate cross detector edge effects.");
+    op_clg->add_flag("--padding-symmetricx-zeroy", paddingSymmetricxZeroy,
+                     "Use symmetric padding at X dimension and zero at Y dimension.");
+    op_clg->add_flag("--padding-symmetricy-zerox", paddingSymmetricyZerox,
+                     "Use symmetric padding at Y dimension and zero at X dimension.");
     op_clg->require_option(1);
     op_clg = cliApp->add_option_group("Propagator operator", "Padding to use for convolution.");
     op_clg->add_flag("--fresnel", propagatorFresnel, "Use Fresnel propagator.");
@@ -135,9 +146,9 @@ int Args::postParse()
     dimy = input_intensity_inf.dimy();
     dimz = input_intensity_inf.dimz();
     frameSize = (uint64_t)dimx * (uint64_t)dimy;
+    dataType = input_intensity_inf.getElementType();
     if(input_phase_inf.dimx() != dimx || input_phase_inf.dimy() != dimy
-       || input_phase_inf.dimz() != dimz
-       || input_phase_inf.getElementType() != input_intensity_inf.getElementType())
+       || input_phase_inf.dimz() != dimz || input_phase_inf.getElementType() != dataType)
     {
         ERR = io::xprintf("Dimensions of intensity %s and phase %s are incompatible!",
                           input_intensity.c_str(), input_phase.c_str());
@@ -259,152 +270,299 @@ void _assert_CUFFT(cufftResult inf, const char* file, int line, bool abort = tru
 #define EXECUFFT(INF) _assert_CUFFT(INF, __FILE__, __LINE__)
 
 template <typename T>
-void processFrameFloat(int _FTPLID,
-                       Args ARG,
-                       io::DenSupportedType dataType,
-                       cufftHandle FFT,
-                       cufftHandle IFT,
-                       uint32_t k_in,
-                       uint32_t k_out,
-                       std::shared_ptr<io::DenFrame2DReader<T>>& intensityReader,
-                       std::shared_ptr<io::DenFrame2DReader<T>>& phaseReader,
-                       std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& intensityWritter,
-                       std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& phaseWritter)
+class GPUThreadPool
 {
-    uint32_t dimx, dimy, dimx_padded, dimy_padded;
+public:
+    GPUThreadPool(Args ARG)
+        : numWorkers(ARG.threads)
+        , killWorkers(false)
+        , ARG(ARG)
 
-    dimx = ARG.dimx;
-    dimy = ARG.dimy;
-    if(ARG.paddingNone)
     {
-        dimx_padded = ARG.dimx;
-        dimy_padded = ARG.dimy;
-    } else
-    {
-        dimx_padded = 2 * ARG.dimx;
-        dimy_padded = 2 * ARG.dimy;
-    }
-    uint64_t frameSizePadded = (uint64_t)dimx_padded * (uint64_t)dimy_padded;
-
-    std::shared_ptr<io::BufferedFrame2D<T>> I_f = intensityReader->readBufferedFrame(k_in);
-    std::shared_ptr<io::BufferedFrame2D<T>> P_f = phaseReader->readBufferedFrame(k_in);
-    // We transform it to E_0 and decompose back to I and P in GPU memmory
-    T* I_array = I_f->getDataPointer();
-    T* P_array = P_f->getDataPointer();
-
-    uint32_t THREADSIZE1 = 32;
-    uint32_t THREADSIZE2 = 32;
-    dim3 threads(THREADSIZE1, THREADSIZE2);
-    // Do something here
-    // Try without distinguishing types
-    void* GPU_intensity;
-    void* GPU_phase;
-    void* GPU_envelope;
-    void* GPU_FTenvelope;
-    EXECUDA(cudaMalloc((void**)&GPU_intensity, ARG.frameSize * sizeof(T)));
-    EXECUDA(cudaMemcpy((void*)GPU_intensity, (void*)I_array, ARG.frameSize * sizeof(T),
-                       cudaMemcpyHostToDevice));
-    EXECUDA(cudaMalloc((void**)&GPU_phase, ARG.frameSize * sizeof(T)));
-    EXECUDA(cudaMemcpy((void*)GPU_phase, (void*)P_array, ARG.frameSize * sizeof(T),
-                       cudaMemcpyHostToDevice));
-
-    // Different to the padding code
-    EXECUDA(cudaMalloc((void**)&GPU_envelope, frameSizePadded * 2 * sizeof(T)));
-    EXECUDA(cudaMalloc((void**)&GPU_FTenvelope, frameSizePadded * 2 * sizeof(T)));
-    dim3 blocks((dimy_padded + THREADSIZE1 - 1) / THREADSIZE1,
-                (dimx_padded + THREADSIZE2 - 1) / THREADSIZE2);
-    CUDAenvelopeConstruction(threads, blocks, GPU_intensity, GPU_phase, GPU_envelope, dimx, dimy,
-                             dimx_padded, dimy_padded);
-    EXECUDA(cudaPeekAtLastError());
-    EXECUDA(cudaDeviceSynchronize());
-    EXECUFFT(cufftExecC2C(FFT, (cufftComplex*)GPU_envelope, (cufftComplex*)GPU_FTenvelope,
-                          CUFFT_FORWARD));
-    if(ARG.propagatorFresnel)
-    {
-        CUDAspectralMultiplicationFresnel(threads, blocks, GPU_FTenvelope, ARG.lambda,
-                                          ARG.propagationDistance, dimx_padded, dimy_padded,
-                                          ARG.pixelSizeX * 1e-3, ARG.pixelSizeY * 1e-3);
-
-    } else if(ARG.propagatorRayleigh)
-    {
-        CUDAspectralMultiplicationRayleigh(threads, blocks, GPU_FTenvelope, ARG.lambda,
-                                           ARG.propagationDistance, dimx_padded, dimy_padded,
-                                           ARG.pixelSizeX * 1e-3, ARG.pixelSizeY * 1e-3);
-    } else
-    {
-        KCTERR("No propagator specified");
-    }
-    EXECUDA(cudaPeekAtLastError());
-    EXECUDA(cudaDeviceSynchronize());
-    EXECUFFT(cufftExecC2C(IFT, (cufftComplex*)GPU_FTenvelope, (cufftComplex*)GPU_envelope,
-                          CUFFT_INVERSE));
-
-    dim3 blocksOrig((dimy + THREADSIZE1 - 1) / THREADSIZE1, (dimx + THREADSIZE2 - 1) / THREADSIZE2);
-
-    CUDAenvelopeDecomposition(threads, blocksOrig, GPU_intensity, GPU_phase, GPU_envelope, dimx,
-                              dimy, dimx_padded, dimy_padded);
-    EXECUDA(cudaMemcpy((void*)I_array, (void*)GPU_intensity, ARG.frameSize * sizeof(T),
-                       cudaMemcpyDeviceToHost));
-    EXECUDA(cudaMemcpy((void*)P_array, (void*)GPU_phase, ARG.frameSize * sizeof(T),
-                       cudaMemcpyDeviceToHost));
-    EXECUDA(cudaFree(GPU_intensity));
-    EXECUDA(cudaFree(GPU_phase));
-    EXECUDA(cudaFree(GPU_envelope));
-    EXECUDA(cudaFree(GPU_FTenvelope));
-    intensityWritter->writeBufferedFrame(*I_f, k_out);
-    phaseWritter->writeBufferedFrame(*P_f, k_out);
-    if(ARG.verbose)
-    {
-        uint32_t dimz = phaseWritter->dimz();
-        if(k_in == k_out)
+        dataType = ARG.dataType;
+        dimx = ARG.dimx;
+        dimy = ARG.dimy;
+        if(ARG.paddingNone)
         {
-            LOGD << io::xprintf("Processed frame %d/%d.", k_in, dimz);
+            dimx_padded = ARG.dimx;
+            dimy_padded = ARG.dimy;
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, dimz);
+            dimx_padded = 2 * ARG.dimx;
+            dimy_padded = 2 * ARG.dimy;
+        }
+        frameSizePadded = (uint64_t)dimx_padded * (uint64_t)dimy_padded;
+        paddingXSymmetric = ARG.paddingSymmetric || ARG.paddingSymmetricxZeroy;
+        paddingYSymmetric = ARG.paddingSymmetric || ARG.paddingSymmetricyZerox;
+        // GPU init
+        THREADSIZE1 = 32;
+        THREADSIZE2 = 32;
+        threads = dim3(THREADSIZE1, THREADSIZE2);
+        // Run propagator
+        io::DenFileInfo di(ARG.input_intensity);
+        intensityReader
+            = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_intensity, ARG.threads);
+        phaseReader = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_phase, ARG.threads);
+        if(ARG.outputFilesExist)
+        {
+            intensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+                ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.dimz);
+            phaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+                ARG.output_phase, ARG.dimx, ARG.dimy, ARG.dimz);
+        } else
+        {
+            intensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+                ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.frames.size());
+            phaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+                ARG.output_phase, ARG.dimx, ARG.dimy, ARG.frames.size());
+        }
+
+        for(uint32_t workerID = 0; workerID < numWorkers; workerID++)
+        {
+            std::thread worker([this, workerID]() {
+                while(true)
+                {
+                    std::function<void(uint32_t)> task;
+                    {
+                        std::unique_lock lock(lck);
+                        cv.wait(lock,
+                                [this]() { return !frameProcessTasks.empty() || killWorkers; });
+                        if(frameProcessTasks.empty() && killWorkers)
+                            return;
+                        task = std::move(frameProcessTasks.front());
+                        frameProcessTasks.pop();
+                    }
+                    task(workerID);
+                }
+            });
+        }
+        if(numWorkers > 0)
+        {
+            GPUResourcesCount = numWorkers;
+        } else
+        {
+            GPUResourcesCount = 1; // No threading
+        }
+        for(uint32_t workerID = 0; workerID < GPUResourcesCount; workerID++)
+        {
+            cufftHandle FFT;
+            void* GPU_intensity;
+            void* GPU_phase;
+            void* GPU_envelope;
+            void* GPU_FTenvelope;
+            EXECUFFT(cufftPlan2d(&FFT, dimy_padded, dimx_padded, CUFFT_C2C));
+            EXECUDA(cudaMalloc((void**)&GPU_intensity, ARG.frameSize * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&GPU_phase, ARG.frameSize * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&GPU_envelope, frameSizePadded * 2 * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&GPU_FTenvelope, frameSizePadded * 2 * sizeof(T)));
+            FFT_handles.emplace_back(std::move(FFT));
+            _GPU_intensity.emplace_back(GPU_intensity);
+            _GPU_phase.emplace_back(GPU_phase);
+            _GPU_envelope.emplace_back(GPU_envelope);
+            _GPU_FTenvelope.emplace_back(GPU_FTenvelope);
         }
     }
-}
 
-template <typename T>
-void processFrameDouble(int _FTPLID,
-                        Args ARG,
-                        io::DenSupportedType dataType,
-                        cufftHandle FFT,
-                        cufftHandle IFT,
-                        uint32_t k_in,
-                        uint32_t k_out,
-                        std::shared_ptr<io::DenFrame2DReader<T>>& intensityReader,
-                        std::shared_ptr<io::DenFrame2DReader<T>>& phaseReader,
-                        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& intensityWritter,
-                        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& phaseWritter)
-{
-    KCTERR("Not yet implemented, need to implement double CUDA functions.");
-}
+    void process()
+    {
+        if(GPUResourcesCount == 0)
+        {
+            std::string ERR = io::xprintf("Out of GPU!");
+            KCTERR(ERR);
+        }
 
-template <typename T>
-void processFrame(int _FTPLID,
-                  Args ARG,
-                  io::DenSupportedType dataType,
-                  cufftHandle FFT,
-                  cufftHandle IFT,
-                  uint32_t k_in,
-                  uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& intensityReader,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& phaseReader,
-                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& intensityWritter,
-                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& phaseWritter)
-{
-    if(dataType == io::DenSupportedType::FLOAT32)
-    {
-        processFrameFloat<T>(_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, intensityReader,
-                             phaseReader, intensityWritter, phaseWritter);
-    } else if(dataType == io::DenSupportedType::FLOAT64)
-    {
-        processFrameDouble<T>(_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, intensityReader,
-                              phaseReader, intensityWritter, phaseWritter);
+        uint32_t k_in, k_out;
+        for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
+        {
+            k_in = ARG.frames[IND];
+            if(ARG.outputFilesExist)
+            {
+                k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
+                              // BETA.den BETA.den
+            } else
+            {
+                k_out = IND;
+            }
+            LOGI << io::xprintf("k_in=%d k_out=%d", k_in, k_out);
+            std::function<void(uint32_t)> task;
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                task = std::bind(&GPUThreadPool::processFrameFloat, this, std::placeholders::_1,
+                                 k_in, k_out);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                task = std::bind(&GPUThreadPool::processFrameDouble, this, std::placeholders::_1,
+                                 k_in, k_out);
+            } else
+            {
+                std::string ERR = io::xprintf("Unknown dataType=%s",
+                                              DenSupportedTypeToString(dataType).c_str());
+                KCTERR(ERR);
+            }
+
+            if(numWorkers > 0)
+            {
+                std::lock_guard<std::mutex> lock(lck);
+                frameProcessTasks.push(task);
+            } else
+            {
+                uint32_t workerID = 0;
+                task(workerID);
+            }
+        }
+        finishProcessing();
     }
-}
+
+    virtual ~GPUThreadPool() { finishProcessing(); }
+
+private:
+    GPUThreadPool(const GPUThreadPool&) = delete;
+    GPUThreadPool(GPUThreadPool&&) = delete;
+    GPUThreadPool& operator=(const GPUThreadPool&) = delete;
+    GPUThreadPool& operator=(GPUThreadPool&&) = delete;
+
+    void processFrameFloat(uint32_t workerID, uint32_t k_in, uint32_t k_out)
+    {
+        cufftHandle FFT = FFT_handles[workerID];
+        void* GPU_intensity = _GPU_intensity[workerID];
+        void* GPU_phase = _GPU_phase[workerID];
+        void* GPU_envelope = _GPU_envelope[workerID];
+        void* GPU_FTenvelope = _GPU_FTenvelope[workerID];
+
+        std::shared_ptr<io::BufferedFrame2D<T>> I_f = intensityReader->readBufferedFrame(k_in);
+        std::shared_ptr<io::BufferedFrame2D<T>> P_f = phaseReader->readBufferedFrame(k_in);
+        // We transform it to E_0 and decompose back to I and P in GPU memmory
+        T* I_array = I_f->getDataPointer();
+        T* P_array = P_f->getDataPointer();
+
+        // Do something here
+        // Try without distinguishing types
+        EXECUDA(cudaMemcpy((void*)GPU_intensity, (void*)I_array, ARG.frameSize * sizeof(T),
+                           cudaMemcpyHostToDevice));
+        EXECUDA(cudaMemcpy((void*)GPU_phase, (void*)P_array, ARG.frameSize * sizeof(T),
+                           cudaMemcpyHostToDevice));
+
+        // Different to the padding code
+        dim3 unpaddedBlocks((dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                            (dimx + THREADSIZE2 - 1) / THREADSIZE2);
+        dim3 paddedBlocks((dimy_padded + THREADSIZE1 - 1) / THREADSIZE1,
+                          (dimx_padded + THREADSIZE2 - 1) / THREADSIZE2);
+        CUDAenvelopeConstruction(threads, unpaddedBlocks, GPU_intensity, GPU_phase, GPU_envelope,
+                                 dimx, dimy, dimx_padded, dimy_padded, paddingXSymmetric,
+                                 paddingYSymmetric);
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+        EXECUFFT(cufftExecC2C(FFT, (cufftComplex*)GPU_envelope, (cufftComplex*)GPU_FTenvelope,
+                              CUFFT_FORWARD));
+        if(ARG.propagatorFresnel)
+        {
+            CUDAspectralMultiplicationFresnel(threads, paddedBlocks, GPU_FTenvelope, ARG.lambda,
+                                              ARG.propagationDistance, dimx_padded, dimy_padded,
+                                              ARG.pixelSizeX * 1e-3, ARG.pixelSizeY * 1e-3);
+
+        } else if(ARG.propagatorRayleigh)
+        {
+            CUDAspectralMultiplicationRayleigh(threads, paddedBlocks, GPU_FTenvelope, ARG.lambda,
+                                               ARG.propagationDistance, dimx_padded, dimy_padded,
+                                               ARG.pixelSizeX * 1e-3, ARG.pixelSizeY * 1e-3);
+        } else
+        {
+            KCTERR("No propagator specified");
+        }
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+        EXECUFFT(cufftExecC2C(FFT, (cufftComplex*)GPU_FTenvelope, (cufftComplex*)GPU_envelope,
+                              CUFFT_INVERSE));
+
+        CUDAenvelopeDecomposition(threads, unpaddedBlocks, GPU_intensity, GPU_phase, GPU_envelope,
+                                  dimx, dimy, dimx_padded, dimy_padded);
+        EXECUDA(cudaMemcpy((void*)I_array, (void*)GPU_intensity, ARG.frameSize * sizeof(T),
+                           cudaMemcpyDeviceToHost));
+        EXECUDA(cudaMemcpy((void*)P_array, (void*)GPU_phase, ARG.frameSize * sizeof(T),
+                           cudaMemcpyDeviceToHost));
+        intensityWritter->writeBufferedFrame(*I_f, k_out);
+        phaseWritter->writeBufferedFrame(*P_f, k_out);
+        if(ARG.verbose)
+        {
+            uint32_t dimz = phaseWritter->dimz();
+            if(k_in == k_out)
+            {
+                LOGD << io::xprintf("Processed frame %d/%d.", k_in, dimz);
+            } else
+            {
+                LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, dimz);
+            }
+        }
+    }
+
+    void processFrameDouble(uint32_t workerID, uint32_t k_in, uint32_t k_out)
+    {
+        KCTERR("Not yet implemented, need to implement double CUDA functions.");
+    }
+
+    void finishProcessing()
+    {
+        if(numWorkers > 0)
+        {
+            {
+                std::lock_guard lock(lck);
+                killWorkers = true;
+            }
+            cv.notify_all();
+            for(auto& worker : workers)
+            {
+                worker.join();
+            }
+        }
+        workers.clear();
+        numWorkers = 0;
+        for(uint32_t i = 0; i != GPUResourcesCount; i++)
+        {
+            void* GPU_intensity = _GPU_intensity[i];
+            void* GPU_phase = _GPU_phase[i];
+            void* GPU_envelope = _GPU_envelope[i];
+            void* GPU_FTenvelope = _GPU_FTenvelope[i];
+            EXECUDA(cudaFree(GPU_intensity));
+            EXECUDA(cudaFree(GPU_phase));
+            EXECUDA(cudaFree(GPU_envelope));
+            EXECUDA(cudaFree(GPU_FTenvelope));
+        }
+        _GPU_intensity.clear();
+        _GPU_phase.clear();
+        _GPU_envelope.clear();
+        _GPU_FTenvelope.clear();
+        _GPU_FTenvelope.clear();
+        GPUResourcesCount = 0;
+    }
+
+    uint32_t numWorkers;
+    std::vector<std::thread> workers;
+    std::queue<std::function<void(uint32_t)>> frameProcessTasks;
+
+    std::mutex lck;
+    std::condition_variable cv;
+    bool killWorkers = false;
+
+    // GPU items
+    uint32_t THREADSIZE1 = 32;
+    uint32_t THREADSIZE2 = 32;
+    dim3 threads;
+    std::vector<cufftHandle> FFT_handles;
+    std::vector<void*> _GPU_intensity;
+    std::vector<void*> _GPU_phase;
+    std::vector<void*> _GPU_envelope;
+    std::vector<void*> _GPU_FTenvelope;
+    uint32_t GPUResourcesCount;
+    // Program params
+    Args ARG;
+    io::DenSupportedType dataType;
+    uint32_t dimx, dimy;
+    uint32_t dimx_padded, dimy_padded, frameSizePadded;
+    bool paddingXSymmetric;
+    bool paddingYSymmetric;
+    std::shared_ptr<io::DenFrame2DReader<T>> intensityReader, phaseReader;
+    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> intensityWritter, phaseWritter;
+};
 
 template <typename T>
 void exportKernelFloat(Args ARG,
@@ -500,18 +658,18 @@ void exportKernel(Args ARG,
 template <typename T>
 void processFiles(Args ARG, io::DenSupportedType dataType)
 {
-    uint32_t dimx_padded, dimy_padded;
-    if(ARG.paddingNone)
-    {
-        dimx_padded = ARG.dimx;
-        dimy_padded = ARG.dimy;
-    } else
-    {
-        dimx_padded = 2 * ARG.dimx;
-        dimy_padded = 2 * ARG.dimy;
-    }
     if(ARG.exportKernel)
     {
+        uint32_t dimx_padded, dimy_padded;
+        if(ARG.paddingNone)
+        {
+            dimx_padded = ARG.dimx;
+            dimy_padded = ARG.dimy;
+        } else
+        {
+            dimx_padded = 2 * ARG.dimx;
+            dimy_padded = 2 * ARG.dimy;
+        }
         std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputIntensityWritter,
             kernelImWritter;
         outputIntensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
@@ -521,65 +679,8 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         exportKernel<T>(ARG, dataType, outputIntensityWritter, kernelImWritter);
     } else
     {
-        // Run propagator
-        std::shared_ptr<io::DenFrame2DReader<T>> intensityReader
-            = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_intensity, ARG.threads);
-        std::shared_ptr<io::DenFrame2DReader<T>> phaseReader
-            = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_phase, ARG.threads);
-        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputIntensityWritter,
-            outputPhaseWritter;
-        if(ARG.outputFilesExist)
-        {
-            outputIntensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
-                ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.dimz);
-            outputPhaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
-                ARG.output_phase, ARG.dimx, ARG.dimy, ARG.dimz);
-        } else
-        {
-            outputIntensityWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
-                ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.frames.size());
-            outputPhaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
-                ARG.output_phase, ARG.dimx, ARG.dimy, ARG.frames.size());
-        }
-        cufftHandle FFT, IFT;
-        // First is  slowest changing dimension, last is  slowest changing dimension
-        EXECUFFT(cufftPlan2d(&FFT, dimy_padded, dimx_padded, CUFFT_C2C));
-        EXECUFFT(cufftPlan2d(&IFT, dimy_padded, dimx_padded, CUFFT_C2C));
-        ftpl::thread_pool* threadpool = nullptr;
-        const int dummy_FTPLID = 0;
-        if(ARG.threads > 0)
-        {
-            threadpool = new ftpl::thread_pool(ARG.threads);
-        }
-        uint32_t k_in, k_out;
-        for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
-        {
-            k_in = ARG.frames[IND];
-            if(ARG.outputFilesExist)
-            {
-                k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
-                              // BETA.den BETA.den
-            } else
-            {
-                k_out = IND;
-            }
-            LOGI << io::xprintf("k_in=%d k_out=%d", k_in, k_out);
-            if(threadpool)
-            {
-                threadpool->push(processFrame<T>, ARG, dataType, FFT, IFT, k_in, k_out,
-                                 intensityReader, phaseReader, outputIntensityWritter,
-                                 outputPhaseWritter);
-            } else
-            {
-                processFrame<T>(dummy_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, intensityReader,
-                                phaseReader, outputIntensityWritter, outputPhaseWritter);
-            }
-        }
-        if(threadpool != nullptr)
-        {
-            threadpool->stop(true);
-            delete threadpool;
-        }
+        GPUThreadPool<T> GTP(ARG);
+        GTP.process();
     }
 }
 
@@ -620,3 +721,4 @@ int main(int argc, char* argv[])
     }
     PRG.endLog();
 }
+

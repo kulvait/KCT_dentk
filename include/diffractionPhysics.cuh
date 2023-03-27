@@ -11,7 +11,9 @@ __global__ void envelopeConstruction(float* __restrict__ GPU_intensity,
                                      const int dimx,
                                      const int dimy,
                                      const int dimx_padded,
-                                     const int dimy_padded);
+                                     const int dimy_padded,
+                                     const bool paddingXSymmetric,
+                                     const bool paddingYSymmetric);
 
 void CUDAenvelopeConstruction(dim3 threads,
                               dim3 blocks,
@@ -21,7 +23,9 @@ void CUDAenvelopeConstruction(dim3 threads,
                               const int dimx,
                               const int dimy,
                               const int dimx_padded,
-                              const int dimy_padded);
+                              const int dimy_padded,
+                              const bool paddingXSymmetric,
+                              const bool paddingYSymmetric);
 
 __global__ void envelopeDecomposition(float* __restrict__ GPU_intensity,
                                       float* __restrict__ GPU_phase,
@@ -39,7 +43,8 @@ void CUDAenvelopeDecomposition(dim3 threads,
                                const int dimx,
                                const int dimy,
                                const int dimx_padded,
-                               const int dimy_padded);
+                               const int dimy_padded,
+                               bool normalize = true);
 
 __global__ void spectralMultiplicationFresnel(float* __restrict__ GPU_FTenvelope,
                                               const float lambda,

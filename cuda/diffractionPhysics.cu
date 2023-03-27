@@ -6,22 +6,15 @@ __global__ void envelopeConstruction(float* __restrict__ GPU_intensity,
                                      const int dimx,
                                      const int dimy,
                                      const int dimx_padded,
-                                     const int dimy_padded)
+                                     const int dimy_padded,
+                                     const bool paddingXSymmetric,
+                                     const bool paddingYSymmetric)
 {
     const int PX = threadIdx.y + blockIdx.y * blockDim.y;
     const int PY = threadIdx.x + blockIdx.x * blockDim.x;
     int IDX, IDX_padded;
     float2 v;
-    if(PX >= dimx_padded || PY >= dimy_padded)
-    {
-        return;
-    } else if(PX >= dimx || PY >= dimy)
-    {
-        IDX_padded = dimx_padded * PY + PX;
-        v.x = 0.0f;
-        v.y = 0.0f;
-        GPU_envelope[IDX_padded] = v;
-    } else
+    if(PX < dimx && PY < dimy)
     {
         float intensity, phase, amplitude;
         IDX = dimx * PY + PX;
@@ -32,6 +25,59 @@ __global__ void envelopeConstruction(float* __restrict__ GPU_intensity,
         v.x = amplitude * cosf(phase);
         v.y = amplitude * sinf(phase);
         GPU_envelope[IDX_padded] = v;
+
+        int PX_phantom = 2 * dimx - 1 - PX;
+        int PY_phantom = 2 * dimy - 1 - PY;
+        int IDX_x = dimx_padded * PY + PX_phantom;
+        int IDX_y = dimx_padded * PY_phantom + PX;
+        int IDX_xy = dimx_padded * PY_phantom + PX_phantom;
+        float2 v_zero = make_float2(0.0f, 0.0f);
+        // v_zero.x = 0.0f;
+        // v_zero.y = 0.0f;
+
+        if(PX_phantom < dimx_padded && PY_phantom < dimy_padded)
+        {
+            if(paddingXSymmetric && paddingYSymmetric)
+            {
+
+                GPU_envelope[IDX_x] = v;
+                GPU_envelope[IDX_y] = v;
+                GPU_envelope[IDX_xy] = v;
+            } else if(paddingXSymmetric)
+            {
+                GPU_envelope[IDX_x] = v;
+                GPU_envelope[IDX_y] = v_zero;
+                GPU_envelope[IDX_xy] = v_zero;
+            } else if(paddingYSymmetric)
+            {
+                GPU_envelope[IDX_x] = v_zero;
+                GPU_envelope[IDX_y] = v;
+                GPU_envelope[IDX_xy] = v_zero;
+            } else
+            {
+                GPU_envelope[IDX_x] = v_zero;
+                GPU_envelope[IDX_y] = v_zero;
+                GPU_envelope[IDX_xy] = v_zero;
+            }
+        } else if(PX_phantom < dimx_padded)
+        {
+            if(paddingXSymmetric)
+            {
+                GPU_envelope[IDX_x] = v;
+            } else
+            {
+                GPU_envelope[IDX_x] = v_zero;
+            }
+        } else if(PY_phantom < dimy_padded)
+        {
+            if(paddingYSymmetric)
+            {
+                GPU_envelope[IDX_y] = v;
+            } else
+            {
+                GPU_envelope[IDX_y] = v_zero;
+            }
+        }
     }
 }
 
@@ -43,15 +89,18 @@ void CUDAenvelopeConstruction(dim3 threads,
                               const int dimx,
                               const int dimy,
                               const int dimx_padded,
-                              const int dimy_padded)
+                              const int dimy_padded,
+                              const bool paddingXSymmetric,
+                              const bool paddingYSymmetric)
 {
     printf("CUDAenvelopeConstruction dimx=%d dimx_padded=%d dimy=%d dimy_padded=%d "
-           "threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
+           "threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d paddingX=%s paddingY=%s \n",
            dimx, dimx_padded, dimy, dimy_padded, threads.x, threads.y, threads.z, blocks.x,
-           blocks.y, blocks.z, dimx, dimy);
+           blocks.y, blocks.z, dimx, dimy, paddingXSymmetric ? "true" : "false",
+           paddingYSymmetric ? "true" : "false");
     envelopeConstruction<<<blocks, threads>>>((float*)GPU_intensity, (float*)GPU_phase,
                                               (float2*)GPU_envelope, dimx, dimy, dimx_padded,
-                                              dimy_padded);
+                                              dimy_padded, paddingXSymmetric, paddingYSymmetric);
 }
 
 __global__ void envelopeDecomposition(float* __restrict__ GPU_intensity,
@@ -90,11 +139,21 @@ void CUDAenvelopeDecomposition(dim3 threads,
                                const int dimx,
                                const int dimy,
                                const int dimx_padded,
-                               const int dimy_padded)
+                               const int dimy_padded,
+                               bool normalize)
 {
-    printf("CUDAenvelopeDecomposition threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d\n",
-           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, dimx, dimy);
-    float normalizationFactor = 1.0f / ((float)dimx_padded * (float)dimy_padded);
+    printf("CUDAenvelopeDecomposition threads=(%d,%d,%d), blocks(%d, %d, %d) dimx=%d, dimy=%d "
+           "normalize=%s\n",
+           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, dimx, dimy,
+           normalize ? "true" : "false");
+    float normalizationFactor;
+    if(normalize)
+    {
+        normalizationFactor = 1.0f / ((float)dimx_padded * (float)dimy_padded);
+    } else
+    {
+        normalizationFactor = 1.0f;
+    }
     envelopeDecomposition<<<blocks, threads>>>((float*)GPU_intensity, (float*)GPU_phase,
                                                (float2*)GPU_envelope, dimx, dimy, dimx_padded,
                                                dimy_padded, normalizationFactor);
@@ -121,6 +180,13 @@ __global__ void spectralMultiplicationFresnel(float2* __restrict__ GPU_FTenvelop
         v_in = GPU_FTenvelope[IDX];
         detectorSizeX = dimx * pixel_size_x;
         detectorSizeY = dimy * pixel_size_y;
+        /*        if(PX == dimx / 2)
+                {
+                    v_out.x = 0.0f;
+                    v_out.y = 0.0f;
+                    GPU_FTenvelope[IDX] = v_out;
+                    return;
+                }*/
         if(PX <= dimx / 2)
         {
             kx = PX;
@@ -128,6 +194,15 @@ __global__ void spectralMultiplicationFresnel(float2* __restrict__ GPU_FTenvelop
         {
             kx = PX - dimx;
         }
+        /*
+                if(PY == dimy / 2)
+                {
+                    v_out.x = 0.0f;
+                    v_out.y = 0.0f;
+                    GPU_FTenvelope[IDX] = v_out;
+                    return;
+                }
+        */
         if(PY <= dimy / 2)
         {
             ky = PY;
@@ -215,7 +290,7 @@ __global__ void spectralMultiplicationRayleigh(float2* __restrict__ GPU_FTenvelo
         {
             v_in = GPU_FTenvelope[IDX];
             exponentPrefactor = 2 * PI * propagationDistance / lambda;
-            double x_partial = phaseLambdaBall *0.5;
+            double x_partial = phaseLambdaBall * 0.5;
             double x_cur = x_partial;
             exponentPartialSum = -x_partial;
             x_cur = x_cur * x_partial * 0.5;
@@ -367,13 +442,13 @@ __global__ void exportKernelRayleigh(float* __restrict__ GPU_kernel_re,
             exponentPrefactor = 2 * PI * propagationDistance / lambda;
             /*
                 exponentPostfactor = sqrt(1.0 - phaseLambdaBall);
-                exponent = exponentPrefactor * (exponentPostfactor - 1); 
+                exponent = exponentPrefactor * (exponentPostfactor - 1);
                 //Very bad implementation since exponentPostfactor \ sim 1
             */
 
             // Implement sqrt(1-x) - 1 = -x/2 - x^2/8 - x^3/16-5x^4/128-7x^5/256
             double exponentPartialSum;
-            double x_partial = phaseLambdaBall *0.5;
+            double x_partial = phaseLambdaBall * 0.5;
             double x_cur = x_partial;
             exponentPartialSum = -x_partial;
             x_cur = x_cur * x_partial * 0.5;
