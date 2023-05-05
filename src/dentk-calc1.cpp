@@ -64,6 +64,10 @@ public:
     bool addConstant = false;
     double constantToAdd = 0.0;
     bool invert = false;
+    bool max = false;
+    bool min = false;
+    double maxArgument = 0.0;
+    double minArgument = 0.0;
 };
 
 void Args::defineArguments()
@@ -90,6 +94,8 @@ void Args::defineArguments()
         "multiply",
         op_clg->add_option("--multiply", constantToMultiply, "Multiplication with a constant."));
     registerOption("add", op_clg->add_option("--add", constantToAdd, "Add a constant."));
+    registerOption("min", op_clg->add_option("--min", minArgument, "Perform min(x, minArgument)."));
+    registerOption("max", op_clg->add_option("--max", maxArgument, "Perform max(x, maxArgument)."));
     op_clg->require_option(1);
 }
 
@@ -107,6 +113,14 @@ int Args::postParse()
     if(getRegisteredOption("add")->count() > 0)
     {
         addConstant = true;
+    }
+    if(getRegisteredOption("min")->count() > 0)
+    {
+        min = true;
+    }
+    if(getRegisteredOption("max")->count() > 0)
+    {
+        max = true;
     }
     io::DenFileInfo inf(input_den);
     dimx = inf.dimx();
@@ -135,7 +149,8 @@ void processFrame(int _FTPLID,
     Transform<T> o = nullptr;
     T constantToMultiply;
     T constantToAdd;
-
+    T maxArgument;
+    T minArgument;
     if(ARG.logarithm)
     {
         o = [](const T& x) { return T(std::log(x)); };
@@ -194,6 +209,18 @@ void processFrame(int _FTPLID,
         constantToAdd = ARG.constantToAdd;
         std::transform(A_array, A_array + ARG.frameSize, x_array,
                        [constantToAdd](const T& x) { return T(x + constantToAdd); });
+    }
+    if(ARG.min)
+    {
+        minArgument = ARG.minArgument;
+        std::transform(A_array, A_array + ARG.frameSize, x_array,
+                       [minArgument](const T& x) { return x < minArgument ? x : minArgument; });
+    }
+    if(ARG.max)
+    {
+        maxArgument = ARG.maxArgument;
+        std::transform(A_array, A_array + ARG.frameSize, x_array,
+                       [maxArgument](const T& x) { return x > maxArgument ? x : maxArgument; });
     }
     outputWritter->writeBufferedFrame(f, k_out);
     if(ARG.verbose)

@@ -315,6 +315,18 @@ public:
                 ARG.output_intensity, ARG.dimx, ARG.dimy, ARG.frames.size());
             phaseWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
                 ARG.output_phase, ARG.dimx, ARG.dimy, ARG.frames.size());
+            // clang-format off
+//DEBUG TO SEE INTENSITY AND PHASE BEFORE AND AFTER
+//            iwb = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+//                ARG.output_intensity + "_before", dimx_padded, dimy_padded, ARG.frames.size());
+//            iwa = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+//                ARG.output_intensity + "_after", dimx_padded, dimy_padded, ARG.frames.size());
+//            pwb = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+//                ARG.output_phase + "_before", dimx_padded, dimy_padded, ARG.frames.size());
+//            pwa = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
+//                ARG.output_phase + "_after", dimx_padded, dimy_padded, ARG.frames.size());
+//END DEBUG
+            // clang-format on
         }
 
         for(uint32_t workerID = 0; workerID < numWorkers; workerID++)
@@ -353,6 +365,12 @@ public:
             EXECUFFT(cufftPlan2d(&FFT, dimy_padded, dimx_padded, CUFFT_C2C));
             EXECUDA(cudaMalloc((void**)&GPU_intensity, ARG.frameSize * sizeof(T)));
             EXECUDA(cudaMalloc((void**)&GPU_phase, ARG.frameSize * sizeof(T)));
+            // clang-format off
+//DEBUG TO HAVE BIGGER ARRAYS
+//            EXECUDA(cudaMalloc((void**)&GPU_intensity, ARG.frameSize * 4 * sizeof(T)));
+//            EXECUDA(cudaMalloc((void**)&GPU_phase, ARG.frameSize * 4 * sizeof(T)));
+//END DEBUG
+            // clang-format on
             EXECUDA(cudaMalloc((void**)&GPU_envelope, frameSizePadded * 2 * sizeof(T)));
             EXECUDA(cudaMalloc((void**)&GPU_FTenvelope, frameSizePadded * 2 * sizeof(T)));
             FFT_handles.emplace_back(std::move(FFT));
@@ -378,7 +396,7 @@ public:
             if(ARG.outputFilesExist)
             {
                 k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
-                              // BETA.den BETA.den
+                    // BETA.den BETA.den
             } else
             {
                 k_out = IND;
@@ -434,7 +452,18 @@ private:
         // We transform it to E_0 and decompose back to I and P in GPU memmory
         T* I_array = I_f->getDataPointer();
         T* P_array = P_f->getDataPointer();
-
+        // clang-format off
+//DEBUG TO HAVE BEFORE AND AFTER FRAMES
+//        io::BufferedFrame2D<T> _pwb(T(0), dimx_padded, dimy_padded);
+//        io::BufferedFrame2D<T> _pwa(T(0), dimx_padded, dimy_padded);
+//        io::BufferedFrame2D<T> _iwb(T(0), dimx_padded, dimy_padded);
+//        io::BufferedFrame2D<T> _iwa(T(0), dimx_padded, dimy_padded);
+//        T* iwb_array = _iwb.getDataPointer();
+//        T* iwa_array = _iwa.getDataPointer();
+//        T* pwb_array = _pwb.getDataPointer();
+//        T* pwa_array = _pwa.getDataPointer();
+//END DEBUG
+        // clang-format on
         // Do something here
         // Try without distinguishing types
         EXECUDA(cudaMemcpy((void*)GPU_intensity, (void*)I_array, ARG.frameSize * sizeof(T),
@@ -452,8 +481,19 @@ private:
                                  paddingYSymmetric);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
+        // clang-format off
+//DEBUG COPY BEFORE
+//        CUDAenvelopeDecomposition(threads, paddedBlocks, GPU_intensity, GPU_phase, GPU_envelope,
+//                                  dimx_padded, dimy_padded, dimx_padded, dimy_padded, false);
+//        EXECUDA(cudaMemcpy((void*)iwb_array, (void*)GPU_intensity, frameSizePadded * sizeof(T),
+//                           cudaMemcpyDeviceToHost));
+//        EXECUDA(cudaMemcpy((void*)pwb_array, (void*)GPU_phase, frameSizePadded * sizeof(T),
+//                           cudaMemcpyDeviceToHost));
+//END DEBUG
+        // clang-format on
         EXECUFFT(cufftExecC2C(FFT, (cufftComplex*)GPU_envelope, (cufftComplex*)GPU_FTenvelope,
                               CUFFT_FORWARD));
+
         if(ARG.propagatorFresnel)
         {
             CUDAspectralMultiplicationFresnel(threads, paddedBlocks, GPU_FTenvelope, ARG.lambda,
@@ -482,6 +522,20 @@ private:
                            cudaMemcpyDeviceToHost));
         intensityWritter->writeBufferedFrame(*I_f, k_out);
         phaseWritter->writeBufferedFrame(*P_f, k_out);
+        // clang-format off
+//DEBUG AFTER AND WRITE
+//        CUDAenvelopeDecomposition(threads, paddedBlocks, GPU_intensity, GPU_phase, GPU_envelope,
+//                                  dimx_padded, dimy_padded, dimx_padded, dimy_padded);
+//        EXECUDA(cudaMemcpy((void*)iwa_array, (void*)GPU_intensity, frameSizePadded * sizeof(T),
+//                           cudaMemcpyDeviceToHost));
+//        EXECUDA(cudaMemcpy((void*)pwa_array, (void*)GPU_phase, frameSizePadded * sizeof(T),
+//                           cudaMemcpyDeviceToHost));
+//        iwa->writeBufferedFrame(_iwa, k_out);
+//        iwb->writeBufferedFrame(_iwb, k_out);
+//        pwa->writeBufferedFrame(_pwa, k_out);
+//        pwb->writeBufferedFrame(_pwb, k_out);
+// END_DEBUG
+        // clang-format on
         if(ARG.verbose)
         {
             uint32_t dimz = phaseWritter->dimz();
@@ -562,6 +616,11 @@ private:
     bool paddingYSymmetric;
     std::shared_ptr<io::DenFrame2DReader<T>> intensityReader, phaseReader;
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> intensityWritter, phaseWritter;
+    // clang-format off
+//DEBUG
+//    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> iwb, iwa, pwb, pwa;
+//END DEBUG
+    // clang-format on
 };
 
 template <typename T>

@@ -192,8 +192,18 @@ void processFile(Args ARG, io::DenFileInfo di)
                                  (int)max, mean, std::pow(variance, 0.5));
     } else
     {
-        std::cout << io::xprintf("Global [min, max] = [%0.3f, %0.3f], mean=%f, stdev=%f, ", min,
-                                 max, mean, std::pow(variance, 0.5));
+        if(std::abs(mean) > 0.01)
+        {
+            std::cout << io::xprintf("Global [min, max] = [%0.3f, %0.3f], mean=%f, stdev=%f, ", min,
+                                     max, mean, std::pow(variance, 0.5));
+        } else if(max == 0.0 && min == 0.0)
+        {
+            std::cout << io::xprintf("Global [min, max] = [0.0, 0.0], mean=0.0, stdev=0.0, ");
+        } else
+        {
+            std::cout << io::xprintf("Global [min, max] = [%e, %e], mean=%e, stdev=%e, ", min, max,
+                                     mean, std::pow(variance, 0.5));
+        }
         if(NANcount != 0 || INFcount != 0)
         {
 
@@ -207,9 +217,21 @@ void processFile(Args ARG, io::DenFileInfo di)
     {
         double RMSEDenominator = std::sqrt(double(N));
         double l2 = sumSquares;
-        std::cout << io::xprintf(
-            "Global l2 norm is %0.1f and its square is %0.1f. That imply L2=%f, RMSE=%E\n",
-            std::pow(l2, 0.5), l2, std::pow(l2, 0.5), std::pow(l2, 0.5) / RMSEDenominator);
+        if(l2 > 0.01)
+        {
+            std::cout << io::xprintf(
+                "Global l2 norm is %0.1f and its square is %0.1f. That imply L2=%f, RMSE=%e\n",
+                std::pow(l2, 0.5), l2, std::pow(l2, 0.5), std::pow(l2, 0.5) / RMSEDenominator);
+        } else if(l2 == 0.0)
+        {
+            std::cout << io::xprintf(
+                "Global l2 norm is 0.0 and its square is 0.0. That imply L2=0.0, RMSE=0.0.\n");
+        } else
+        {
+            std::cout << io::xprintf(
+                "Global l2 norm is %e and its square is %e. That imply L2=%e, RMSE=%e\n",
+                std::pow(l2, 0.5), l2, std::pow(l2, 0.5), std::pow(l2, 0.5) / RMSEDenominator);
+        }
     }
 
     if(ARG.framesSpecified)
@@ -240,8 +262,8 @@ void processFile(Args ARG, io::DenFileInfo di)
             } else
             {
                 std::cout << io::xprintf(
-                    "||frame %d||_2=%E RMSE=%E, [min, max] = [%0.3f, %0.3f], mean=%f, stdev=%f, ", k,
-                    std::pow(sumSquares, 0.5), std::pow(sumSquares / N, 0.5), min, max, mean,
+                    "||frame %d||_2=%E RMSE=%E, [min, max] = [%0.3f, %0.3f], mean=%f, stdev=%f, ",
+                    k, std::pow(sumSquares, 0.5), std::pow(sumSquares / N, 0.5), min, max, mean,
                     std::pow(variance, 0.5));
                 if(NANcount != 0 || INFcount != 0)
                 {
