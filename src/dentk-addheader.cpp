@@ -2,147 +2,149 @@
 #include "PLOG/PlogSetup.h"
 
 // Internal libraries
+#include "DEN/DenFileInfo.hpp"
 #include "DEN/DenSupportedType.hpp"
+#include "PROG/Arguments.hpp"
+#include "PROG/ArgumentsForce.hpp"
 #include "PROG/parseArgs.h"
+#include "PROG/Program.hpp"
 #include "littleEndianAlignment.h"
 #include "rawop.h"
 
 using namespace KCT;
+using namespace KCT::util;
 
-struct Args
+class Args : public ArgumentsForce
 {
+    void defineArguments();
+    int postParse();
+    int preParse() { return 0; };
+
+public:
+    Args(int argc, char** argv, std::string prgName)
+        : Arguments(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName){};
+
     std::string inputRawFile;
     std::string outputDenFile;
     uint16_t dimx, dimy, dimz;
     std::string type;
     io::DenSupportedType dataType;
     uint64_t inputFileSize;
-    bool force = false;
+    uint64_t inputDataSize;
+    bool inputIsDen = false;
+    uint64_t inputOffset = 0;
     int parseArguments(int argc, char* argv[]);
 };
 
-/**Argument parsing
- *
- */
-int Args::parseArguments(int argc, char* argv[])
+void Args::defineArguments()
 {
-    CLI::App app{ "Insert DEN header to a raw file." };
-    app.add_flag("-f,--force", force, "Overwrite outputDenFile if it exists.");
-    app.add_option("dimx", dimx, "X dimension.")->required()->check(CLI::Range(1, 65535));
-    app.add_option("dimy", dimy, "Y dimension.")->required()->check(CLI::Range(1, 65535));
-    app.add_option("dimz", dimz, "Z dimension.")->required()->check(CLI::Range(1, 65535));
-    app.add_option("type", type, "Possible options are uint16_t, float or double")->required();
-    app.add_option("input_raw_file", inputRawFile, "Raw file.")
+    cliApp->add_option("dimx", dimx, "X dimension.")->required()->check(CLI::Range(1, 65535));
+    cliApp->add_option("dimy", dimy, "Y dimension.")->required()->check(CLI::Range(1, 65535));
+    cliApp->add_option("dimz", dimz, "Z dimension.")->required()->check(CLI::Range(1, 65535));
+    cliApp->add_option("type", type, "Possible options are uint16_t, float or double")->required();
+    cliApp->add_option("input_raw_file", inputRawFile, "Raw file.")
         ->required()
         ->check(CLI::ExistingFile);
-    app.add_option("output_den_file", outputDenFile, "DEN output to write.")->required();
-    try
-    {
-        app.parse(argc, argv);
-        if(!force)
-        {
-            if(io::pathExists(outputDenFile))
-            {
-                std::string msg
-                    = "Error: output file already exists, use --force to force overwrite.";
-                LOGE << msg;
-                return 1;
-            }
-        }
-        if(inputRawFile == outputDenFile)
-        {
-            LOGE << "Error: input and output files must differ!";
-            return 1;
-        }
-        uint64_t expectedSize = dimx * dimy * dimz;
-        if(type == "uint16_t")
-        {
-            dataType = io::DenSupportedType::UINT16;
-            expectedSize *= 2;
-        } else if(type == "float")
-        {
-            dataType = io::DenSupportedType::FLOAT32;
-            expectedSize *= 4;
-        } else if(type == "double")
-        {
-            dataType = io::DenSupportedType::FLOAT64;
-            expectedSize *= 8;
-        } else
-        {
-            LOGE << io::xprintf("Error: unsupported data type %s!", type.c_str());
-            return 1;
-        }
-        inputFileSize = io::getFileSize(inputRawFile);
-        if(inputFileSize != expectedSize)
-        {
-            LOGE << io::xprintf(
-                "Error: input file %s has size %lu but the size of the den file with specified "
-                "dimensions (dimx, dimy, dimz) = (%d, %d, %d) and type %s is %lu",
+    cliApp->add_option("output_den_file", outputDenFile, "DEN output to write.")->required();
+    addForceArgs();
+}
 
-                inputRawFile.c_str(), inputFileSize, dimx, dimy, dimz, type.c_str(), expectedSize);
-            return 1;
-        }
-    } catch(const CLI::ParseError& e)
+int Args::postParse()
+{
+    cliApp->parse(argc, argv);
+    if(!force)
     {
-        int exitcode = app.exit(e);
-        if(exitcode == 0) // Help message was printed
+        if(io::pathExists(outputDenFile))
         {
+            std::string msg = "Error: output file already exists, use --force to force overwrite.";
+            LOGE << msg;
             return 1;
-        } else
-        {
-            LOGE << io::xprintf("There was perse error catched.\n %s", app.help().c_str());
-            return -1;
         }
+    }
+    if(inputRawFile == outputDenFile)
+    {
+        LOGE << "Error: input and output files must differ!";
+        return 1;
+    }
+    uint64_t expectedSize = dimx * dimy * dimz;
+    if(type == "uint16_t")
+    {
+        dataType = io::DenSupportedType::UINT16;
+        expectedSize *= 2;
+    } else if(type == "float")
+    {
+        dataType = io::DenSupportedType::FLOAT32;
+        expectedSize *= 4;
+    } else if(type == "double")
+    {
+        dataType = io::DenSupportedType::FLOAT64;
+        expectedSize *= 8;
+    } else
+    {
+        LOGE << io::xprintf("Error: unsupported data type %s!", type.c_str());
+        return 1;
+    }
+    inputFileSize = io::getFileSize(inputRawFile);
+    io::DenFileInfo di = io::DenFileInfo(inputRawFile, false);
+    if(di.isValid())
+    {
+        inputIsDen = true;
+        inputOffset = di.getOffset();
+        inputDataSize = inputFileSize - inputOffset;
+    } else
+    {
+        inputIsDen = false;
+        inputOffset = 0;
+        inputDataSize = inputFileSize;
+    }
+    if(inputDataSize != expectedSize)
+    {
+        LOGE << io::xprintf(
+            "Error: input file %s has size %lu but the size of the den file with specified "
+            "dimensions (dimx, dimy, dimz) = (%d, %d, %d) and type %s is %lu",
+            inputRawFile.c_str(), inputFileSize, dimx, dimy, dimz, type.c_str(), expectedSize);
+        return 1;
     }
     return 0;
 }
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
-    std::string csvLogFile = io::xprintf(
-        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
+    Program PRG(argc, argv);
     // Argument parsing
-    Args a;
-    int parseResult = a.parseArguments(argc, argv);
-    if(parseResult != 0)
+    const std::string prgInfo = "Insert DEN header to a raw file or DEN file with other alignment, size in the header needs to be compatible with data size.";
+    Args ARG(argc, argv, prgInfo);
+    int parseResult = ARG.parse();
+    if(parseResult > 0)
     {
-        if(parseResult > 0)
-        {
-            return 0; // Exited sucesfully, help message printed
-        } else
-        {
-            return -1; // Exited somehow wrong
-        }
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
     }
-    LOGI << io::xprintf("START %s", argv[0]);
+    PRG.startLog();
     // Simply add header to a new file
-    uint8_t header[6];
-    util::putUint16(a.dimy, header);
-    util::putUint16(a.dimx, &header[2]);
-    util::putUint16(a.dimz, &header[4]);
-    io::createEmptyFile(a.outputDenFile, 0, true);
-    io::appendBytes(a.outputDenFile, header, 6);
+    std::array<uint32_t, 3> dim = { ARG.dimx, ARG.dimy, ARG.dimz };
+    bool XMajorAlignment = true;
+    io::DenFileInfo::createDenHeader(ARG.outputDenFile, ARG.dataType, 3, std::begin(dim), XMajorAlignment);
     uint32_t bufferSize = 1024 * 1024;
     uint8_t* buffer = new uint8_t[bufferSize];
-    uint64_t inputFilePosition = 0;
-    while(inputFilePosition < a.inputFileSize)
+    uint64_t inputFilePosition = ARG.inputOffset;
+    while(inputFilePosition < ARG.inputFileSize)
     {
         uint32_t s;
-        if(inputFilePosition + bufferSize < a.inputFileSize)
+        if(inputFilePosition + bufferSize < ARG.inputFileSize)
         {
             s = bufferSize;
         } else
         {
-            s = uint32_t(a.inputFileSize - inputFilePosition);
+            s = uint32_t(ARG.inputFileSize - inputFilePosition);
         }
-        io::readBytesFrom(a.inputRawFile, inputFilePosition, buffer, s);
-        io::appendBytes(a.outputDenFile, buffer, s);
+        io::readBytesFrom(ARG.inputRawFile, inputFilePosition, buffer, s);
+        io::appendBytes(ARG.outputDenFile, buffer, s);
         inputFilePosition += s;
     }
     delete[] buffer;
-    LOGI << io::xprintf("END %s", argv[0]);
+    PRG.endLog();
 }
