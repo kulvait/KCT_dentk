@@ -5,7 +5,6 @@
 
 // External libraries
 #include "CLI/CLI.hpp"
-#include "matplotlibcpp.h"
 #include "mkl.h"
 
 // Internal libraries
@@ -19,8 +18,6 @@
 #include "SPLINE/SplineFitter.hpp"
 #include "frameop.h"
 #include "rawop.h"
-
-namespace plt = matplotlibcpp;
 
 using namespace KCT;
 

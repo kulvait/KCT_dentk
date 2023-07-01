@@ -629,9 +629,7 @@ void exportKernelFloat(Args ARG,
                        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& kernelReWritter,
                        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& kernelImWritter)
 {
-    uint32_t dimx, dimy, dimx_padded, dimy_padded;
-    dimx = ARG.dimx;
-    dimy = ARG.dimy;
+    uint32_t dimx_padded, dimy_padded;
     if(ARG.paddingNone)
     {
         dimx_padded = ARG.dimx;

@@ -41,15 +41,16 @@ else()
   set(COR_LIB "libmkl_rt.so")
 endif()
 
-find_path(MKL_INCLUDE_DIR NAMES mkl_lapacke.h HINTS /opt/intel/compilers_and_libraries_2019.4.243/linux/mkl/include /opt/intel/compilers_and_libraries_2019.0.117/linux/mkl/includei /opt/intel/mkl/include /usr/include/mkl $ENV{HOME}/opt/MKL/2022/mkl/2022.0.1/include)
+find_path(MKL_INCLUDE_DIR NAMES mkl_lapacke.h HINTS /opt/intel/compilers_and_libraries_2019.4.243/linux/mkl/include /opt/intel/compilers_and_libraries_2019.0.117/linux/mkl/includei /opt/intel/mkl/include /usr/include/mkl $ENV{HOME}/opt/MKL/2022/mkl/2022.0.1/include /opt/intel/oneapi/mkl/2023.1.0/include)
 set(MKL_INCLUDE_DIRS ${MKL_INCLUDE_DIR})
 message("Found MKL_INCLUDE_DIRS ${MKL_INCLUDE_DIR}")
 get_filename_component(MKL_BASE_DIR ${MKL_INCLUDE_DIR} DIRECTORY)
 
 find_library(MKL_CORE_LIBRARY
              NAMES ${COR_LIB}
-             PATHS ${MKL_BASE_DIR}/lib/intel64_lin/ /lib/x86_64-linux-gnu/ $ENV{HOME}/opt/MKL/2022/mkl/2022.0.1/lib/intel64/
+             PATHS ${MKL_BASE_DIR}/lib/intel64_lin/ /lib/x86_64-linux-gnu/ ${MKL_BASE_DIR}/lib/intel64/
              NO_DEFAULT_PATH)
+#Seems that in the oneapi version MKL routines also depend on library in oneapi/compiler/2023.1.0/linux/compiler/lib/intel64_lin/ so in troubles try ldconfig with this path
 
 set(MKL_LIBRARIES ${MKL_CORE_LIBRARY})
 

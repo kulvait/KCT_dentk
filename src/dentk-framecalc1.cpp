@@ -59,22 +59,17 @@ template <typename T>
 void sumFrames(Args a, T* sum)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
+    uint64_t frameSize = di.getFrameSize();
     std::fill(sum, sum + frameSize, T(0));
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
+    T* A_array;
+    std::shared_ptr<io::BufferedFrame2D<T>> A;
     for(const int& k : a.frames)
     {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                sum[i + j * dimx] += A->get(i, j);
-            }
-        }
+        std::shared_ptr<io::BufferedFrame2D<T>> A = denReader->readBufferedFrame(a.frames[k]);
+        A_array = A->getDataPointer();
+        std::transform(sum, sum + frameSize, A_array, sum, [](T a, T b) { return a + b; });
     }
 }
 
@@ -82,28 +77,10 @@ template <typename T>
 void averageFrames(Args a, T* avg)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
+    uint64_t frameSize = di.getFrameSize();
     uint32_t frameCount = a.frames.size();
-    std::fill(avg, avg + frameSize, T(0));
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    for(const int& k : a.frames)
-    {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                avg[i + j * dimx] += A->get(i, j);
-            }
-        }
-    }
-    for(int i = 0; i != frameSize; i++)
-    {
-        avg[i] = avg[i] / frameCount;
-    }
+    sumFrames(a, avg);
+    std::transform(avg, avg + frameSize, avg, [frameCount](T a) { return a / frameCount; });
 }
 
 // Utilizing two pass algorithm as discribed
@@ -112,38 +89,32 @@ template <typename T>
 void framesVariance(Args a, T* var, bool sampleVariance = false)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
+    uint64_t frameSize = di.getFrameSize();
     uint32_t frameCount = a.frames.size();
     std::fill(var, var + frameSize, T(0));
     T* avg = new T[frameSize];
     averageFrames(a, avg);
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
     uint32_t divideFactor = frameCount;
     if(sampleVariance)
     {
         divideFactor = frameCount - 1;
     }
+    T* A_array;
+    std::shared_ptr<io::BufferedFrame2D<T>> A;
     for(const int& k : a.frames)
     {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                T a = A->get(i, j) - avg[i + j * dimx];
-                a = a * a;
-                var[i + j * dimx] += a;
-            }
-        }
+        A = denReader->readBufferedFrame(a.frames[k]);
+        A_array = A->getDataPointer();
+        std::transform(A_array, A_array + frameSize, avg, A_array, [](T& el, T& avg) {
+            T vel = el - avg;
+            return vel * vel;
+        });
+        std::transform(A_array, A_array + frameSize, var, var, [](T& x, T& v) { return x + v; });
     }
     delete[] avg;
-    for(int i = 0; i != frameSize; i++)
-    {
-        var[i] = var[i] / divideFactor;
-    }
+    std::transform(var, var + frameSize, var, [divideFactor](T& x) { return x / divideFactor; });
 }
 
 // Utilizing two pass algorithm as discribed
@@ -152,86 +123,78 @@ template <typename T>
 void framesStandardDeviation(Args a, T* stdev, bool sampleStandardDeviation = false)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
+    uint64_t frameSize = di.getFrameSize();
     uint32_t frameCount = a.frames.size();
     std::fill(stdev, stdev + frameSize, T(0));
     T* avg = new T[frameSize];
     averageFrames(a, avg);
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
     uint32_t divideFactor = frameCount;
     if(sampleStandardDeviation)
     {
         divideFactor = frameCount - 1;
     }
+    T* A_array;
+    std::shared_ptr<io::BufferedFrame2D<T>> A;
     for(const int& k : a.frames)
     {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                T a = A->get(i, j) - avg[i + j * dimx];
-                a = a * a;
-                stdev[i + j * dimx] += a;
-            }
-        }
+        A = denReader->readBufferedFrame(a.frames[k]);
+        A_array = A->getDataPointer();
+        std::transform(A_array, A_array + frameSize, avg, A_array, [](T& el, T& avg) {
+            T vel = el - avg;
+            return vel * vel;
+        });
+        std::transform(A_array, A_array + frameSize, stdev, stdev,
+                       [](T& x, T& v) { return x + v; });
     }
     delete[] avg;
-    for(int i = 0; i != frameSize; i++)
-    {
-        stdev[i] = std::sqrt(stdev[i] / divideFactor);
-    }
+    std::transform(stdev, stdev + frameSize, stdev,
+                   [divideFactor](T& x) { return std::sqrt(x / divideFactor); });
 }
 
 template <typename T>
 std::shared_ptr<io::Frame2DI<T>> minFrames(Args a)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
+    uint64_t frameSize = di.getFrameSize();
     uint32_t frameCount = a.frames.size();
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::Frame2DI<T>> F = denReader->readFrame(a.frames[0]);
-    for(int k = 1; k < frameCount; k++)
+    std::shared_ptr<io::BufferedFrame2D<T>> F = denReader->readBufferedFrame(a.frames[0]);
+    T* F_array = F->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2D<T>> A;
+    T* A_array;
+    for(unsigned int k = 1; k < frameCount; k++)
     {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                F->set(std::min(A->get(i, j), F->get(i, j)), i, j);
-            }
-        }
+        A = denReader->readBufferedFrame(a.frames[k]);
+        A_array = A->getDataPointer();
+        std::transform(F_array, F_array + frameSize, A_array, F_array,
+                       [](T a, T b) { return std::min(a, b); });
     }
-    return F;
+    return std::static_pointer_cast<io::Frame2DI<T>>(F);
 }
 
 template <typename T>
 std::shared_ptr<io::Frame2DI<T>> maxFrames(Args a)
 {
     io::DenFileInfo di(a.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
+    uint64_t frameSize = di.getFrameSize();
     uint32_t frameCount = a.frames.size();
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::Frame2DI<T>> F = denReader->readFrame(a.frames[0]);
-    for(int k = 1; k < frameCount; k++)
+    std::shared_ptr<io::BufferedFrame2D<T>> F = denReader->readBufferedFrame(a.frames[0]);
+    T* F_array = F->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2D<T>> A;
+    T* A_array;
+    for(unsigned int k = 1; k < frameCount; k++)
     {
-        std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
-        for(int j = 0; j != dimy; j++)
-        {
-            for(int i = 0; i != dimx; i++)
-            {
-                F->set(std::max(A->get(i, j), F->get(i, j)), i, j);
-            }
-        }
+        A = denReader->readBufferedFrame(a.frames[k]);
+        A_array = A->getDataPointer();
+        std::transform(F_array, F_array + frameSize, A_array, F_array,
+                       [](T a, T b) { return std::max(a, b); });
     }
-    return F;
+    return std::static_pointer_cast<io::Frame2DI<T>>(F);
 }
 
 template <typename T>
@@ -270,14 +233,14 @@ std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
     uint32_t maxArrayNum = 2147483647 / frameCount;
     uint32_t arraysCount = std::min(frameSize, maxArrayNum);
     T** rowArrays = new T*[arraysCount];
-    for(int i = 0; i != arraysCount; i++)
+    for(unsigned int i = 0; i != arraysCount; i++)
     {
         rowArrays[i] = new T[frameCount];
     }
-    for(int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
+    for(int ind = 0; ind != 1 + (((int)frameSize - 1) / (int)arraysCount); ind++)
     {
         int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
-        for(int k = 0; k < frameCount; k++)
+        for(unsigned int k = 0; k < frameCount; k++)
         {
             std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
             for(int jnd = 0; jnd < maxjnd; jnd++)
@@ -297,7 +260,7 @@ std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
             F->set(median, xindex, yindex);
         }
     }
-    for(int i = 0; i != arraysCount; i++)
+    for(unsigned int i = 0; i != arraysCount; i++)
     {
         delete[] rowArrays[i];
     }
@@ -332,14 +295,14 @@ std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
     T* avg = new T[frameSize];
     averageFrames(a, avg);
     T** rowArrays = new T*[arraysCount];
-    for(int i = 0; i != arraysCount; i++)
+    for(unsigned int i = 0; i != arraysCount; i++)
     {
         rowArrays[i] = new T[frameCount];
     }
-    for(int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
+    for(unsigned int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
     {
         int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
-        for(int k = 0; k < frameCount; k++)
+        for(unsigned int k = 0; k < frameCount; k++)
         {
             std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
             for(int jnd = 0; jnd < maxjnd; jnd++)
@@ -360,7 +323,7 @@ std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
             F->set(median, xindex, yindex);
         }
     }
-    for(int i = 0; i != arraysCount; i++)
+    for(unsigned int i = 0; i != arraysCount; i++)
     {
         delete[] rowArrays[i];
     }

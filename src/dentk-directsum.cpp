@@ -23,12 +23,6 @@
 #include "ftpl.h"
 #include "stringFormatter.h"
 
-#if DEBUG
-#include "matplotlibcpp.h"
-
-namespace plt = matplotlibcpp;
-#endif
-
 using namespace KCT;
 
 /// Arguments of the main function.

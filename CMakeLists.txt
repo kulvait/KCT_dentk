@@ -20,7 +20,7 @@ find_package(CUDAToolkit 11.3)
 #ENDIF()
 
 set(CMAKE_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
-set(CMAKE_CXX_STANDARD 17)#Supported values are 98, 11 and 14.
+set(CMAKE_CXX_STANDARD 17)#Supported values are 98, 11, 17, 20, 23
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 #Default CMAKE_CXX_FLAGS are empty, default for CMAKE_CXX_FLAGS_DEBUG is -g and CMAKE_CXX_FLAGS_RELEASE are not empty
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wextra")

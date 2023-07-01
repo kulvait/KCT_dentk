@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
             lda = n;
             ldu = std::min(m, n);
             ldvt = n;
-            if(a.max_s_vals < ldu && a.max_s_vals > 0)
+            if((int)a.max_s_vals < ldu && a.max_s_vals > 0)
             {
                 range = 'I';
                 il = 1;
