@@ -77,7 +77,7 @@ void Args::defineArguments()
     outCM->needs(inpCM);
     cliApp->add_option("--x-from,--left-cut", left_cut, "Crop x range [x_from, x_to).")
         ->check(CLI::NonNegativeNumber);
-    CLI::Option* o_xt = cliApp->add_option("--x-to", left_cut, "Crop x range [x_from, x_to).")
+    CLI::Option* o_xt = cliApp->add_option("--x-to", x_to, "Crop x range [x_from, x_to).")
                             ->check(CLI::NonNegativeNumber);
     CLI::Option* o_rc = cliApp
                             ->add_option("--right-cut", right_cut,
@@ -85,7 +85,7 @@ void Args::defineArguments()
                             ->check(CLI::NonNegativeNumber);
     cliApp->add_option("--y-from,--top-cut", top_cut, "Crop y range [y_from, y_to).")
         ->check(CLI::NonNegativeNumber);
-    CLI::Option* o_yt = cliApp->add_option("--y-to", top_cut, "Crop y range [y_from, y_to).")
+    CLI::Option* o_yt = cliApp->add_option("--y-to", y_to, "Crop y range [y_from, y_to).")
                             ->check(CLI::NonNegativeNumber);
     CLI::Option* o_bc = cliApp
                             ->add_option("--bottom-cut", bottom_cut,
