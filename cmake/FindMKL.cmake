@@ -51,6 +51,11 @@ find_library(MKL_CORE_LIBRARY
              PATHS ${MKL_BASE_DIR}/lib/intel64_lin/ /lib/x86_64-linux-gnu/ ${MKL_BASE_DIR}/lib/intel64/
              NO_DEFAULT_PATH)
 #Seems that in the oneapi version MKL routines also depend on library in oneapi/compiler/2023.1.0/linux/compiler/lib/intel64_lin/ so in troubles try ldconfig with this path
+#It might be necessary to create /etc/ld.so.conf.d/intel.conf with the following content
+##Intel MKL
+#/opt/intel/oneapi/compiler/2023.1.0/linux/compiler/lib/intel64_lin/
+#/opt/intel/oneapi/mkl/2023.1.0/lib/intel64/
+
 
 set(MKL_LIBRARIES ${MKL_CORE_LIBRARY})
 
