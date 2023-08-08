@@ -95,6 +95,12 @@ int main(int argc, char* argv[])
         uint64_t totalSize = dimx * dimy * dimz;
         if(totalSize > std::numeric_limits<uint32_t>::max())
         {
+            ERR = io::xprintf(
+                "Uint32 is exceeded by the element size of matrix that is %lu, byte size is %lu.",
+                totalSize, totalSize * sizeof(float));
+            LOGI << ERR;
+        } else if(totalSize * sizeof(float) > std::numeric_limits<uint32_t>::max())
+        {
             ERR = io::xprintf("Uint32 is exceeded by the byte size of matrix that is %lu.",
                               totalSize * sizeof(float));
             LOGW << ERR;
@@ -115,11 +121,12 @@ int main(int argc, char* argv[])
         bool LAPACKE_sgesvdx_algorithm = true;
         if(LAPACKE_sgesvdx_algorithm == false)
         {
-            // This implementation has limitations when m is large so it is here for reference
+            // This implementation has limitations that all the singular values are computed even if a.max_s_vals < min(m, n)
+            // Thus the other procedure shall be preferred
             m = dimz;
             n = dimx * dimy;
             lda = n;
-            ldu = std::min(m, n); // Number of vectors stored
+            ldu = std::min(m, n); // Number of vectors stored even if a.max_s_vals is lower
             ldvt = n;
             if(storeU)
             {
@@ -139,9 +146,9 @@ int main(int argc, char* argv[])
                 // The following is required by specs despite the fact that it will allocate huge
                 // array
                 // https://www.intel.com/content/www/us/en/develop/documentation/onemkl-developer-reference-c/top/lapack-routines/lapack-least-squares-and-eigenvalue-problem/lapack-least-squares-eigenvalue-problem-driver/singular-value-decomposition-lapack-driver/gesvd.html
-                uint64_t v_size = (uint64_t)ldvt * (uint64_t)n;
-                LOGI << io::xprintf("Allocating vector V of the size %lu, where ldu=%d n=%d",
-                                    v_size, ldu, n);
+                uint64_t v_size = (uint64_t)ldvt * (uint64_t)ldu;
+                LOGI << io::xprintf("Allocating vector V of the size %lu, where ldvt=%d ldu=%d",
+                                    v_size, ldvt, ldu);
                 V = new float[v_size];
             } else
             {
@@ -156,8 +163,10 @@ int main(int argc, char* argv[])
                                 jobvt, dimz, dimx * dimy, dimx * dimy, ldu, ldvt);
             // lapack_int inf = LAPACKE_sgesvd(LAPACK_ROW_MAJOR, jobu, jobvt, dimz, dimx * dimy, A,
             //                                dimx * dimy, S, U, ldu, V, ldvt, superb);
+            LOGD << "Start of LAPACKE_sgesvd";
             inf = LAPACKE_sgesvd(LAPACK_ROW_MAJOR, jobu, jobvt, m, n, A, lda, S, U, ldu, V, ldvt,
                                  superb);
+            LOGD << "End of LAPACKE_sgesvd";
         } else
         {
             // Documentation
@@ -172,13 +181,12 @@ int main(int argc, char* argv[])
             ldu = std::min(m, n);
             LOGI << io::xprintf("ldu=%d minimum of m=%d and n=%d", ldu, m, n);
             ldvt = n;
+            //Even if there is change in number of exported vectors the U and V arrays needs to have a size to store all singular vectors, ldu unchanged
             if((int)a.max_s_vals < ldu && a.max_s_vals > 0)
             {
                 range = 'I';
                 il = 1;
                 iu = il + a.max_s_vals - 1;
-                ldu = std::min((int)ldu, (int)a.max_s_vals);
-                LOGI << io::xprintf("ldu=%d (int)a.max_s_vals=%d", ldu, (int)a.max_s_vals);
             }
             if(storeU)
             {
@@ -206,8 +214,10 @@ int main(int argc, char* argv[])
             }
             S = new float[ldu];
             superbx = new lapack_int[12 * ldu];
+            LOGD << "Start of LAPACKE_sgesvdx";
             inf = LAPACKE_sgesvdx(LAPACK_ROW_MAJOR, jobu, jobvt, range, m, n, A, lda, vl, vu, il,
                                   iu, &ns, S, U, ldu, V, ldvt, superbx);
+            LOGD << "END of LAPACKE_sgesvdx";
         }
         if(inf == 0)
         {
