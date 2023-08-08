@@ -27,7 +27,7 @@ public:
 
     std::string inputRawFile;
     std::string outputDenFile;
-    uint16_t dimx, dimy, dimz;
+    uint32_t dimx, dimy, dimz;
     std::string type;
     io::DenSupportedType dataType;
     uint64_t inputFileSize;
@@ -39,9 +39,9 @@ public:
 
 void Args::defineArguments()
 {
-    cliApp->add_option("dimx", dimx, "X dimension.")->required()->check(CLI::Range(1, 65535));
-    cliApp->add_option("dimy", dimy, "Y dimension.")->required()->check(CLI::Range(1, 65535));
-    cliApp->add_option("dimz", dimz, "Z dimension.")->required()->check(CLI::Range(1, 65535));
+    cliApp->add_option("dimx", dimx, "X dimension.")->required()->check(CLI::Range(1, 2147483647));
+    cliApp->add_option("dimy", dimy, "Y dimension.")->required()->check(CLI::Range(1, 2147483647));
+    cliApp->add_option("dimz", dimz, "Z dimension.")->required()->check(CLI::Range(1, 2147483647));
     cliApp->add_option("type", type, "Possible options are uint16_t, float or double")->required();
     cliApp->add_option("input_raw_file", inputRawFile, "Raw file.")
         ->required()
@@ -67,7 +67,7 @@ int Args::postParse()
         LOGE << "Error: input and output files must differ!";
         return 1;
     }
-    uint64_t expectedSize = dimx * dimy * dimz;
+    uint64_t expectedSize = (uint64_t)dimx * (uint64_t)dimy * (uint64_t)dimz;
     if(type == "uint16_t")
     {
         dataType = io::DenSupportedType::UINT16;

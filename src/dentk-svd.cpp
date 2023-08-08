@@ -26,7 +26,7 @@ struct Args
     std::string S_file;
     std::string V_file = "";
     std::string U_file = "";
-    uint32_t max_s_vals = UINT32_MAX;
+    uint32_t max_s_vals = INT32_MAX;
     double explain_procent = 100.0;
     bool forceOverwrite = false;
 };
@@ -170,6 +170,7 @@ int main(int argc, char* argv[])
             n = dimx * dimy;
             lda = n;
             ldu = std::min(m, n);
+            LOGI << io::xprintf("ldu=%d minimum of m=%d and n=%d", ldu, m, n);
             ldvt = n;
             if((int)a.max_s_vals < ldu && a.max_s_vals > 0)
             {
@@ -177,6 +178,7 @@ int main(int argc, char* argv[])
                 il = 1;
                 iu = il + a.max_s_vals - 1;
                 ldu = std::min((int)ldu, (int)a.max_s_vals);
+                LOGI << io::xprintf("ldu=%d (int)a.max_s_vals=%d", ldu, (int)a.max_s_vals);
             }
             if(storeU)
             {
