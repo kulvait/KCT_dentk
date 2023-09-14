@@ -68,10 +68,10 @@ void Args::defineArguments()
                      "Projections in a DEN format to output.")
         ->required();
     CLI::Option* inpCM = cliApp
-                             ->add_option("--input_matrices", input_matrices,
+                             ->add_option("--input-matrices", input_matrices,
                                           "Projection matrices in a DEN format.")
                              ->check(CLI::ExistingFile);
-    CLI::Option* outCM = cliApp->add_option("--output_matrices", output_matrices,
+    CLI::Option* outCM = cliApp->add_option("--output-matrices", output_matrices,
                                             "Projection matrices in a DEN format to output.");
     inpCM->needs(outCM);
     outCM->needs(inpCM);
