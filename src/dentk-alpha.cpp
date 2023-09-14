@@ -37,12 +37,14 @@ public:
 
     std::string inputFile;
     std::string outputFile;
-    float geq = -std::numeric_limits<float>::infinity();
     float leq = std::numeric_limits<float>::infinity();
-    float gt = -std::numeric_limits<float>::infinity();
+    float geq = -std::numeric_limits<float>::infinity();
     float lt = std::numeric_limits<float>::infinity();
-    float upq = 1.0;
+    float gt = -std::numeric_limits<float>::infinity();
     float loq = 1.0;
+    float upq = 1.0;
+    float loq_frame = 1.0;
+    float upq_frame = 1.0;
 };
 
 /**Argument parsing
@@ -64,12 +66,22 @@ void Args::defineArguments()
     cliApp->add_option("--lt", lt, "In alpha channel will be just the items less than x.");
     cliApp->add_option("--gt", gt, "In alpha channel will be just the items greater than x.");
     cliApp
-        ->add_option("--upper-quantile", upq,
-                     "In alpha channel will be just the upq highest values.")
+        ->add_option("--lower-quantile", loq,
+                     "In alpha channel will be just the loq smalest values computed over all "
+                     "admissible frames.")
         ->check(CLI::Range(0.0, 1.0));
     cliApp
-        ->add_option("--lower-quantile", loq,
-                     "In alpha channel will be just the loq smalest values.")
+        ->add_option("--upper-quantile", upq,
+                     "In alpha channel will be just the upq highest values computed over all "
+                     "admissible frames.")
+        ->check(CLI::Range(0.0, 1.0));
+    cliApp
+        ->add_option("--frame-lower-quantile", loq_frame,
+                     "In alpha channel will be just the loq smalest values computed frame wise.")
+        ->check(CLI::Range(0.0, 1.0));
+    cliApp
+        ->add_option("--frame-upper-quantile", upq_frame,
+                     "In alpha channel will be just the upq highest values computed frame wise.")
         ->check(CLI::Range(0.0, 1.0));
 }
 
@@ -102,28 +114,118 @@ int Args::postParse()
 template <typename T>
 void writeAlphaChannel(int ftpl_id,
                        int fromId,
-                       std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader,
+                       std::shared_ptr<io::DenFrame2DReader<T>> denFrameReader,
                        int toId,
                        std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
                        T leq,
                        T geq,
                        T lt,
-                       T gt)
+                       T gt,
+                       float loq_frame,
+                       float upq_frame)
 {
-    std::shared_ptr<io::Frame2DI<T>> f = denSliceReader->readFrame(fromId);
+    std::shared_ptr<io::BufferedFrame2D<T>> f = denFrameReader->readBufferedFrame(fromId);
+    uint64_t frameSize = (uint64_t)f->dimx() * (uint64_t)f->dimy();
     io::BufferedFrame2D<T> alpha(T(0), f->dimx(), f->dimy());
-    for(std::size_t i = 0; i != f->dimx(); i++)
+    T* f_array = f->getDataPointer();
+    T* a_array = alpha.getDataPointer();
+    if(loq_frame != 1.0f || upq_frame != 1.0f)
     {
-        for(std::size_t j = 0; j != f->dimy(); j++)
+        T* x = new T[frameSize];
+        std::copy(f_array, f_array + frameSize, x);
+        std::sort(x, x + frameSize, std::less<T>());
+        uint32_t loqElements, upqElements;
+        loqElements = (uint32_t)(loq_frame * (frameSize - 1));
+        upqElements = (uint32_t)(upq_frame * (frameSize - 1));
+        leq = std::min(leq, x[loqElements]);
+        geq = std::max(geq, x[frameSize - 1 - upqElements]);
+        delete[] x;
+    }
+    std::transform(f_array, f_array + frameSize, a_array, [geq, leq, gt, lt](const T& elm) {
+        if(elm >= geq && elm <= leq && elm > gt && elm < lt)
         {
-            T elm = f->get(i, j);
-            if(elm >= geq && elm <= leq && elm > gt && elm < lt)
-            {
-                alpha.set(T(1), i, j);
-            }
+            return T(1);
+        } else
+        {
+            return T(0);
+        }
+    });
+    imagesWritter->writeFrame(alpha, toId);
+}
+
+template <typename T>
+void processAlpha(Args ARG)
+{
+    ftpl::thread_pool* threadpool = nullptr;
+    if(ARG.threads > 0)
+    {
+        threadpool = new ftpl::thread_pool(ARG.threads);
+    }
+    io::DenFileInfo inputFileInfo(ARG.inputFile);
+    io::DenSupportedType dataType = inputFileInfo.getElementType();
+    uint32_t dimx = inputFileInfo.dimx();
+    uint32_t dimy = inputFileInfo.dimy();
+    uint64_t totalSize = (uint64_t)dimx * (uint64_t)dimy * (uint64_t)ARG.frames.size();
+    std::shared_ptr<io::DenFrame2DReader<T>> denSliceReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputFile);
+    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(ARG.outputFile, dimx, dimy,
+                                                          ARG.frames.size());
+    T geq, leq, gt, lt;
+    geq = (T)ARG.geq;
+    leq = (T)ARG.leq;
+    gt = (T)ARG.gt;
+    lt = (T)ARG.lt;
+    if(dataType == io::DenSupportedType::UINT16)
+    {
+        if(ARG.geq <= 0)
+        {
+            geq = 0;
+        }
+
+        if(ARG.leq >= 65535.0)
+        {
+            leq = 65535;
         }
     }
-    imagesWritter->writeFrame(alpha, toId);
+    if(ARG.loq != 1.0 || ARG.upq != 1.0)
+    {
+        T* x = new T[totalSize];
+        uint64_t frameSize = (uint64_t)dimx * (uint64_t)dimy;
+        for(uint32_t i = 0; i != ARG.frames.size(); i++)
+        {
+            io::readBytesFrom(ARG.inputFile,
+                              uint64_t(ARG.frames[i]) * frameSize * sizeof(T)
+                                  + inputFileInfo.getOffset(),
+                              (uint8_t*)&x[i * frameSize], frameSize * sizeof(T));
+        }
+        std::sort(x, x + totalSize, std::less<T>());
+        uint32_t loqElements, upqElements;
+        loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
+        upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
+        leq = std::min(leq, x[loqElements]);
+        geq = std::max(geq, x[totalSize - 1 - upqElements]);
+        delete[] x;
+    }
+    for(uint32_t i = 0; i != ARG.frames.size(); i++)
+    {
+
+        if(threadpool != nullptr)
+        {
+            threadpool->push(writeAlphaChannel<T>, ARG.frames[i], denSliceReader, i, imagesWritter,
+                             leq, geq, lt, gt, ARG.loq_frame, ARG.upq_frame);
+        } else
+        {
+
+            writeAlphaChannel<T>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq, geq, lt,
+                                 gt, ARG.loq_frame, ARG.upq_frame);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->stop(true);
+        delete threadpool;
+    }
 }
 
 int main(int argc, char* argv[])
@@ -142,177 +244,31 @@ int main(int argc, char* argv[])
     PRG.startLog(true);
     io::DenFileInfo inputFileInfo(ARG.inputFile);
     io::DenSupportedType dataType = inputFileInfo.getElementType();
-    int dimx = inputFileInfo.dimx();
-    int dimy = inputFileInfo.dimy();
+    uint32_t dimx = inputFileInfo.dimx();
+    uint32_t dimy = inputFileInfo.dimy();
     uint64_t totalSize = dimx * dimy * ARG.frames.size();
     if(totalSize > std::numeric_limits<uint32_t>::max())
     {
-        LOGI << io::xprintf("The size of file %s is %d that is bigger than MAX_UINT32!",
+        LOGI << io::xprintf("The size of file %s is %lu that is bigger than MAX_UINT32!",
                             ARG.inputFile.c_str(), totalSize);
-    }
-    ftpl::thread_pool* threadpool = nullptr;
-    if(ARG.threads > 0)
-    {
-        threadpool = new ftpl::thread_pool(ARG.threads);
     }
     switch(dataType)
     {
-    case io::DenSupportedType::UINT16: {
-        std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.inputFile);
-        std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(ARG.outputFile, dimx, dimy,
-                                                                     ARG.frames.size());
 
-        uint16_t geq, leq, gt, lt;
-        geq = (uint16_t)ARG.geq;
-        leq = (uint16_t)ARG.leq;
-        gt = (uint16_t)ARG.gt;
-        lt = (uint16_t)ARG.lt;
-        if(ARG.geq == -std::numeric_limits<float>::infinity())
-        {
-            geq = 0;
-        }
-
-        if(ARG.leq == std::numeric_limits<float>::infinity())
-        {
-            leq = 65535;
-        }
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            uint16_t* x = new uint16_t[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(uint16_t)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(uint16_t));
-            }
-            std::sort(x, x + totalSize, std::less<uint32_t>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeAlphaChannel<uint16_t>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq, lt, gt);
-            } else
-            {
-
-                writeAlphaChannel<uint16_t>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                            geq, lt, gt);
-            }
-
-            // Try asynchronous calls
-            // threadpool->push(writeFrameUint16, ARG.frames[i], denSliceReader, i, imagesWritter);
-        }
+    case io::DenSupportedType::UINT16:
+        processAlpha<uint16_t>(ARG);
         break;
-    }
-    case io::DenSupportedType::FLOAT32: {
-        std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<float>>(ARG.inputFile);
-        std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(ARG.outputFile, dimx, dimy,
-                                                                  ARG.frames.size());
-        float leq = ARG.leq;
-        float geq = ARG.geq;
-        float lt = ARG.lt;
-        float gt = ARG.gt;
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            float* x = new float[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(float)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(float));
-            }
-            std::sort(x, x + totalSize, std::less<float>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * double(totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * double(totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeAlphaChannel<float>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq, lt, gt);
-            } else
-            {
-
-                writeAlphaChannel<float>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                         geq, lt, gt);
-            }
-        }
+    case io::DenSupportedType::FLOAT32:
+        processAlpha<float>(ARG);
         break;
-    }
-    case io::DenSupportedType::FLOAT64: {
-        std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<double>>(ARG.inputFile);
-        std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(ARG.outputFile, dimx, dimy,
-                                                                   ARG.frames.size());
-        double leq = ARG.leq;
-        double geq = ARG.geq;
-        double lt = ARG.lt;
-        double gt = ARG.gt;
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            double* x = new double[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(double)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(double));
-            }
-            std::sort(x, x + totalSize, std::less<double>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeAlphaChannel<double>, ARG.frames[i], denSliceReader, i,
-                                 imagesWritter, leq, geq, lt, gt);
-            } else
-            {
-
-                writeAlphaChannel<double>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq,
-                                          geq, lt, gt);
-            }
-        }
+    case io::DenSupportedType::FLOAT64:
+        processAlpha<double>(ARG);
         break;
-    }
     default:
         std::string errMsg = io::xprintf("Unsupported data type %s.",
                                          io::DenSupportedTypeToString(dataType).c_str());
         KCTERR(errMsg);
+        break;
     }
-    if(threadpool != nullptr)
-    {
-        threadpool->stop(true);
-        delete threadpool;
-    }
-    PRG.endLog();
+    PRG.endLog(true);
 }
