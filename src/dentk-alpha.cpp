@@ -45,6 +45,11 @@ public:
     float upq = 1.0;
     float loq_frame = 1.0;
     float upq_frame = 1.0;
+    float loq_line = 1.0;
+    float upq_line = 1.0;
+    bool output_float32 = false, output_float64 = false, output_uint16 = false;
+    io::DenSupportedType inputDataType;
+    io::DenSupportedType outputDataType;
 };
 
 /**Argument parsing
@@ -60,29 +65,87 @@ void Args::defineArguments()
     addThreadingArgs();
     addForceArgs();
     cliApp->add_option("--leq", leq,
-                       "In alpha channel will be just the items less or equal than x.");
+                       "In alpha channel will be just the items less or equal than x, quantile "
+                       "operations might decrease size of alpha channel.");
     cliApp->add_option("--geq", geq,
-                       "In alpha channel will be just the items greater or equal than x.");
-    cliApp->add_option("--lt", lt, "In alpha channel will be just the items less than x.");
-    cliApp->add_option("--gt", gt, "In alpha channel will be just the items greater than x.");
-    cliApp
-        ->add_option("--lower-quantile", loq,
-                     "In alpha channel will be just the loq smalest values computed over all "
-                     "admissible frames.")
-        ->check(CLI::Range(0.0, 1.0));
-    cliApp
-        ->add_option("--upper-quantile", upq,
-                     "In alpha channel will be just the upq highest values computed over all "
-                     "admissible frames.")
-        ->check(CLI::Range(0.0, 1.0));
-    cliApp
-        ->add_option("--frame-lower-quantile", loq_frame,
-                     "In alpha channel will be just the loq smalest values computed frame wise.")
-        ->check(CLI::Range(0.0, 1.0));
-    cliApp
-        ->add_option("--frame-upper-quantile", upq_frame,
-                     "In alpha channel will be just the upq highest values computed frame wise.")
-        ->check(CLI::Range(0.0, 1.0));
+                       "In alpha channel will be just the items greater or equal than x, quantile "
+                       "operations might decrease size of alpha channel.");
+    cliApp->add_option("--lt", lt,
+                       "In alpha channel will be just the items less than x, quantile operations "
+                       "might decrease size of alpha channel.");
+    cliApp->add_option("--gt", gt,
+                       "In alpha channel will be just the items greater than x, quantile "
+                       "operations might decrease size of alpha channel.");
+    CLI::Option* opt_loq
+        = cliApp
+              ->add_option("--lower-quantile", loq,
+                           "In alpha channel will be just the loq smalest values computed over all "
+                           "admissible frames.")
+              ->check(CLI::Range(0.0, 1.0));
+    CLI::Option* opt_upq
+        = cliApp
+              ->add_option("--upper-quantile", upq,
+                           "In alpha channel will be just the upq highest values computed over all "
+                           "admissible frames.")
+              ->check(CLI::Range(0.0, 1.0));
+    CLI::Option* opt_loq_frame
+        = cliApp
+              ->add_option(
+                  "--frame-lower-quantile", loq_frame,
+                  "In alpha channel will be just the loq smalest values computed frame wise.")
+              ->check(CLI::Range(0.0, 1.0));
+    CLI::Option* opt_upq_frame
+        = cliApp
+              ->add_option(
+                  "--frame-upper-quantile", upq_frame,
+                  "In alpha channel will be just the upq highest values computed frame wise.")
+              ->check(CLI::Range(0.0, 1.0));
+    CLI::Option* opt_loq_line
+        = cliApp
+              ->add_option(
+                  "--line-lower-quantile", loq_line,
+                  "In alpha channel will be just the loq smalest values computed line wise.")
+              ->check(CLI::Range(0.0, 1.0));
+    CLI::Option* opt_upq_line
+        = cliApp
+              ->add_option(
+                  "--line-upper-quantile", upq_line,
+                  "In alpha channel will be just the upq highest values computed line wise.")
+              ->check(CLI::Range(0.0, 1.0));
+    opt_upq_line->excludes(opt_upq_frame)
+        ->excludes(opt_loq_frame)
+        ->excludes(opt_upq)
+        ->excludes(opt_loq);
+    opt_loq_line->excludes(opt_upq_frame)
+        ->excludes(opt_loq_frame)
+        ->excludes(opt_upq)
+        ->excludes(opt_loq);
+    opt_upq_frame->excludes(opt_upq_line)
+        ->excludes(opt_loq_line)
+        ->excludes(opt_upq)
+        ->excludes(opt_loq);
+    opt_loq_frame->excludes(opt_upq_line)
+        ->excludes(opt_loq_line)
+        ->excludes(opt_upq)
+        ->excludes(opt_loq);
+    opt_upq->excludes(opt_upq_frame)
+        ->excludes(opt_loq_frame)
+        ->excludes(opt_upq_line)
+        ->excludes(opt_loq_line);
+    opt_loq->excludes(opt_upq_frame)
+        ->excludes(opt_loq_frame)
+        ->excludes(opt_upq_line)
+        ->excludes(opt_loq_line);
+    CLI::Option_group* op_clg = cliApp->add_option_group(
+        "Output type", "Select type of output DEN file, by default FLOAT32.");
+    registerOptionGroup("operation", op_clg);
+    registerOption("output-float32",
+                   op_clg->add_flag("--outupt-float32", output_float32, "FLOAT32 output."));
+    registerOption("output-float64",
+                   op_clg->add_flag("--output-float64", output_float64, "FLOAT64 output."));
+    registerOption("output-uint16",
+                   op_clg->add_flag("--output-uint16", output_uint16, "UINT16 output."));
+    op_clg->require_option(0, 1);
 }
 
 int Args::postParse()
@@ -103,6 +166,18 @@ int Args::postParse()
     }
     io::DenFileInfo inf(inputFile);
     fillFramesVector(inf.dimz());
+    io::DenFileInfo inputFileInfo(inputFile);
+    inputDataType = inputFileInfo.getElementType();
+    if(output_float64)
+    {
+        outputDataType = io::DenSupportedType::FLOAT64;
+    } else if(output_uint16)
+    {
+        outputDataType = io::DenSupportedType::UINT16;
+    } else
+    {
+        outputDataType = io::DenSupportedType::FLOAT32;
+    }
     return 0;
 }
 
@@ -111,49 +186,83 @@ int Args::postParse()
  *
  * @param f
  */
-template <typename T>
+template <typename T, typename W>
 void writeAlphaChannel(int ftpl_id,
                        int fromId,
                        std::shared_ptr<io::DenFrame2DReader<T>> denFrameReader,
                        int toId,
-                       std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter,
+                       std::shared_ptr<io::AsyncFrame2DWritterI<W>> imagesWritter,
                        T leq,
                        T geq,
                        T lt,
                        T gt,
                        float loq_frame,
-                       float upq_frame)
+                       float upq_frame,
+                       float loq_line,
+                       float upq_line)
 {
     std::shared_ptr<io::BufferedFrame2D<T>> f = denFrameReader->readBufferedFrame(fromId);
-    uint64_t frameSize = (uint64_t)f->dimx() * (uint64_t)f->dimy();
-    io::BufferedFrame2D<T> alpha(T(0), f->dimx(), f->dimy());
+    uint64_t dimx, dimy;
+    dimx = f->dimx();
+    dimy = f->dimy();
+    uint64_t frameSize = dimx * dimy;
+    io::BufferedFrame2D<W> alpha(W(0), dimx, dimy);
     T* f_array = f->getDataPointer();
-    T* a_array = alpha.getDataPointer();
-    if(loq_frame != 1.0f || upq_frame != 1.0f)
+    W* a_array = alpha.getDataPointer();
+    if(loq_line != 1.0f || upq_line != 1.0f)
     {
-        T* x = new T[frameSize];
-        std::copy(f_array, f_array + frameSize, x);
-        std::sort(x, x + frameSize, std::less<T>());
+        T* x = new T[dimx];
         uint32_t loqElements, upqElements;
-        loqElements = (uint32_t)(loq_frame * (frameSize - 1));
-        upqElements = (uint32_t)(upq_frame * (frameSize - 1));
-        leq = std::min(leq, x[loqElements]);
-        geq = std::max(geq, x[frameSize - 1 - upqElements]);
-        delete[] x;
-    }
-    std::transform(f_array, f_array + frameSize, a_array, [geq, leq, gt, lt](const T& elm) {
-        if(elm >= geq && elm <= leq && elm > gt && elm < lt)
+        T l, h;
+        for(uint64_t j = 0; j != dimy; j++)
         {
-            return T(1);
-        } else
-        {
-            return T(0);
+            T* STARTIND = f_array + j * dimx;
+            T* ENDIND = f_array + (j + 1) * dimx;
+            std::copy(STARTIND, ENDIND, x);
+            std::sort(x, x + dimx, std::less<T>());
+            loqElements = (uint32_t)(loq_line * (dimx - 1));
+            upqElements = (uint32_t)(upq_line * (dimx - 1));
+            l = std::min(leq, x[loqElements]);
+            h = std::max(geq, x[dimx - 1 - upqElements]);
+            std::transform(STARTIND, ENDIND, a_array + j * dimx, [h, l](const W& elm) {
+                if(elm >= h && elm <= l)
+                {
+                    return W(1);
+                } else
+                {
+                    return W(0);
+                }
+            });
         }
-    });
+        delete[] x;
+    } else
+    {
+        if(loq_frame != 1.0f || upq_frame != 1.0f)
+        {
+            T* x = new T[frameSize];
+            std::copy(f_array, f_array + frameSize, x);
+            std::sort(x, x + frameSize, std::less<T>());
+            uint32_t loqElements, upqElements;
+            loqElements = (uint32_t)(loq_frame * (frameSize - 1));
+            upqElements = (uint32_t)(upq_frame * (frameSize - 1));
+            leq = std::min(leq, x[loqElements]);
+            geq = std::max(geq, x[frameSize - 1 - upqElements]);
+            delete[] x;
+        }
+        std::transform(f_array, f_array + frameSize, a_array, [geq, leq, gt, lt](const W& elm) {
+            if(elm >= geq && elm <= leq && elm > gt && elm < lt)
+            {
+                return W(1);
+            } else
+            {
+                return W(0);
+            }
+        });
+    }
     imagesWritter->writeFrame(alpha, toId);
 }
 
-template <typename T>
+template <typename T, typename W>
 void processAlpha(Args ARG)
 {
     ftpl::thread_pool* threadpool = nullptr;
@@ -166,10 +275,10 @@ void processAlpha(Args ARG)
     uint32_t dimx = inputFileInfo.dimx();
     uint32_t dimy = inputFileInfo.dimy();
     uint64_t totalSize = (uint64_t)dimx * (uint64_t)dimy * (uint64_t)ARG.frames.size();
-    std::shared_ptr<io::DenFrame2DReader<T>> denSliceReader
+    std::shared_ptr<io::DenFrame2DReader<T>> denFrameReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputFile);
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(ARG.outputFile, dimx, dimy,
+    std::shared_ptr<io::AsyncFrame2DWritterI<W>> imagesWritter
+        = std::make_shared<io::DenAsyncFrame2DWritter<W>>(ARG.outputFile, dimx, dimy,
                                                           ARG.frames.size());
     T geq, leq, gt, lt;
     geq = (T)ARG.geq;
@@ -212,19 +321,42 @@ void processAlpha(Args ARG)
 
         if(threadpool != nullptr)
         {
-            threadpool->push(writeAlphaChannel<T>, ARG.frames[i], denSliceReader, i, imagesWritter,
-                             leq, geq, lt, gt, ARG.loq_frame, ARG.upq_frame);
+            threadpool->push(writeAlphaChannel<T, W>, ARG.frames[i], denFrameReader, i, imagesWritter,
+                             leq, geq, lt, gt, ARG.loq_frame, ARG.upq_frame, ARG.loq_line,
+                             ARG.upq_line);
         } else
         {
 
-            writeAlphaChannel<T>(0, ARG.frames[i], denSliceReader, i, imagesWritter, leq, geq, lt,
-                                 gt, ARG.loq_frame, ARG.upq_frame);
+            writeAlphaChannel<T, W>(0, ARG.frames[i], denFrameReader, i, imagesWritter, leq, geq, lt,
+                                 gt, ARG.loq_frame, ARG.upq_frame, ARG.loq_line, ARG.upq_line);
         }
     }
     if(threadpool != nullptr)
     {
         threadpool->stop(true);
         delete threadpool;
+    }
+}
+template <typename T>
+void preprocessAlpha(Args ARG)
+{
+    switch(ARG.outputDataType)
+    {
+
+    case io::DenSupportedType::UINT16:
+        processAlpha<T, uint16_t>(ARG);
+        break;
+    case io::DenSupportedType::FLOAT32:
+        processAlpha<T, float>(ARG);
+        break;
+    case io::DenSupportedType::FLOAT64:
+        processAlpha<T, double>(ARG);
+        break;
+    default:
+        std::string errMsg = io::xprintf("Unsupported output data type %s.",
+                                         io::DenSupportedTypeToString(ARG.outputDataType).c_str());
+        KCTERR(errMsg);
+        break;
     }
 }
 
@@ -243,30 +375,29 @@ int main(int argc, char* argv[])
     }
     PRG.startLog(true);
     io::DenFileInfo inputFileInfo(ARG.inputFile);
-    io::DenSupportedType dataType = inputFileInfo.getElementType();
-    uint32_t dimx = inputFileInfo.dimx();
-    uint32_t dimy = inputFileInfo.dimy();
+    uint64_t dimx = inputFileInfo.dimx();
+    uint64_t dimy = inputFileInfo.dimy();
     uint64_t totalSize = dimx * dimy * ARG.frames.size();
     if(totalSize > std::numeric_limits<uint32_t>::max())
     {
-        LOGI << io::xprintf("The size of file %s is %lu that is bigger than MAX_UINT32!",
+        LOGI << io::xprintf("The size of file %s to process is %lu that is bigger than MAX_UINT32!",
                             ARG.inputFile.c_str(), totalSize);
     }
-    switch(dataType)
+    switch(ARG.inputDataType)
     {
 
     case io::DenSupportedType::UINT16:
-        processAlpha<uint16_t>(ARG);
+        preprocessAlpha<uint16_t>(ARG);
         break;
     case io::DenSupportedType::FLOAT32:
-        processAlpha<float>(ARG);
+        preprocessAlpha<float>(ARG);
         break;
     case io::DenSupportedType::FLOAT64:
-        processAlpha<double>(ARG);
+        preprocessAlpha<double>(ARG);
         break;
     default:
         std::string errMsg = io::xprintf("Unsupported data type %s.",
-                                         io::DenSupportedTypeToString(dataType).c_str());
+                                         io::DenSupportedTypeToString(ARG.inputDataType).c_str());
         KCTERR(errMsg);
         break;
     }
