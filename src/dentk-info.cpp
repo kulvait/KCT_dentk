@@ -144,8 +144,8 @@ void processFile(Args ARG, io::DenFileInfo di)
     std::vector<double> shiftedSumSquaresVector;
     std::vector<uint64_t> NANcountVector;
     std::vector<uint64_t> INFcountVector;
-
-    for(uint32_t k = 0; k != ARG.dimz; k++)
+    uint64_t frameCount = di.getFrameCount();
+    for(uint64_t k = 0; k != frameCount; k++)
     {
         if(threadpool)
         {
@@ -299,43 +299,70 @@ int main(int argc, char* argv[])
         return -1; // Exited somehow wrong
     }
     io::DenFileInfo di(ARG.input_file);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t dimz = di.dimz();
     uint32_t dimCount = di.getDimCount();
+    uint64_t frameSize = di.getFrameSize();
+    uint64_t totalElements = di.getElementCount();
     bool isExtended = di.isExtended();
     bool isXMajor = di.hasXMajorAlignment();
     if(ARG.returnDimensions)
     {
-        std::cout << io::xprintf("%d\t%d\t%d\n", dimx, dimy, dimz);
+        for(uint32_t k = 0; k != dimCount; k++)
+        {
+            if(k != 0)
+            {
+                std::cout << io::xprintf("\t");
+            }
+            std::cout << io::xprintf("%d", di.dim(k));
+        }
+        std::cout << io::xprintf("\n");
         return 0;
     }
+    std::stringstream dimstr_ss;
+    std::stringstream dimdef_ss;
+    dimstr_ss << "(";
+    dimdef_ss << "(";
+    for(uint32_t k = 0; k != dimCount; k++)
+    {
+        if(k != 0)
+        {
+            dimstr_ss << io::xprintf(", ");
+            dimdef_ss << io::xprintf(", ");
+        }
+        dimstr_ss << io::xprintf("%d", di.dim(k));
+        dimdef_ss << io::xprintf("x%d", k);
+    }
+    dimstr_ss << ")";
+    dimdef_ss << ")";
+
     // int elementSize = di.elementByteSize();
     io::DenSupportedType t = di.getElementType();
     std::string elm = io::DenSupportedTypeToString(t);
-    std::cout << io::xprintf("The %s is %dD %s DEN %s file of dimensions (x,y,z)=(%d, "
-                             "%d, %d). Frames of x*y=%d elements are %s.\n",
-                             ARG.input_file.c_str(), dimCount, (isExtended ? "extended" : "legacy"),
-                             elm.c_str(), dimx, dimy, dimz, dimx * dimy,
-                             (isXMajor ? "xmajor" : "ymajor"));
-    switch(t)
+    std::cout << io::xprintf(
+        "The %s is %dD %s DEN %s file of dimensions %s=%s. Frames of x*y=%d elements are %s.\n",
+        ARG.input_file.c_str(), dimCount, (isExtended ? "extended" : "legacy"), elm.c_str(),
+        dimdef_ss.str().c_str(), dimstr_ss.str().c_str(), frameSize,
+        (isXMajor ? "xmajor" : "ymajor"));
+    if(totalElements != 0)
     {
-    case io::DenSupportedType::UINT16: {
-        processFile<uint16_t>(ARG, di);
-        break;
-    }
-    case io::DenSupportedType::FLOAT32: {
-        processFile<float>(ARG, di);
-        break;
-    }
-    case io::DenSupportedType::FLOAT64: {
-        processFile<double>(ARG, di);
-        break;
-    }
-    default:
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
-        KCTERR(errMsg);
+        switch(t)
+        {
+        case io::DenSupportedType::UINT16: {
+            processFile<uint16_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::FLOAT32: {
+            processFile<float>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::FLOAT64: {
+            processFile<double>(ARG, di);
+            break;
+        }
+        default:
+            std::string errMsg
+                = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+            KCTERR(errMsg);
+        }
     }
 }
 
