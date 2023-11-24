@@ -538,7 +538,7 @@ private:
         // clang-format on
         if(ARG.verbose)
         {
-            uint32_t dimz = phaseWritter->dimz();
+            uint32_t dimz = phaseWritter->getFrameCount();
             if(k_in == k_out)
             {
                 LOGD << io::xprintf("Processed frame %d/%d.", k_in, dimz);

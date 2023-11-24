@@ -18,7 +18,7 @@
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
-#include "DEN/DenFrame2DReader.hpp"
+#include "DEN/DenFrame2DCachedReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
@@ -40,6 +40,7 @@ class Args : public ArgumentsForce,
     void defineArguments();
     int postParse();
     int preParse() { return 0; };
+    CLI::Option *a_count_opt, *b_count_opt;
 
 public:
     Args(int argc, char** argv, std::string prgName)
@@ -51,42 +52,32 @@ public:
     std::string input_op1 = "";
     std::string input_op2 = "";
     std::string output = "";
-    std::string frameSpecs = "";
-    uint32_t dimx, dimy, dimz;
+    uint32_t dimx_a, dimy_a, dimz_a;
+    uint32_t dimx_b, dimy_b, dimz_b;
     uint64_t frameSize;
-    bool add = false;
-    bool subtract = false;
-    bool flippedSubtract = false;
-    bool divide = false;
-    bool flippedDivide = false;
-    bool multiply = false;
-    bool max = false;
-    bool min = false;
+    uint32_t dimz_a_count = 0;
+    uint32_t dimz_b_count = 0;
+    io::DenSupportedType dataType;
 };
 
 void Args::defineArguments()
 {
-    cliApp->add_option("input_op1", input_op1, "Component A in the equation C=A_i op B.")
+    cliApp->add_option("input_op1", input_op1, "Component A in the equation C=frame_product(A, B).")
         ->required()
         ->check(CLI::ExistingFile);
     cliApp
-        ->add_option("input_op2", input_op2,
-                     "Component B in the equation C=A_i op B, only frame with the index 0 is used.")
+        ->add_option("input_op2", input_op2, "Component B in the equation C=frame_product(A,  B).")
         ->required()
         ->check(CLI::ExistingFile);
-    cliApp->add_option("output", output, "Component C in the equation C=A op B.")->required();
-    // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
-    CLI::Option_group* op_clg
-        = cliApp->add_option_group("Operation", "Mathematical operation to perform.");
-    op_clg->add_flag("--add", add, "op1 + op2");
-    op_clg->add_flag("--subtract", subtract, "op1 - op2");
-    op_clg->add_flag("--flipped-subtract", flippedSubtract, "op2 - op1");
-    op_clg->add_flag("--multiply", multiply, "op1 * op2");
-    op_clg->add_flag("--divide", divide, "op1 / op2");
-    op_clg->add_flag("--flipped-divide", flippedDivide, "op2 / op1");
-    op_clg->add_flag("--max", max, "max(op1, op2)");
-    op_clg->add_flag("--min", min, "min(op1, op2)");
-    op_clg->require_option(1);
+    cliApp
+        ->add_option("output", output,
+                     "Component C in the equation C=frame_product(A, B), with dimensions "
+                     "dimz_a_count, dimz_b_count.")
+        ->required();
+    a_count_opt = cliApp->add_option("--a-count", dimz_a_count,
+                                     "Count of frames to use in A, defaults to dimz_a.");
+    b_count_opt = cliApp->add_option("--b-count", dimz_b_count,
+                                     "Count of frames to use in B, defaults to dimz_b.");
     addForceArgs();
     addFramespecArgs();
     addThreadingArgs();
@@ -105,6 +96,12 @@ int Args::postParse()
     // Test if minuend and subtraend are of the same type and dimensions
     io::DenFileInfo input_op1_inf(input_op1);
     io::DenFileInfo input_op2_inf(input_op2);
+    dimx_a = input_op1_inf.dimx();
+    dimy_a = input_op1_inf.dimy();
+    dimz_a = input_op1_inf.dimz();
+    dimx_b = input_op2_inf.dimx();
+    dimy_b = input_op2_inf.dimy();
+    dimz_b = input_op2_inf.dimz();
     if(input_op1_inf.getElementType() != input_op2_inf.getElementType())
     {
         LOGE << io::xprintf("Type incompatibility while the file %s is of type %s and file %s has "
@@ -115,7 +112,8 @@ int Args::postParse()
                             io::DenSupportedTypeToString(input_op2_inf.getElementType()).c_str());
         return 1;
     }
-    if(input_op1_inf.dimx() != input_op2_inf.dimx() || input_op1_inf.dimy() != input_op2_inf.dimy())
+    dataType = input_op1_inf.getElementType();
+    if(dimx_a != dimx_b || dimy_a != dimy_b)
     {
         LOGE << io::xprintf(
             "Files %s and %s have incompatible dimensions.\nFile %s of the type %s has "
@@ -128,79 +126,42 @@ int Args::postParse()
             input_op2_inf.getNumCols(), input_op2_inf.getNumRows(), input_op2_inf.getNumSlices());
         return 1;
     }
-    if(input_op2_inf.dimz() != 1)
+    if(a_count_opt->count() == 0)
     {
-        LOGW << io::xprintf("Second operand %s has %d frames but only the first will be used.",
-                            input_op2.c_str(), input_op2_inf.dimz());
+        dimz_a_count = dimz_a;
     }
-    if(!add && !subtract && !divide && !multiply && !max && !min && !flippedDivide && !flippedSubtract)
+    if(b_count_opt->count() == 0)
     {
-        LOGE << "You must provide one of supported operations (add, subtract, divide, multiply, "
-                "flipped-divide, flipped-subtract)";
-        return 1;
+        dimz_b_count = dimz_b;
     }
-    dimx = input_op1_inf.dimx();
-    dimy = input_op1_inf.dimy();
-    dimz = input_op1_inf.dimz();
-    frameSize = (uint64_t)dimx * (uint64_t)dimy;
-    fillFramesVector(dimz);
+    if(dimz_a_count > dimz_a)
+    {
+        LOGE << io::xprintf("File %s has %d frames but dimz_a_count = %d exceeds them.",
+                            input_op1.c_str(), dimz_a, dimz_a_count);
+    }
+    if(dimz_b_count > dimz_b)
+    {
+        LOGE << io::xprintf("File %s has %d frames but dimz_a_count = %d exceeds them.",
+                            input_op2.c_str(), dimz_b, dimz_b_count);
+    }
+    frameSize = (uint64_t)dimx_a * (uint64_t)dimy_a;
     return 0;
 }
 
 template <typename T>
 void processFrame(int _FTPLID,
-                  Args ARG,
-                  uint32_t k_in,
-                  uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& aReader,
-                  std::shared_ptr<io::BufferedFrame2D<T>>& B,
-                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+                  const Args& ARG,
+                  const std::shared_ptr<io::DenFrame2DCachedReader<T>>& aReader,
+                  const std::shared_ptr<io::DenFrame2DCachedReader<T>>& bReader,
+                  const uint32_t& i,
+                  const uint32_t& j,
+                  T* elm)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(k_in);
-    io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
+    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(i);
+    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader->readBufferedFrame(j);
     T* A_array = A->getDataPointer();
     T* B_array = B->getDataPointer();
-    T* x_array = x.getDataPointer();
-    if(ARG.multiply)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::multiplies());
-    } else if(ARG.divide)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::divides());
-    } else if(ARG.flippedDivide)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
-                       [](T i, T j) { return j / i; });
-    } else if(ARG.add)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::plus());
-    } else if(ARG.subtract)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::minus());
-    } else if(ARG.flippedSubtract)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
-                       [](T i, T j) { return j - i; });
-    } else if(ARG.max)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
-                       [](T i, T j) { return std::max(i, j); });
-    } else if(ARG.min)
-    {
-        std::transform(A_array, A_array + ARG.frameSize, B_array, x_array,
-                       [](T i, T j) { return std::min(i, j); });
-    }
-    outputWritter->writeBufferedFrame(x, k_out);
-    if(ARG.verbose)
-    {
-        if(k_in == k_out)
-        {
-            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
-        } else
-        {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
-        }
-    }
+    *elm = std::inner_product(A_array, A_array + ARG.frameSize, B_array, 0.0);
 }
 
 template <typename T>
@@ -211,25 +172,26 @@ void processFiles(Args ARG)
     {
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
-    std::shared_ptr<io::DenFrame2DReader<T>> aReader
-        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op1, ARG.threads);
-    io::DenFrame2DReader<T> bReader(ARG.input_op2);
-    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader.readBufferedFrame(0);
-    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
-                                                                  ARG.frames.size());
+    io::BufferedFrame2D<T> X(T(0), ARG.dimz_a_count, ARG.dimz_b_count);
+    T* X_array = X.getDataPointer();
+    std::shared_ptr<io::DenFrame2DCachedReader<T>> aReader
+        = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input_op1, ARG.threads, ARG.threads);
+    std::shared_ptr<io::DenFrame2DCachedReader<T>> bReader
+        = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input_op2, ARG.threads, ARG.threads);
     const int dummy_FTPLID = 0;
-    uint32_t k_in, k_out;
-    for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
+    for(uint32_t j = 0; j != ARG.dimz_b_count; j++)
     {
-        k_in = ARG.frames[IND];
-        k_out = IND;
-        if(threadpool)
+        for(uint32_t i = 0; i != ARG.dimz_a_count; i++)
         {
-            threadpool->push(processFrame<T>, ARG, k_in, k_out, aReader, B, outputWritter);
-        } else
-        {
-            processFrame<T>(dummy_FTPLID, ARG, k_in, k_out, aReader, B, outputWritter);
+            T* elm = X_array + i + j * ARG.dimz_a_count;
+            //	T elm;
+            if(threadpool)
+            {
+                threadpool->push(processFrame<T>, ARG, aReader, bReader, i, j, elm);
+            } else
+            {
+                processFrame<T>(dummy_FTPLID, ARG, aReader, bReader, i, j, elm);
+            }
         }
     }
     if(threadpool != nullptr)
@@ -237,6 +199,10 @@ void processFiles(Args ARG)
         threadpool->stop(true);
         delete threadpool;
     }
+    std::array<uint32_t, 2> dim;
+    dim[0] = ARG.dimz_a_count;
+    dim[1] = ARG.dimz_b_count;
+    io::DenFileInfo::createDenFileFromArray(X_array, true, ARG.output, ARG.dataType, 2, std::begin(dim), true);
 }
 
 int main(int argc, char* argv[])

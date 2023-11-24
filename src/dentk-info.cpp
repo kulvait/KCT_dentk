@@ -67,7 +67,6 @@ void Args::defineArguments()
 
 int Args::postParse()
 {
-    cliApp->parse(argc, argv);
     if(returnDimensions)
     {
         return 0; // Do not process frames and print a log message.

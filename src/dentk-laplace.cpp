@@ -258,10 +258,10 @@ void processFramePeriodic(int _FTPLID,
     {
         if(k_in == k_out)
         {
-            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->dimz());
+            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->dimz());
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
         }
     }
 }
@@ -348,10 +348,10 @@ void processFrameNonperiodic(int _FTPLID,
     {
         if(k_in == k_out)
         {
-            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->dimz());
+            LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->dimz());
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
         }
     }
 }
