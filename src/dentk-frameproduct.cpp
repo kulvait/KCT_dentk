@@ -245,5 +245,5 @@ int main(int argc, char* argv[])
         KCTERR(errMsg);
     }
     }
-    PRG.endLog();
+    PRG.endLog(true);
 }
