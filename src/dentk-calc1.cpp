@@ -170,8 +170,11 @@ void processFrame(int _FTPLID,
     if(ARG.absoluteValue)
     {
         #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wpragmas"
+        #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wabsolute-value"
         o = [](const T& x) { return T(std::abs(x)); };
+        #pragma GCC diagnostic pop
         #pragma GCC diagnostic pop
     }
     if(ARG.invert)

@@ -115,7 +115,7 @@ int Args::postParse()
         }
         dim.push_back((uint32_t)val);
     }
-    for(int i = 0; i != dim.size(); i++)
+    for(uint32_t i = 0; i != dim.size(); i++)
     {
         expectedSize *= dim[i];
     }

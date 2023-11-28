@@ -31,6 +31,16 @@ cmake ..
 make
 ```
 
+## Additional requirements
+For `dentk-jpg` and `dentk-todicom` install insighttoolkit dev libs
+Package `dentk-jpg` needs additionally `libfftw3-dev`
+
+In Debian 12 install the packages
+```
+apt-get install libinsighttoolkit4-dev libfftw3-dev
+```
+It is safe to ignore cmake warnings of GDCMTargets.cmake
+
 ## Submodules
 The project contains submodules in the subdirectory submodules. 
 

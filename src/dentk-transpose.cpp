@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
     io::DenFileInfo di(ARG.input_file);
     io::DenSupportedType dataType = di.getElementType();
     uint16_t dimCount = di.getDimCount();
-    uint32_t K = di.getFrameCount();
+    uint64_t K = di.getFrameCount();
     std::vector<uint32_t> dim;
     //Transposed specification
     dim.push_back(di.dim(1));
@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DBufferedWritter<uint16_t>>(
                 ARG.output_file, dimCount, &dim.front());
         std::shared_ptr<io::Frame2DI<uint16_t>> chunk, transposed;
-        for(int i = 0; i != K; i++)
+        for(uint64_t i = 0; i != K; i++)
         {
             chunk = sliceReader->readFrame(i);
             std::shared_ptr<io::BufferedFrame2D<uint16_t>> retyped;
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
                                                                           &dim.front());
         std::shared_ptr<io::Frame2DI<float>> chunk, transposed;
 
-        for(int i = 0; i != K; i++)
+        for(uint64_t i = 0; i != K; i++)
         {
             chunk = sliceReader->readFrame(i);
             std::shared_ptr<io::BufferedFrame2D<float>> retyped;
@@ -122,7 +122,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenAsyncFrame2DBufferedWritter<double>>(ARG.output_file,
                                                                            dimCount, &dim.front());
         std::shared_ptr<io::Frame2DI<double>> chunk, transposed;
-        for(int i = 0; i != K; i++)
+        for(uint64_t i = 0; i != K; i++)
         {
             chunk = sliceReader->readFrame(i);
             std::shared_ptr<io::BufferedFrame2D<double>> retyped;
