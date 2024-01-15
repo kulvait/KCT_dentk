@@ -65,7 +65,7 @@ void sumFrames(Args a, T* sum)
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
     T* A_array;
     std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const int& k : a.frames)
+    for(const uint64_t& k : a.frames)
     {
         std::shared_ptr<io::BufferedFrame2D<T>> A = denReader->readBufferedFrame(a.frames[k]);
         A_array = A->getDataPointer();
@@ -103,7 +103,7 @@ void framesVariance(Args a, T* var, bool sampleVariance = false)
     }
     T* A_array;
     std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const int& k : a.frames)
+    for(const uint64_t& k : a.frames)
     {
         A = denReader->readBufferedFrame(a.frames[k]);
         A_array = A->getDataPointer();
@@ -137,7 +137,7 @@ void framesStandardDeviation(Args a, T* stdev, bool sampleStandardDeviation = fa
     }
     T* A_array;
     std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const int& k : a.frames)
+    for(const uint64_t& k : a.frames)
     {
         A = denReader->readBufferedFrame(a.frames[k]);
         A_array = A->getDataPointer();
@@ -158,14 +158,14 @@ std::shared_ptr<io::Frame2DI<T>> minFrames(Args a)
 {
     io::DenFileInfo di(a.input_den);
     uint64_t frameSize = di.getFrameSize();
-    uint32_t frameCount = a.frames.size();
+    uint64_t frameCount = a.frames.size();
     std::shared_ptr<io::DenFrame2DReader<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
     std::shared_ptr<io::BufferedFrame2D<T>> F = denReader->readBufferedFrame(a.frames[0]);
     T* F_array = F->getDataPointer();
     std::shared_ptr<io::BufferedFrame2D<T>> A;
     T* A_array;
-    for(unsigned int k = 1; k < frameCount; k++)
+    for(uint64_t k = 1; k < frameCount; k++)
     {
         A = denReader->readBufferedFrame(a.frames[k]);
         A_array = A->getDataPointer();

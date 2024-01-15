@@ -120,7 +120,7 @@ int Args::postParse()
 template <typename T>
 double getSumOfSquares(std::shared_ptr<io::DenFileInfo> X,
                        double xoffset,
-                       std::vector<int> frames,
+                       std::vector<uint64_t> frames,
                        std::shared_ptr<io::DenFileInfo> ALPHA)
 {
     io::DenSupportedType dataType = X->getElementType();
@@ -191,7 +191,7 @@ double getMeanOfOffsettedProducts(std::shared_ptr<io::DenFileInfo> X,
                                   double xoffset,
                                   std::shared_ptr<io::DenFileInfo> Y,
                                   double yoffset,
-                                  std::vector<int> frames,
+                                  std::vector<uint64_t> frames,
                                   std::shared_ptr<io::DenFileInfo> ALPHA)
 {
     io::DenSupportedType dataType = X->getElementType();
@@ -254,7 +254,7 @@ double getMeanOfOffsettedProducts(std::shared_ptr<io::DenFileInfo> X,
 
 template <typename T>
 double getMean(std::shared_ptr<io::DenFileInfo> X,
-               std::vector<int> frames,
+               std::vector<uint64_t> frames,
                std::shared_ptr<io::DenFileInfo> ALPHA)
 {
     io::DenSupportedType dataType = X->getElementType();
@@ -327,7 +327,7 @@ double getMeanSquareResiduum(std::shared_ptr<io::DenFileInfo> X,
                              std::shared_ptr<io::DenFileInfo> Y,
                              double a,
                              double b,
-                             std::vector<int> frames,
+                             std::vector<uint64_t> frames,
                              std::shared_ptr<io::DenFileInfo> ALPHA)
 {
     io::DenSupportedType dataType = X->getElementType();

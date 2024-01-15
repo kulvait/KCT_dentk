@@ -321,20 +321,27 @@ void processFiles(Args a)
         return;
     }
     io::DenFileInfo di(a.input_den);
-    int dimx = di.dimx();
-    int dimy = di.dimy();
-    int dimz = di.dimz();
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    //uint64_t frameCount = di.getFrameCount();
+    uint16_t dimCount = di.getDimCount();
+    std::vector<uint32_t> dim;
+    for(uint16_t i = 0; i < dimCount; i++)
+    {
+        dim.push_back(di.dim(i));
+    }
+
     std::shared_ptr<io::Frame2DReaderI<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(
-            a.output_den, dimx, dimy,
-            dimz); // I write regardless to frame specification to original position
+            a.output_den, dimCount,
+            &dim.front()); // I write regardless to frame specification to original position
     int* distancesFromCenter = new int[360]; // How far from center is the point in which the
-                                             // attenuation is maximal for given angle
+        // attenuation is maximal for given angle
     int center_x = dimx / 2;
     int center_y = dimy / 2;
-    for(const int& k : a.frames)
+    for(const uint64_t& k : a.frames)
     {
         io::BufferedFrame2D<T> f(T(0), dimx, dimy);
         std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(k);
@@ -342,9 +349,9 @@ void processFiles(Args a)
         {
             distancesFromCenter[alpha] = getMaxAttenuationDistance(alpha, a.stopMin, a.stopMax, A);
         }
-        for(int i = 0; i != dimx; i++)
+        for(uint32_t i = 0; i != dimx; i++)
         {
-            for(int j = 0; j != dimy; j++)
+            for(uint32_t j = 0; j != dimy; j++)
             {
                 double x = i - center_x;
                 double y = j - center_y;
@@ -398,8 +405,8 @@ int main(int argc, char* argv[])
         break;
     }
     default: {
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(dataType).c_str());
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
         KCTERR(errMsg);
     }
     }

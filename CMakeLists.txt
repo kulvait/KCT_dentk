@@ -517,6 +517,18 @@ set_target_properties(
 target_link_libraries(dentk_transpose ctiol)
 install (TARGETS dentk_transpose RUNTIME DESTINATION .)
 
+SET(DENTK_FLIP_SOURCES src/dentk-flip.cpp)
+add_executable(dentk_flip ${DENTK_FLIP_SOURCES})
+set_target_properties(
+    dentk_flip
+    PROPERTIES 
+        OUTPUT_NAME "dentk-flip"
+        SUFFIX ""
+)
+target_link_libraries(dentk_flip ctiol)
+target_link_libraries(dentk_flip ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_flip RUNTIME DESTINATION .)
+
 SET(DENTK_MERGE_SOURCES src/dentk-merge.cpp)
 add_executable(dentk_merge ${DENTK_MERGE_SOURCES})
 set_target_properties(

@@ -181,7 +181,7 @@ void mergeFiles(Args a)
     {
         uint64_t dimx, dimy, dimz = 0;
         uint32_t local_dimz;
-        std::vector<std::vector<int>> frameSpecifications;
+        std::vector<std::vector<uint64_t>> frameSpecifications;
         for(const std::string& f : a.inputFiles)
         {
             io::DenFileInfo INF(f);
@@ -199,7 +199,7 @@ void mergeFiles(Args a)
         uint64_t writeOffset = 0;
         for(std::size_t j = 0; j != a.inputFiles.size(); j++)
         {
-            std::vector<int> frameSpecification = frameSpecifications[j];
+            std::vector<uint64_t> frameSpecification = frameSpecifications[j];
             for(std::size_t ind = 0; ind != frameSpecification.size(); ind++)
             {
                 i = frameSpecification[ind];
