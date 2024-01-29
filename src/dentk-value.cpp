@@ -38,6 +38,9 @@ public:
         : Arguments(argc, argv, prgName){};
     std::string input_file;
     uint32_t x, y, z;
+    uint32_t dimx, dimy;
+    uint64_t frameCount;
+    bool fullPrecision = false;
     double value = std::numeric_limits<double>::quiet_NaN();
 };
 
@@ -63,7 +66,7 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.input_file);
         std::shared_ptr<io::Frame2DI<uint16_t>> f = denFrameReader->readFrame(ARG.z);
         uint16_t v = f->get(ARG.x, ARG.y);
-        std::cout << v;
+        std::cout << v << std::endl;
         if(!std::isnan(ARG.value))
         {
             f->set(ARG.value, ARG.x, ARG.y);
@@ -78,7 +81,13 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<float>>(ARG.input_file);
         std::shared_ptr<io::Frame2DI<float>> f = denFrameReader->readFrame(ARG.z);
         float v = f->get(ARG.x, ARG.y);
-        std::cout << v;
+        if(ARG.fullPrecision)
+        {
+            std::cout << io::xprintf("%.9g\n", v);
+        } else
+        {
+            std::cout << v << std::endl;
+        }
         if(!std::isnan(ARG.value))
         {
             f->set(ARG.value, ARG.x, ARG.y);
@@ -93,7 +102,13 @@ int main(int argc, char* argv[])
             = std::make_shared<io::DenFrame2DReader<double>>(ARG.input_file);
         std::shared_ptr<io::Frame2DI<double>> f = denFrameReader->readFrame(ARG.z);
         double v = f->get(ARG.x, ARG.y);
-        std::cout << v;
+        if(ARG.fullPrecision)
+        {
+            std::cout << io::xprintf("%.17g\n", v);
+        } else
+        {
+            std::cout << v << std::endl;
+        }
         if(!std::isnan(ARG.value))
         {
             f->set(ARG.value, ARG.x, ARG.y);
@@ -120,16 +135,17 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("--set-value", value,
                        "If the parameter is specified, the value of is set for given coordinates.");
+    cliApp->add_flag("--full-precision", fullPrecision, "Print value in the full precision.");
 }
 
 int Args::postParse()
 {
     std::string err;
     io::DenFileInfo di(input_file);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint32_t dimz = di.dimz();
-    if(!(x < dimx && y < dimy && z < dimz))
+    dimx = di.dimx();
+    dimy = di.dimy();
+    frameCount = di.getFrameCount();
+    if(!(x < dimx && y < dimy && z < frameCount))
     {
         err = io::xprintf("Specified coordinates (x,y,z) are out of the range of the DEN file!");
         LOGE << err;
