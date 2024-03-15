@@ -14,13 +14,21 @@ __global__ void spectralDivision(float2* __restrict__ x,
                                  const float pixel_size_x,
                                  const float pixel_size_y);
 
+__global__ void spectralDivisionRegularized(float2* __restrict__ x,
+                                            const float epsilon,
+                                            const int SIZEX,
+                                            const int SIZEY,
+                                            const float pixel_size_x,
+                                            const float pixel_size_y);
+
 void CUDAspectralDivision(dim3 threads,
                           dim3 blocks,
                           void* x,
                           const int SIZEX,
                           const int SIZEY,
                           const float pixel_size_x,
-                          const float pixel_size_y);
+                          const float pixel_size_y,
+                          const float epsilon = 0.0f);
 
 __global__ void spectralMultiplication(float2* __restrict__ x,
                                        const int SIZEX,

@@ -42,8 +42,8 @@ void shiftBasis(std::string inputFile, std::string outputFile, int shift)
 {
     std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
         = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
-    uint16_t granularity = denSliceReader->dimx();
-    uint16_t baseSize = denSliceReader->dimz();
+    uint32_t granularity = denSliceReader->dimx();
+    uint32_t baseSize = denSliceReader->getFrameCount();
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, granularity, 1, baseSize);
     std::shared_ptr<io::Frame2DI<T>> f;
@@ -73,7 +73,7 @@ void resampleFunctions(std::string inputFile, std::string outputFile, uint16_t r
     std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
         = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
     int granularity = denSliceReader->dimx();
-    uint16_t baseSize = denSliceReader->dimz();
+    uint32_t baseSize = denSliceReader->getFrameCount();
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, resampledGranularity, 1,
                                                           baseSize);
@@ -126,7 +126,7 @@ void addLegendrePolynomials(std::string inputFile, std::string outputFile, uint1
     std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
         = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
     uint16_t granularity = denSliceReader->dimx();
-    uint16_t baseSize = denSliceReader->dimz();
+    uint16_t baseSize = denSliceReader->getFrameCount();
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, granularity, 1, n + baseSize);
     std::shared_ptr<io::Frame2DI<T>> f;

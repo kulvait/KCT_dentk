@@ -63,6 +63,7 @@ public:
     std::string frameSpecs = "";
     uint32_t dimx, dimy, dimz;
     uint64_t frameSize;
+    float epsilon = 0.0f;
     bool periodicBCs = false;
     bool neumannBCs = false;
     bool dirichletBCs = false;
@@ -76,6 +77,7 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_x", output_x, "Component x in the equation \\Delta x = f.")
         ->required();
+    cliApp->add_option("--epsilon", epsilon, "Solve  \\Delta x  - \\epsilon x = f, plays a role of regularizer.");
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
     CLI::Option_group* op_clg
         = cliApp->add_option_group("Boundary conditions", "Boundary conditions to use.");
@@ -233,7 +235,7 @@ void processFramePeriodic(int _FTPLID,
         EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
         // Now divide by (k_x^2+k_y^2)
         CUDAspectralDivision(threads, blocks, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
-                             ARG.pixelSizeY);
+                             ARG.pixelSizeY, ARG.epsilon);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
 
@@ -320,7 +322,7 @@ void processFrameNonperiodic(int _FTPLID,
         dim3 blocks((2 * ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
                     (xSizeHermitan + THREADSIZE2 - 1) / THREADSIZE2);
         CUDAspectralDivision(threads, blocks, GPU_FTf, 2 * ARG.dimx, 2 * ARG.dimy, ARG.pixelSizeX,
-                             ARG.pixelSizeY);
+                             ARG.pixelSizeY, ARG.epsilon);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
 

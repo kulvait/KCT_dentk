@@ -44,7 +44,7 @@ void orthonormalize(std::string inputFile, std::string outputFile)
     std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
         = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
     uint32_t granularity = denSliceReader->dimx();
-    uint32_t baseSize = denSliceReader->dimz();
+    uint32_t baseSize = denSliceReader->getFrameCount();
     std::shared_ptr<io::Frame2DI<T>> f;
     io::BufferedFrame2D<T> bf(T(0.0), granularity, 1);
     double* values = new double[baseSize * granularity];

@@ -159,7 +159,8 @@ T scalarProduct(std::shared_ptr<io::BufferedFrame2D<T>> v1,
     uint64_t elmcount = (uint64_t)v1->dimx() * (uint64_t)v1->dimy();
     T* p1 = v1->getDataPointer();
     T* p2 = v2->getDataPointer();
-    return std::inner_product(p1, p1 + elmcount, p2, T(0));
+    double product = std::inner_product(p1, p1 + elmcount, p2, 0.0);
+    return static_cast<T>(product);
 }
 
 template <typename T>
@@ -275,7 +276,8 @@ int main(int argc, char* argv[])
     Program PRG(argc, argv);
     // Argument parsing
     const std::string prgInfo = "Produce direct sum of given projections onto the orthogonal "
-                                "projection and orthogonal complement of the orthogonal basis.";
+                                "projection and orthogonal complement of the orthogonal basis. "
+                                "Frames selection is relative to the basis vector.";
     Args ARG(argc, argv, prgInfo);
     int parseResult = ARG.parse();
     if(parseResult > 0)

@@ -226,7 +226,7 @@ void rescaleFiles(Args a)
     std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DWritter<T>>(a.output_den, a.dimx_after, a.dimy_after,
                                                           a.dimz_after);
-    uint32_t dimz_input = denReader->dimz();
+    uint32_t dimz_input = denReader->getFrameCount();
     if(dimz_input == a.dimz_after)
     {
         for(uint32_t k = 0; k < a.dimz_after; k++)

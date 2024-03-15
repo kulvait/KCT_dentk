@@ -51,17 +51,80 @@ __global__ void spectralDivision(float2* __restrict__ x,
     }
 }
 
+__global__ void regularizedSpectralDivision(float2* __restrict__ x,
+                                            const float epsilon,
+                                            const int SIZEX,
+                                            const int SIZEY,
+                                            const float pixel_size_x,
+                                            const float pixel_size_y)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    const int xSizeHermitan = SIZEX / 2 + 1;
+    const int IDX = xSizeHermitan * PY + PX;
+    if((PX >= xSizeHermitan) || (PY >= SIZEY))
+        return;
+    if(PX == 0 && PY == 0)
+    {
+        x[0].x /= -epsilon;
+        x[0].y /= -epsilon;
+    } else
+    {
+        //        double K = (double)SIZEX * (double)SIZEY;
+        double K = FOURPISQUARED;
+        /*
+            const float sizeDivide = (float)SIZEX * SIZEY;
+            x[IDX].x /= sizeDivide;
+            x[IDX].y /= sizeDivide;*/
+        // See https://atmos.washington.edu/~breth/classes/AM585/lect/DFT_FS_585_notes.pdf
+        double kx2scale, ky2scale, kx, ky;
+        kx2scale = ((double)SIZEX) / (((double)SIZEY) * pixel_size_x * pixel_size_x);
+        ky2scale = ((double)SIZEY) / (((double)SIZEX) * pixel_size_y * pixel_size_y);
+        //        if(PX <= SIZEX / 2) ... always satisfied by hermitan symmetry choice
+        //        {
+        kx = PX;
+        /*
+                } else
+                {
+                    kx = 2.0 * PI * (PX - SIZEX) / (SIZEX * pixel_size_x);
+                }*/
+        if(PY <= SIZEY / 2)
+        {
+            ky = PY;
+        } else
+        {
+            ky = PY - SIZEY;
+        }
+        K *= -((kx2scale * kx * kx + ky2scale * ky * ky)) - epsilon;
+        x[IDX].x /= K;
+        x[IDX].y /= K;
+    }
+}
+
 void CUDAspectralDivision(dim3 threads,
                           dim3 blocks,
                           void* x,
                           const int SIZEX,
                           const int SIZEY,
                           const float pixel_size_x,
-                          const float pixel_size_y)
+                          const float pixel_size_y,
+                          const float epsilon)
 {
-    printf("threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n", threads.x, threads.y,
-           threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
-    spectralDivision<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, pixel_size_y);
+    printf("threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d epsilon=%f\n", threads.x,
+           threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY, epsilon);
+    if(epsilon == 0.0f)
+    {
+        spectralDivision<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, pixel_size_y);
+    } else
+    {
+        if(epsilon < 0)
+        {
+
+            printf("Negative value of epsilon might lead to additional singularities!\n");
+        }
+        regularizedSpectralDivision<<<blocks, threads>>>((float2*)x, epsilon, SIZEX, SIZEY,
+                                                         pixel_size_x, pixel_size_y);
+    }
 }
 
 __global__ void spectralMultiplication(float2* __restrict__ x,
