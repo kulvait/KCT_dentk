@@ -243,6 +243,7 @@ void processFramePeriodic(int _FTPLID,
 
     } else if(dataType == io::DenSupportedType::FLOAT64)
     {
+        KCTERR("Implemented just for FLOAT32!");
         /*
                             cufftDoubleReal *GPU_f;
                             cufftDoubleComplex *GPU_FTf;*/
@@ -267,6 +268,7 @@ void processFramePeriodic(int _FTPLID,
     }
 }
 
+//With Dirichlet or Neumann B.C. with padding
 template <typename T>
 void processFrameNonperiodic(int _FTPLID,
                              Args ARG,
@@ -330,6 +332,7 @@ void processFrameNonperiodic(int _FTPLID,
 
     } else if(dataType == io::DenSupportedType::FLOAT64)
     {
+        KCTERR("Implemented just for FLOAT32!");
         EXECUFFT(cufftExecD2Z(FFT, (cufftDoubleReal*)GPU_f, (cufftDoubleComplex*)GPU_FTf));
         // Now divide by (k_x^2+k_y^2)
         EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf, (cufftDoubleReal*)GPU_f));

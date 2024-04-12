@@ -234,6 +234,14 @@ IF(TARGET CUDA::cufft)
 		PROPERTIES
 				CUDA_SEPARABLE_COMPILATION ON
 				CUDA_ARCHITECTURES "70")
+	
+	SET(CUDA_TOMOGRAPHIC_SOURCES cuda/tomographicFiltering.cu)
+	add_library(cuda_tomography ${CUDA_TOMOGRAPHIC_SOURCES})
+#	target_compile_features(cuda_poisson_equation PUBLIC cxx_std_11)
+	set_target_properties(cuda_tomography
+		PROPERTIES
+				CUDA_SEPARABLE_COMPILATION ON
+				CUDA_ARCHITECTURES "70")
 
 	SET(DENTK_POISSON_SOURCES src/dentk-poisson.cpp)
 	add_executable(dentk_poisson ${DENTK_POISSON_SOURCES})
@@ -253,6 +261,23 @@ IF(TARGET CUDA::cufft)
 	target_link_libraries(dentk_poisson CUDA::cuda_driver)
 	install (TARGETS dentk_poisson RUNTIME DESTINATION .)
 
+	SET(DENTK_FILTER_SOURCES src/dentk-filter.cpp)
+	add_executable(dentk_filter ${DENTK_FILTER_SOURCES})
+	set_target_properties(
+		dentk_filter 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-filter"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES "70"
+	)
+	target_link_libraries(dentk_filter ctiol)
+	target_link_libraries(dentk_filter cuda_tomography)
+	target_link_libraries(dentk_filter ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_filter CUDA::cudart)
+	target_link_libraries(dentk_filter CUDA::cufft)
+	target_link_libraries(dentk_filter CUDA::cuda_driver)
+	install (TARGETS dentk_filter RUNTIME DESTINATION .)
 
 	SET(DENTK_LAPLACE_SOURCES src/dentk-laplace.cpp)
 	add_executable(dentk_laplace ${DENTK_LAPLACE_SOURCES})
