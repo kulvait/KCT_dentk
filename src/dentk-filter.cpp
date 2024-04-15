@@ -255,6 +255,7 @@ void processFrameNopad(int _FTPLID,
                 CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f,
                              ARG.dimx, ARG.dimy);
             }
+            EXECUDA(cudaFree(GPU_f_shifted));
         }
         //Divide by number of projections for avoiding backprojection aditivity
         /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
@@ -370,6 +371,7 @@ void processFramePad(int _FTPLID,
                 //EXECUDA(cudaMemcpy((void*)GPU_f_padded, (void*)GPU_f_shifted,
                 //                   NX * ARG.dimy * sizeof(T), cudaMemcpyDeviceToDevice));
             }
+            EXECUDA(cudaFree(GPU_f_shifted));
         }
         CUDAStripPad(threads, blocksNopad, GPU_f_padded, GPU_f, ARG.dimx, NX, ARG.dimy);
         //Divide by number of projections for avoiding backprojection aditivity
@@ -389,6 +391,7 @@ void processFramePad(int _FTPLID,
                        cudaMemcpyDeviceToHost));
     EXECUDA(cudaFree(GPU_f));
     EXECUDA(cudaFree(GPU_FTf));
+    EXECUDA(cudaFree(GPU_f_padded));
     outputWritter->writeBufferedFrame(x, k_out);
     if(ARG.verbose)
     {
