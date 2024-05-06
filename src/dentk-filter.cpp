@@ -386,6 +386,9 @@ void processFramePad(int _FTPLID,
     {
         KCTERR("Implemented just for FLOAT32!");
     }
+    //Test if there are some errors, wrong GPU ...
+    EXECUDA(cudaPeekAtLastError());
+    EXECUDA(cudaDeviceSynchronize());
 
     EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
                        cudaMemcpyDeviceToHost));

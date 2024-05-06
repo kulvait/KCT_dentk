@@ -19,6 +19,9 @@ find_package(CUDAToolkit 11.3)
 #	message("CUDA enabled")
 #ENDIF()
 
+set(CUDA_ARCHITECTURES_NUM 70)
+set(CUDA_ARCHITECTURES_NUM 35) #K40 but might be soon deprecated, basically however all the cards on Maxwell cluster will be working
+#set(CUDA_ARCHITECTURES_NUM native)
 set(CMAKE_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
 set(CMAKE_CXX_STANDARD 17)#Supported values are 98, 11, 17, 20, 23
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -233,7 +236,7 @@ IF(TARGET CUDA::cufft)
 	set_target_properties(cuda_spectral_method 
 		PROPERTIES
 				CUDA_SEPARABLE_COMPILATION ON
-				CUDA_ARCHITECTURES "70")
+				CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM})
 	
 	SET(CUDA_TOMOGRAPHIC_SOURCES cuda/tomographicFiltering.cu)
 	add_library(cuda_tomography ${CUDA_TOMOGRAPHIC_SOURCES})
@@ -241,7 +244,7 @@ IF(TARGET CUDA::cufft)
 	set_target_properties(cuda_tomography
 		PROPERTIES
 				CUDA_SEPARABLE_COMPILATION ON
-				CUDA_ARCHITECTURES "70")
+				CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM})
 
 	SET(DENTK_POISSON_SOURCES src/dentk-poisson.cpp)
 	add_executable(dentk_poisson ${DENTK_POISSON_SOURCES})
@@ -251,7 +254,7 @@ IF(TARGET CUDA::cufft)
 			OUTPUT_NAME "dentk-poisson"
 			SUFFIX ""
 			CUDA_SEPARABLE_COMPILATION ON
-			CUDA_ARCHITECTURES "70"
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
 	)
 	target_link_libraries(dentk_poisson ctiol)
 	target_link_libraries(dentk_poisson cuda_spectral_method)
@@ -269,7 +272,7 @@ IF(TARGET CUDA::cufft)
 			OUTPUT_NAME "dentk-filter"
 			SUFFIX ""
 			CUDA_SEPARABLE_COMPILATION ON
-			CUDA_ARCHITECTURES "70"
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
 	)
 	target_link_libraries(dentk_filter ctiol)
 	target_link_libraries(dentk_filter cuda_tomography)
@@ -287,7 +290,7 @@ IF(TARGET CUDA::cufft)
 			OUTPUT_NAME "dentk-laplace"
 			SUFFIX ""
 			CUDA_SEPARABLE_COMPILATION ON
-			CUDA_ARCHITECTURES "70"
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
 	)
 	target_link_libraries(dentk_laplace ctiol)
 	target_link_libraries(dentk_laplace cuda_spectral_method)
@@ -303,7 +306,7 @@ IF(TARGET CUDA::cufft)
 	set_target_properties(cuda_diffraction_physics 
 		PROPERTIES
 				CUDA_SEPARABLE_COMPILATION ON
-				CUDA_ARCHITECTURES "70")
+				CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM})
 	
 	SET(DENTK_PROPAGATE_SOURCES src/dentk-propagate.cpp)
 	add_executable(dentk_propagate ${DENTK_PROPAGATE_SOURCES})
@@ -313,7 +316,7 @@ IF(TARGET CUDA::cufft)
 			OUTPUT_NAME "dentk-propagate"
 			SUFFIX ""
 			CUDA_SEPARABLE_COMPILATION ON
-			CUDA_ARCHITECTURES "70"
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
 	)
 	target_link_libraries(dentk_propagate ctiol)
 	target_link_libraries(dentk_propagate cuda_diffraction_physics)
