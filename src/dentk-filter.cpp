@@ -331,7 +331,19 @@ void processFramePad(int _FTPLID,
             CUDAZeroPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
         } else
         {
-            CUDASymmPad(threads, blocksNopad, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+            CUDASymmPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+            //Debug padding
+            /*
+            std::string fileName = io::xprintf("/tmp/padded_%03d.den", k_out);
+            io::BufferedFrame2D<T> p(T(0), NX, ARG.dimy);
+            T* p_array = p.getDataPointer();
+            io::DenAsyncFrame2DBufferedWritter<T> padWriter(fileName, NX, ARG.dimy, 1);
+
+            EXECUDA(cudaMemcpy((void*)p_array, (void*)GPU_f_padded, frameSizePad * sizeof(T),
+                               cudaMemcpyDeviceToHost));
+            padWriter.writeBufferedFrame(p, 0);
+			*/
+            //End test
         }
         bool withoutFftShift = false;
         if(withoutFftShift)
