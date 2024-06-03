@@ -82,6 +82,48 @@ void CUDARadonFilter(dim3 threads,
     RadonFilter<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, ifftshift);
 }
 
+__global__ void ParkerFilter(
+    float* __restrict__ x, const int SIZEX, const int SIZEY, const float corpos, const float zslope)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    const int IDX = SIZEX * PY + PX;
+    float cor = corpos + PY * zslope;
+    float dist;
+    float radius;
+    if(cor > 0.5f * SIZEX)
+    {
+        radius = SIZEX - cor;
+        dist = cor - PX;
+    } else
+    {
+        radius = cor;
+        dist = PX - cor;
+    }
+    if(abs(dist) < radius)
+    {
+        x[IDX] = 0.5 + 0.5 * dist / radius;
+    }
+    /*
+	else
+	{
+		//do nothing
+		//x[IND] = x[IND];
+	}
+*/
+}
+
+void CUDAParkerFilter(dim3 threads,
+                      dim3 blocks,
+                      void* x,
+                      const int SIZEX,
+                      const int SIZEY,
+                      const float corpos,
+                      const float zslope)
+{
+    ParkerFilter<<<blocks, threads>>>((float*)x, SIZEX, SIZEY, corpos, zslope);
+}
+
 //circular shift
 //shift .. The number of places by which elements are shifted to the right.
 __global__ void roll(float* __restrict__ x_in,

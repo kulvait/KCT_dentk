@@ -281,6 +281,23 @@ IF(TARGET CUDA::cufft)
 	target_link_libraries(dentk_filter CUDA::cufft)
 	target_link_libraries(dentk_filter CUDA::cuda_driver)
 	install (TARGETS dentk_filter RUNTIME DESTINATION .)
+	
+	SET(DENTK_PARKER_SOURCES src/dentk-parker.cpp)
+	add_executable(dentk_parker ${DENTK_PARKER_SOURCES})
+	set_target_properties(
+		dentk_parker 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-parker"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
+	)
+	target_link_libraries(dentk_parker ctiol)
+	target_link_libraries(dentk_parker ctmal)
+	target_link_libraries(dentk_parker cuda_tomography)
+	target_link_libraries(dentk_parker ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_parker CUDA::cuda_driver)
+	install (TARGETS dentk_parker RUNTIME DESTINATION .)
 
 	SET(DENTK_LAPLACE_SOURCES src/dentk-laplace.cpp)
 	add_executable(dentk_laplace ${DENTK_LAPLACE_SOURCES})

@@ -24,6 +24,17 @@ void CUDARadonFilter(dim3 threads,
                      const float pixel_size_x,
                      const bool ifftshift = false);
 
+__global__ void ParkerFilter(
+    float* __restrict__ x, const int SIZEX, const int SIZEY, const float corpos, const float zslope);
+
+void CUDAParkerFilter(dim3 threads,
+                      dim3 blocks,
+                      void* x,
+                      const int SIZEX,
+                      const int SIZEY,
+                      const float corpos,
+                      const float zslope);
+
 __global__ void spectralDivision(float2* __restrict__ x,
                                  const int SIZEX,
                                  const int SIZEY,
