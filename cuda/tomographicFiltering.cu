@@ -82,6 +82,13 @@ void CUDARadonFilter(dim3 threads,
     RadonFilter<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, ifftshift);
 }
 
+inline __device__ float scaledSigmoid(float x, float scale)
+{
+    float minval = 1.0f / (1.0f + expf(scale));
+    float sigmoid = 1.0f / (1.0f + expf(-scale * x));
+    return (sigmoid - minval) / (1.0f - 2.0f * minval);
+}
+
 __global__ void ParkerFilter(
     float* __restrict__ x, const int SIZEX, const int SIZEY, const float corpos, const float zslope)
 {
@@ -102,7 +109,12 @@ __global__ void ParkerFilter(
     }
     if(abs(dist) < radius)
     {
-        x[IDX] = 0.5 + 0.5 * dist / radius;
+        float distFromCor = dist / radius; //[-1,1]
+        float factor;
+        //factor = 0.5f + 0.5f * distFromCor;//linear factor [0,1]
+        factor = scaledSigmoid(distFromCor, 5.0f); //sigmoid factor [0,1]
+        //	factor = 0.0f;
+        x[IDX] *= factor;
     }
     /*
 	else

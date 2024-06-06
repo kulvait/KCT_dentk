@@ -17,10 +17,13 @@
 #include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
+#include "DEN/DenGeometry3DParallelReader.hpp"
 #include "DEN/DenProjectionMatrixReader.hpp"
 #include "DEN/DenSupportedType.hpp"
 #include "Frame2DI.hpp"
 #include "Frame2DReaderI.hpp"
+#include "GEOMETRY/Geometry3DParallel.hpp"
+#include "GEOMETRY/Geometry3DParallelI.hpp"
 #include "MATRIX/ProjectionMatrix.hpp"
 #include "PROG/KCTException.hpp"
 #include "PROG/parseArgs.h"
@@ -33,6 +36,10 @@ struct Args
 {
     int parseArguments(int argc, char* argv[]);
     std::string input_file;
+    bool CBMAT = false;
+    bool PBMAT = false;
+    bool estimateReconstructionSize = false;
+    uint32_t detectorSize = 512;
     std::string frameSpecs = "";
     std::vector<int> frames;
     bool framesSpecified = false;
@@ -80,16 +87,62 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
+    if(a.estimateReconstructionSize)
+    {
+        if(!a.PBMAT)
+        {
+            KCTERR("Estimation of the reconstruction size is only implemented for PBMAT.");
+        }
+        std::shared_ptr<io::DenGeometry3DParallelReader> geometryReader
+            = std::make_shared<io::DenGeometry3DParallelReader>(a.input_file);
+        std::shared_ptr<geometry::Geometry3DParallel> geometry;
+        uint32_t matrixCount = geometryReader->count();
+        double sum = 0.0;
+        for(std::uint32_t i = 0; i < matrixCount; i++)
+        {
+            geometry
+                = std::make_shared<geometry::Geometry3DParallel>(geometryReader->readGeometry(i));
+            std::array<double, 8> pm = geometry->projectionMatrixAsVector8();
+            sum += pm[3];
+        }
+        double COR = sum / matrixCount;
+        double distToCor = std::max(a.detectorSize - COR - 0.5, COR + 0.5);
+        double optimalDetectorSize = 2 * distToCor;
+        int optimelDetectorSizeRounded = static_cast<int>(optimalDetectorSize + 0.5);
+        //Let's make it multiple of 256
+        int roundedDetectorSize = (optimelDetectorSizeRounded / 256 + 1) * 256;
+        std::cout << io::xprintf(
+            "%d pixels is the optimal detector size for COR=%f and detectorSize=%d.\n",
+            roundedDetectorSize, COR, a.detectorSize);
+        return 0;
+    }
     LOGI << io::xprintf("START %s", argv[0]);
     if(a.framesSpecified)
     {
-        std::shared_ptr<io::DenProjectionMatrixReader> dcr
-            = std::make_shared<io::DenProjectionMatrixReader>(a.input_file);
-        for(const int f : a.frames)
+        if(a.CBMAT)
         {
-            std::cout << io::xprintf("Camera matrix from %d-th frame:\n", f);
-            matrix::ProjectionMatrix pm = dcr->readMatrix(f);
-            std::cout << pm.toString();
+            std::shared_ptr<io::DenProjectionMatrixReader> dcr
+                = std::make_shared<io::DenProjectionMatrixReader>(a.input_file);
+            for(const int f : a.frames)
+            {
+                std::cout << io::xprintf("CBCT matrix from %d-th frame:\n", f);
+                matrix::ProjectionMatrix pm = dcr->readMatrix(f);
+                std::cout << pm.toString();
+            }
+        } else if(a.PBMAT)
+        {
+            std::shared_ptr<io::DenGeometry3DParallelReader> geometryReader
+                = std::make_shared<io::DenGeometry3DParallelReader>(a.input_file);
+            std::shared_ptr<geometry::Geometry3DParallel> geometry;
+            for(const int f : a.frames)
+            {
+                std::cout << io::xprintf("PBCT matrix from %d-th frame:\n", f);
+                geometry = std::make_shared<geometry::Geometry3DParallel>(
+                    geometryReader->readGeometry(f));
+                std::array<double, 8> pm = geometry->projectionMatrixAsVector8();
+                std::cout << io::xprintf("[[%f %f %f %f],[%f %f %f %f]]\n", pm[0], pm[1], pm[2],
+                                         pm[3], pm[4], pm[5], pm[6], pm[7]);
+            }
         }
     }
 }
@@ -104,6 +157,11 @@ int Args::parseArguments(int argc, char* argv[])
     app.add_option("input_camera_matrix", input_file, "File in a DEN format to process.")
         ->required()
         ->check(CLI::ExistingFile);
+    app.add_flag("--estimate-reconstruction-size", estimateReconstructionSize,
+                 "Estimate the size of the reconstruction from the projection matrices.");
+    std::string optstring
+        = io::xprintf("Size of the detector in pixels, defaults to %d.", detectorSize);
+    app.add_option("--detector-size", detectorSize, optstring);
     try
     {
         app.parse(argc, argv);
@@ -124,10 +182,17 @@ int Args::parseArguments(int argc, char* argv[])
             "%d, %d), each cell has x*y=%d pixels.\n",
             input_file.c_str(), elm.c_str(), dimx, dimy, dimz, dimx * dimy);
         std::string ERR;
-        if(inf.dimx() != 4 || inf.dimy() != 3)
+        if(inf.dimx() == 4 && inf.dimy() == 3)
         {
-            ERR = io::xprintf("Provided file do not have correct dimensions 3x4 but %dx%d.",
-                              inf.dimx(), inf.dimy());
+            CBMAT = true;
+        } else if(inf.dimx() == 4 && inf.dimy() == 2)
+        {
+            PBMAT = true;
+        } else
+        {
+            ERR = io::xprintf("Provided file do not have correct dimensions to be CBMAT (3x4) or "
+                              "PBMAT 2x4 but %dx%d.",
+                              inf.dimy(), inf.dimx());
             KCTERR(ERR);
         }
         if(t != io::DenSupportedType::FLOAT64)
