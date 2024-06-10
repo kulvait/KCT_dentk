@@ -98,9 +98,9 @@ __global__ void ParkerFilter(
     float cor = corpos + PY * zslope;
     float dist;
     float radius;
-    if(cor > 0.5f * SIZEX)
+    if(cor > 0.5f * (SIZEX - 1)) 
     {
-        radius = SIZEX - cor;
+        radius = (SIZEX - 1) - cor;
         dist = cor - PX;
     } else
     {
