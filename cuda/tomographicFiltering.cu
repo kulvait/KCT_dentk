@@ -107,7 +107,7 @@ __global__ void ParkerFilter(
         radius = cor;
         dist = PX - cor;
     }
-    if(abs(dist) < radius)
+    if(abs(dist) <= radius)
     {
         float distFromCor = dist / radius; //[-1,1]
         float factor;
