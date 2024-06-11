@@ -619,6 +619,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_empty ctiol)
+target_link_libraries(dentk_empty ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_empty RUNTIME DESTINATION .)
 
 SET(DENTK_CALC_SOURCES src/dentk-calc.cpp)

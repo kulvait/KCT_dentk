@@ -100,11 +100,11 @@ __global__ void ParkerFilter(
     float radius;
     if(cor > 0.5f * (SIZEX - 1)) 
     {
-        radius = (SIZEX - 1) - cor;
+        radius = (SIZEX - 1) - cor + 0.5;
         dist = cor - PX;
     } else
     {
-        radius = cor;
+        radius = cor + 0.5;
         dist = PX - cor;
     }
     if(abs(dist) <= radius)
