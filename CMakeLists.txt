@@ -562,6 +562,18 @@ set_target_properties(
 target_link_libraries(dentk_transpose ctiol)
 install (TARGETS dentk_transpose RUNTIME DESTINATION .)
 
+SET(DENTK_SWAPAXES_SOURCES src/dentk-swapaxes.cpp)
+add_executable(dentk_swapaxes ${DENTK_SWAPAXES_SOURCES})
+set_target_properties(
+    dentk_swapaxes
+    PROPERTIES 
+	OUTPUT_NAME "dentk-swapaxes"
+	SUFFIX ""
+)
+target_link_libraries(dentk_swapaxes ctiol)
+target_link_libraries(dentk_swapaxes ${CMAKE_THREAD_LIBS_INIT})
+install (TARGETS dentk_swapaxes RUNTIME DESTINATION .)
+
 SET(DENTK_FLIP_SOURCES src/dentk-flip.cpp)
 add_executable(dentk_flip ${DENTK_FLIP_SOURCES})
 set_target_properties(
