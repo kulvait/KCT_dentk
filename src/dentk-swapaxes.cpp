@@ -3,16 +3,16 @@
 
 // External libraries
 #include <algorithm> // For std::copy
-#include <vector>
 #include <thread>
+#include <vector>
 
 // Internal libraries
-#include "PROG/Program.hpp"
-#include "DEN/DenFrame2DReader.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
+#include "DEN/DenFrame2DReader.hpp"
 #include "PROG/Arguments.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsThreading.hpp"
+#include "PROG/Program.hpp"
 
 using namespace KCT;
 using namespace KCT::util;
@@ -145,10 +145,14 @@ int process(Args& ARG, io::DenFileInfo& input_inf)
     uint64_t totalSize = frameSize * static_cast<uint64_t>(dimz);
     std::shared_ptr<io::DenFrame2DReader<T>> inputReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_file, ARG.threads);
-
+    LOGI << "Creating output buffer of size " << totalSize;
     T* outputBuffer = new T[totalSize];
+    LOGI << "Swapping axes...";
     swapAxes<T>(ARG, inputReader, outputBuffer, dimx, dimy, dimz);
+    LOGI << "Writing frames...";
+
     writeFramesParallel<T>(ARG, outputBuffer, dimx, dimz, dimy);
+    LOGI << "Deleting output buffer...";
     delete[] outputBuffer;
     return 0;
 }
@@ -170,6 +174,9 @@ int main(int argc, char* argv[])
     PRG.startLog(true);
     io::DenFileInfo di(ARG.input_file);
     io::DenSupportedType dataType = di.getElementType();
+    io::DenFileInfo::createEmpty3DDenFile(ARG.output_file, dataType, di.dim(0), di.dim(2),
+                                          di.dim(1));
+    LOGI << io::xprintf("Output file %s created to store swap result.", ARG.output_file.c_str());
     switch(dataType)
     {
     case io::DenSupportedType::UINT16:
