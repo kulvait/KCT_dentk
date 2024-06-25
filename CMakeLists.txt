@@ -560,6 +560,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_transpose ctiol)
+target_link_libraries(dentk_transpose ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_transpose RUNTIME DESTINATION .)
 
 SET(DENTK_SWAPAXES_SOURCES src/dentk-swapaxes.cpp)

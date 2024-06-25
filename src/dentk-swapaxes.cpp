@@ -109,6 +109,7 @@ void writeFramesParallel(Args& ARG, T* outputBuffer, uint32_t dimx, uint32_t dim
 {
     std::string outputFile = ARG.output_file;
     uint64_t frameSize = static_cast<uint64_t>(dimx) * static_cast<uint64_t>(dimy);
+    uint64_t frameByteSize = frameSize * sizeof(T);
     uint64_t num_threads = std::max(ARG.threads, 1u);
     uint64_t frames_per_thread = (dimz + num_threads - 1) / num_threads; // ceil
     std::vector<std::thread> threads;
@@ -116,18 +117,19 @@ void writeFramesParallel(Args& ARG, T* outputBuffer, uint32_t dimx, uint32_t dim
     {
         uint64_t start_frame = t * frames_per_thread;
         uint64_t end_frame = std::min((t + 1) * frames_per_thread, static_cast<uint64_t>(dimz));
-        threads.emplace_back(
-            [&outputFile, &outputBuffer, frameSize, dimx, dimy, dimz, start_frame, end_frame]() {
-                std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWriter
-                    = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(outputFile, dimx,
-                                                                              dimy, dimz);
-                T* f_array;
-                for(uint32_t k = start_frame; k < end_frame; k++)
-                {
-                    f_array = outputBuffer + k * frameSize;
-                    outputWriter->writeBuffer(f_array, k);
-                }
-            });
+        uint64_t bufferSize
+            = std::min(static_cast<uint64_t>(10u), end_frame - start_frame) * frameByteSize;
+        threads.emplace_back([&outputFile, &outputBuffer, frameSize, start_frame, end_frame,
+                              bufferSize]() {
+            std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWriter
+                = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(outputFile, bufferSize);
+            T* f_array;
+            for(uint32_t k = start_frame; k < end_frame; k++)
+            {
+                f_array = outputBuffer + k * frameSize;
+                outputWriter->writeBuffer(f_array, k);
+            }
+        });
     }
     for(auto& t : threads)
     {
