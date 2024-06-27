@@ -15,18 +15,37 @@
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
+#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenFileInfo.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsThreading.hpp"
 #include "PROG/KCTException.hpp"
 #include "PROG/Program.hpp"
-#include "ftpl.h"
+#include "PROG/ThreadPool.hpp"
 #include "rawop.h"
 #include "stringFormatter.h"
 
 using namespace KCT;
 using namespace KCT::util;
+
+template <typename T>
+using WRITER = io::DenAsyncFrame2DBufferedWritter<T>;
+
+template <typename T>
+using WRITERPTR = std::shared_ptr<WRITER<T>>;
+
+template <typename T>
+using TP = io::ThreadPool<WRITER<T>>;
+
+template <typename T>
+using TPPTR = std::shared_ptr<TP<T>>;
+
+template <typename T>
+using TPINFO = typename TP<T>::ThreadInfo;
+
+template <typename T>
+using TPINFOPTR = std::shared_ptr<TPINFO<T>>;
 
 class Args : public ArgumentsThreading, public ArgumentsForce
 {
@@ -42,7 +61,8 @@ public:
 
     uint32_t dimx, dimy, dimz;
     uint64_t elementByteSize;
-    std::string type = "float";
+    std::string type = "FLOAT32";
+    io::DenSupportedType dataType = io::DenSupportedType::FLOAT32;
     double value = 0.0;
     bool noise = false;
     std::string outputFile;
@@ -76,21 +96,21 @@ int Args::postParse()
             return -1;
         }
     }
-    if(type == "float")
+    if(type == "FLOAT32")
     {
-        elementByteSize = 4;
+        dataType = io::DenSupportedType::FLOAT32;
         LOGD << io::xprintf(
             "Creating file %s with data type float and dimensions (x,y,z) = (%d, %d, %d).",
             outputFile.c_str(), dimx, dimy, dimz);
-    } else if(type == "double")
+    } else if(type == "FLOAT64")
     {
-        elementByteSize = 8;
+        dataType = io::DenSupportedType::FLOAT64;
         LOGD << io::xprintf(
             "Creating file %s with data type double and dimensions (x,y,z) = (%d, %d, %d).",
             outputFile.c_str(), dimx, dimy, dimz);
-    } else if(type == "uint16_t")
+    } else if(type == "UINT16")
     {
-        elementByteSize = 2;
+        dataType = io::DenSupportedType::UINT16;
         LOGD << io::xprintf(
             "Creating file %s with data type uint16_t and dimensions (x,y,z) = (%d, %d, %d).",
             outputFile.c_str(), dimx, dimy, dimz);
@@ -105,47 +125,72 @@ int Args::postParse()
 }
 
 template <typename T>
-void writeFrame(int _FTPLID,
-                uint32_t k,
+void writeFrame(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo,
                 std::shared_ptr<io::BufferedFrame2D<T>> f,
-                std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> dw)
+                uint32_t k)
 {
-    dw->writeFrame(*f, k);
+    WRITERPTR<T> writer = threadInfo->worker;
+    writer->writeBufferedFrame(*f, k);
 }
 
 template <typename T>
-void createConstantDEN(std::string fileName,
-                       uint32_t sizex,
-                       uint32_t sizey,
-                       uint32_t sizez,
-                       T value,
-                       uint32_t threads = 0)
+void writeValue(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo,
+                     T value,
+                     uint32_t dimx, uint32_t dimy,
+                     uint32_t k)
 {
-    ftpl::thread_pool* threadpool = nullptr;
-    if(threads > 0)
-    {
-        threadpool = new ftpl::thread_pool(threads);
-    }
-    std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> dw
-        = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(fileName, sizex, sizey, sizez);
+    WRITERPTR<T> writer = threadInfo->worker;
+    io::BufferedFrame2D<T> f(value, dimx, dimy);
+        writer->writeBufferedFrame(f, k);
+}
+
+template <typename T>
+void createConstantDEN(
+    std::string fileName, uint32_t sizex, uint32_t sizey, uint32_t K, T value, uint32_t threads = 0)
+{
+    uint64_t frameByteSize = static_cast<uint64_t>(sizex) * sizey * sizeof(T);
     std::shared_ptr<io::BufferedFrame2D<T>> f
         = std::make_shared<io::BufferedFrame2D<T>>(value, sizex, sizey);
-    const int dummy_FTPLID = 0;
-    for(uint32_t k = 0; k != sizez; k++)
+    TPPTR<T> threadpool = nullptr;
+    std::shared_ptr<typename TP<T>::ThreadInfo> thread_info = nullptr;
+    if(threads > 0)
+    {
+        WRITERPTR<T> wp = nullptr;
+        std::vector<WRITERPTR<T>> workers;
+        uint32_t workerCount
+            = std::min(threads, 10u); //Maximum 10 workers that will be shared between threads
+        uint32_t divisionBoundaries = (threads + workerCount - 1) / workerCount;
+        for(uint32_t i = 0; i < threads; i++)
+        {
+            if(i % divisionBoundaries == 0 || wp == nullptr)
+            {
+                wp = std::make_shared<WRITER<T>>(fileName, 5 * frameByteSize);
+            }
+            workers.push_back(wp);
+        }
+        threadpool = std::make_shared<TP<T>>(threads, workers);
+    } else
+    {
+        WRITERPTR<T> singleThreadWritter
+            = std::make_shared<WRITER<T>>(fileName, 10 * frameByteSize); //Optimalized buffer size
+        thread_info
+            = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, singleThreadWritter });
+    }
+    for(uint64_t k = 0; k < K; k++)
     {
         if(threadpool != nullptr)
         {
-            threadpool->push(writeFrame<T>, k, f, dw);
+            /*threadpool->submit(writeFrame<T>, f, k);*/
+            threadpool->submit(writeValue<T>, value, sizex, sizey, k);
         } else
         {
-            writeFrame<T>(dummy_FTPLID, k, f, dw);
+            writeValue<T>(thread_info, value, sizex, sizey, k);
         }
     }
-
     if(threadpool != nullptr)
     {
-        threadpool->stop(true);
-        delete threadpool;
+        threadpool->waitAll();
+        threadpool = nullptr;
     }
 }
 
@@ -153,25 +198,85 @@ template <typename T>
 void createNoisyDEN(std::string fileName,
                     uint32_t sizex,
                     uint32_t sizey,
-                    uint32_t sizez,
+                    uint32_t K,
                     std::mt19937 gen,
                     T from = 0.0,
-                    T to = 1.0)
+                    T to = 1.0,
+                    uint32_t threads = 0)
 {
     using namespace KCT;
     std::uniform_real_distribution<T> dis(from, to);
-    io::DenAsyncFrame2DBufferedWritter<T> dw(fileName, sizex, sizey, sizez);
-    io::BufferedFrame2D<T> f(0.0f, sizex, sizey);
-    for(uint32_t k = 0; k != sizez; k++)
+    uint64_t frameSize = static_cast<uint64_t>(sizex) * static_cast<uint64_t>(sizey);
+    uint64_t frameByteSize = frameSize * sizeof(T);
+    std::shared_ptr<io::BufferedFrame2D<T>> f;
+    TPPTR<T> threadpool = nullptr;
+    std::shared_ptr<typename TP<T>::ThreadInfo> thread_info = nullptr;
+    if(threads > 0)
     {
-        for(uint32_t i = 0; i != sizex; i++)
+        uint32_t workerCount
+            = std::min(threads, 10u); //Maximum 10 workers that will be shared between threads
+        uint32_t divisionBoundaries = (threads + workerCount - 1) / workerCount;
+        WRITERPTR<T> wp = nullptr;
+        std::vector<WRITERPTR<T>> workers;
+        for(uint32_t i = 0; i < threads; i++)
         {
-            for(uint32_t j = 0; j != sizey; j++)
+            if(i % divisionBoundaries == 0 || wp == nullptr)
             {
-                f.set(dis(gen), i, j);
+                //wp = std::make_shared<WRITER<T>>(ARG.output_file);
+                //Optimalized buffer size
+                wp = std::make_shared<WRITER<T>>(fileName, 5 * frameByteSize);
             }
+            workers.push_back(wp);
         }
-        dw.writeFrame(f, k);
+        threadpool = std::make_shared<TP<T>>(threads, workers);
+    } else
+    {
+        WRITERPTR<T> singleThreadWritter
+            = std::make_shared<WRITER<T>>(fileName, 10 * frameByteSize);
+        thread_info
+            = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, singleThreadWritter });
+    }
+    for(uint64_t k = 0; k < K; k++)
+    {
+        //I can not reuse the same frame, because the noise shall be different for each frame
+        f = std::make_shared<io::BufferedFrame2D<T>>(T(0), sizex, sizey);
+        T* f_array = f->getDataPointer();
+        for(uint64_t i = 0; i < frameSize; i++)
+        {
+            f_array[i] = dis(gen);
+        }
+        if(threadpool != nullptr)
+        {
+            threadpool->submit(writeFrame<T>, f, k);
+        } else
+        {
+            writeFrame<T>(thread_info, f, k);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->waitAll();
+        threadpool = nullptr;
+    }
+}
+
+template <typename T>
+void process(Args& ARG)
+{
+    if(ARG.noise && ARG.dataType == io::DenSupportedType::UINT16)
+    {
+        KCTERR("Noise for uint16_t not implemented");
+    }
+    io::DenFileInfo::createEmpty3DDenFile(ARG.outputFile, ARG.dataType, ARG.dimx, ARG.dimy,
+                                          ARG.dimz);
+    if(ARG.noise)
+    {
+        std::mt19937 gen(0);
+        createNoisyDEN<T>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz, gen, ARG.threads);
+    } else
+    {
+        createConstantDEN<T>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz,
+                             static_cast<T>(ARG.value), ARG.threads);
     }
 }
 
@@ -189,40 +294,33 @@ int main(int argc, char* argv[])
         return -1; // Exited somehow wrong
     }
     PRG.startLog(true);
-    if(ARG.elementByteSize == 2)
+    // After init parsing arguments
+
+    switch(ARG.dataType)
     {
+    case io::DenSupportedType::UINT16:
         if(ARG.noise)
         {
+            //createNoisyDEN<uint16_t> triggers a compile error due to std::uniform_real_distribution<uint16_t>
             KCTERR("Noise for uint16_t not implemented");
         } else
         {
+            io::DenFileInfo::createEmpty3DDenFile(ARG.outputFile, ARG.dataType, ARG.dimx, ARG.dimy,
+                                                  ARG.dimz);
             createConstantDEN<uint16_t>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz,
-                                        (uint16_t)ARG.value, ARG.threads);
+                                        static_cast<uint16_t>(ARG.value), ARG.threads);
         }
-    }
-    if(ARG.elementByteSize == 4)
-    {
-        if(ARG.noise)
-        {
-            std::mt19937 gen(0);
-            createNoisyDEN<float>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz, gen);
-        } else
-        {
-            createConstantDEN<float>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz, (float)ARG.value,
-                                     ARG.threads);
-        }
-    }
-    if(ARG.elementByteSize == 8)
-    {
-        if(ARG.noise)
-        {
-            std::mt19937 gen(0);
-            createNoisyDEN<double>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz, gen);
-        } else
-        {
-            createConstantDEN<double>(ARG.outputFile, ARG.dimx, ARG.dimy, ARG.dimz, ARG.value,
-                                      ARG.threads);
-        }
+        break;
+    case io::DenSupportedType::FLOAT32:
+        process<float>(ARG);
+        break;
+    case io::DenSupportedType::FLOAT64:
+        process<double>(ARG);
+        break;
+    default:
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(ARG.dataType).c_str());
+        KCTERR(errMsg);
     }
     PRG.endLog(true);
     return 0;

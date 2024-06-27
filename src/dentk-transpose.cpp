@@ -131,11 +131,11 @@ int process(Args& ARG, io::DenFileInfo& input_inf)
     READERPTR<T> inputReader = std::make_shared<READER<T>>(ARG.input_file, ARG.threads);
     TPPTR<T> threadpool = nullptr;
     std::shared_ptr<typename TP<T>::ThreadInfo> thread_info = nullptr;
-    uint32_t workerCount
-        = std::min(ARG.threads, 10u); //Maximum 10 workers that will be shared between threads
-    uint32_t divisionBoundaries = (ARG.threads + workerCount - 1) / workerCount;
     if(ARG.threads > 0)
     {
+        uint32_t workerCount
+            = std::min(ARG.threads, 10u); //Maximum 10 workers that will be shared between threads
+        uint32_t divisionBoundaries = (ARG.threads + workerCount - 1) / workerCount;
         WRITERPTR<T> wp = nullptr;
         std::vector<WRITERPTR<T>> workers;
         for(uint32_t i = 0; i < ARG.threads; i++)
@@ -151,8 +151,8 @@ int process(Args& ARG, io::DenFileInfo& input_inf)
         threadpool = std::make_shared<TP<T>>(ARG.threads, workers);
     } else
     {
-        WRITERPTR<T> singleThreadWritter = std::make_shared<WRITER<T>>(
-            ARG.output_file, dimCount, dim.data(), input_inf.hasXMajorAlignment());
+        WRITERPTR<T> singleThreadWritter
+            = std::make_shared<WRITER<T>>(ARG.output_file, 5 * frameByteSize);
         thread_info
             = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, singleThreadWritter });
     }
@@ -231,7 +231,9 @@ int Args::postParse()
     int existFlag = handleFileExistence(output_file, force, removeIfExists);
     if(existFlag != 0)
     {
-        std::string msg = io::xprintf("Error: output file %s already exists, use --force to force overwrite.", output_file.c_str());
+        std::string msg
+            = io::xprintf("Error: output file %s already exists, use --force to force overwrite.",
+                          output_file.c_str());
         LOGE << msg;
         return 1;
     }

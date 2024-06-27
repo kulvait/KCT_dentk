@@ -40,12 +40,12 @@ The DENTK project relies on several external libraries and tools. Below is a com
      ```bash
      sudo apt-get install cmake
      ```
-2. A C++ compiler that supports C++17
+2. **A C++ compiler that supports C++17**
     - GCC (>= 7.3.0) or Clang (>= 5.0.0) are recommended.
     - Installation:
-      ```bash
-      sudo apt-get install build-essential
-    ```
+        ```bash
+        sudo apt-get install build-essential
+        ```
 
 3. **Threads Library**
    - Used for multi-threading support of virtually all the tools.
@@ -73,9 +73,9 @@ The DENTK project relies on several external libraries and tools. Below is a com
    - Installation:
      Follow the instructions on the [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) download page.
     -To modify the CMakeLists.txt for different architectures or debug settings, you can uncomment or adjust the relevant sections. For example, to set CUDA architectures:
-```cmake
-set(CUDA_ARCHITECTURES "70;35")
-```
+    ```cmake
+    set(CUDA_ARCHITECTURES "70;35")
+    ```
 
 
 2. **ITK (Insight Segmentation and Registration Toolkit)**
@@ -96,10 +96,10 @@ The DENTK project uses the following submodules:
 - **[CTIOL](https://github.com/kulvait/KCT_ctiol)**
   - A C++ library of asynchronous, thread-safe I/O routines for for reading and writing CT data in the DEN format.
 
-- **[CTMAL]((https://github.com/kulvait/KCT_ctmal))**
+- **[CTMAL](https://github.com/kulvait/KCT_ctmal)**
   - A C++ library of Mathematic/Algebraic algorithms for supporting CT data manipulation.
 
-- **[plog](https://github.com/SergiusTheBest/plog)**
+- **[Plog](https://github.com/SergiusTheBest/plog)**
    - External library used for logging. MIT license.
    
 - **[CLI11](https://github.com/CLIUtils/CLI11)**
