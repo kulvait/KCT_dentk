@@ -10,186 +10,194 @@
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
 #include "BufferedFrame2D.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "FUN/StepFunction.hpp"
 #include "Frame2DI.hpp"
 #include "MATRIX/Matrix.hpp"
 #include "MATRIX/RQFactorization.hpp"
+#include "PROG/ArgumentsForce.hpp"
+#include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/Program.hpp"
 #include "frameop.h"
 #include "rawop.h"
 
 using namespace KCT;
 
-// class declarations
-struct Args
-{
-    int parseArguments(int argc, char* argv[]);
-    std::string input_file;
-    std::string output_file = "";
-    bool force;
-    uint16_t granularity;
-    uint16_t baseSize;
-};
+template <typename T>
+using READER = io::DenFrame2DReader<T>;
 
 template <typename T>
+using READERPTR = std::shared_ptr<READER<T>>;
+
+template <typename T>
+using WRITER = io::DenAsyncFrame2DBufferedWritter<T>;
+
+template <typename T>
+using WRITERPTR = std::shared_ptr<WRITER<T>>;
+
+template <typename T>
+using FRAME = io::BufferedFrame2D<T>;
+
+template <typename T>
+using FRAMEPTR = std::shared_ptr<FRAME<T>>;
+
+using namespace KCT::util;
+
+// class declarations
+class Args : public ArgumentsForce, public ArgumentsFramespec
+{
+    void defineArguments();
+    int postParse();
+    int preParse() { return 0; };
+
+public:
+    Args(int argc, char** argv, std::string prgName)
+        : Arguments(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName)
+        , ArgumentsFramespec(argc, argv, prgName){};
+    std::string input_file = "";
+    std::string output_file = "";
+    uint32_t frameSize;
+};
+
 /**
  * Orthogonalization by RQ decomposition from the last vector. So we reorder.
  *
  * @param inputFile
  * @param outputFile
  */
-void orthonormalize(std::string inputFile, std::string outputFile)
+template <typename T>
+void process(Args ARG)
 {
-    std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader
-        = std::make_shared<io::DenFrame2DReader<T>>(inputFile);
-    uint32_t granularity = denSliceReader->dimx();
-    uint32_t baseSize = denSliceReader->getFrameCount();
-    std::shared_ptr<io::Frame2DI<T>> f;
-    io::BufferedFrame2D<T> bf(T(0.0), granularity, 1);
-    double* values = new double[baseSize * granularity];
-    for(uint32_t i = 0; i != baseSize; i++)
+    READERPTR<T> frameReader = std::make_shared<READER<T>>(ARG.input_file);
+    uint64_t functionCount = ARG.frames.size(); //baseSize
+    uint64_t frameSize = ARG.frameSize; //granularity
+    uint32_t dimx = frameReader->dimx();
+    uint32_t dimy = frameReader->dimy();
+    double* values = new double[functionCount * frameSize];
+    FRAMEPTR<T> f;
+    uint32_t IND = 0;
+    for(uint64_t i = 0; i != functionCount; i++)
     {
-        f = denSliceReader->readFrame(baseSize - 1 - i);
-        for(uint32_t j = 0; j != granularity; j++)
-        {
-            values[i * granularity + j] = double(f->get(j, 0));
-        }
+        IND = ARG.frames
+                  [ARG.frames.size() - 1
+                   - i]; //First vector will be last in the matrix, and ortogonalized version will be last element in Q matrix
+        f = frameReader->readBufferedFrame(IND);
+        T* f_array = f->getDataPointer();
+        std::copy(f_array, f_array + frameSize, values + i * frameSize);
     }
     matrix::RQFactorization rq;
     std::shared_ptr<matrix::Matrix> B
-        = std::make_shared<matrix::Matrix>(baseSize, granularity, values);
+        = std::make_shared<matrix::Matrix>(functionCount, frameSize, values);
     rq.factorize(B);
-    auto C = rq.getRMatrix(); // baseSize*baseSize
-    auto Q = rq.getQMatrix(); // baseSize*granularity
+    auto C = rq.getRMatrix(); // functionCount*functionCount
+    auto Q = rq.getQMatrix(); // functionCount*frameSize
     double a = 0.0;
-    int writeIndex = 0;
-    for(uint32_t i = 0; i != baseSize; i++)
+    std::vector<uint32_t> nonzeroVectorIndices;
+    for(uint32_t i = 0; i != functionCount; i++)
     {
+        IND = functionCount - 1 - i;
         a = 0.0;
-        for(uint32_t j = 0; j != baseSize; j++)
+        for(uint32_t j = 0; j != functionCount; j++)
         {
-            a += C->get(j, i) * C->get(j, i);
+            a += C->get(j, IND) * C->get(j, IND);
         }
         if(std::sqrt(a) > 1e-10)
         {
-            writeIndex++;
+            nonzeroVectorIndices.push_back(IND);
         }
     }
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(outputFile, granularity, 1, writeIndex);
-    writeIndex--;
-    for(uint32_t i = 0; i != baseSize; i++)
+    WRITERPTR<T> w
+        = std::make_shared<WRITER<T>>(ARG.output_file, dimx, dimy, nonzeroVectorIndices.size());
+    FRAMEPTR<T> bf = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    T* bf_array = bf->getDataPointer();
+    for(uint32_t i = 0; i != nonzeroVectorIndices.size(); i++)
     {
-        a = 0.0;
-        for(uint32_t j = 0; j != baseSize; j++)
+        IND = nonzeroVectorIndices[i];
+        for(uint64_t k = 0; k != frameSize; k++)
         {
-            a += C->get(j, i) * C->get(j, i);
+            bf_array[k] = Q->get(IND, k);
         }
-        if(std::sqrt(a) > 1e-10)
-        {
-            for(uint32_t j = 0; j != granularity; j++)
-            {
-                bf.set(Q->get(i, j), j, 0);
-            }
-            imagesWritter->writeFrame(bf, writeIndex--);
-        }
+        w->writeBufferedFrame(*bf, i);
     }
     delete[] values;
 }
 
 int main(int argc, char* argv[])
 {
-    plog::Severity verbosityLevel = plog::debug; // debug, info, ...
-    std::string csvLogFile = io::xprintf(
-        "/tmp/%s.csv", io::getBasename(std::string(argv[0])).c_str()); // Set NULL to disable
-    bool logToConsole = true;
-    plog::PlogSetup plogSetup(verbosityLevel, csvLogFile, logToConsole);
-    plogSetup.initLogging();
+    Program PRG(argc, argv);
     // Argument parsing
-    Args a;
-    int parseResult = a.parseArguments(argc, argv);
-    if(parseResult != 0)
+    Args ARG(argc, argv,
+             "Orthogonalization of the frames by means of QR algorithm, cut colinear vectors. We "
+             "expect, that the z dimension of the file will correspond to different vectors and we "
+             "orthogonalize dimx*dimy frames.");
+    int parseResult = ARG.parse();
+    if(parseResult > 0)
     {
-        if(parseResult > 0)
-        {
-            return 0; // Exited sucesfully, help message printed
-        } else
-        {
-            return -1; // Exited somehow wrong
-        }
+        return 0; // Exited sucesfully, help message printed
+    } else if(parseResult != 0)
+    {
+        return -1; // Exited somehow wrong
     }
-    io::DenFileInfo di(a.input_file);
-    // int elementSize = di.elementByteSize();
-    io::DenSupportedType t = di.getElementType();
-    std::string elm = io::DenSupportedTypeToString(t);
-    switch(t)
+    PRG.startLog(true);
+    io::DenFileInfo di(ARG.input_file);
+    io::DenSupportedType dataType = di.getElementType();
+    switch(dataType)
     {
     case io::DenSupportedType::UINT16: {
-        orthonormalize<uint16_t>(a.input_file, a.output_file);
+        process<uint16_t>(ARG);
         break;
     }
     case io::DenSupportedType::FLOAT32: {
-        orthonormalize<float>(a.input_file, a.output_file);
+        process<float>(ARG);
         break;
     }
     case io::DenSupportedType::FLOAT64: {
-        orthonormalize<double>(a.input_file, a.output_file);
+        process<double>(ARG);
         break;
     }
-    default:
-        std::string errMsg
-            = io::xprintf("Unsupported data type %s.", io::DenSupportedTypeToString(t).c_str());
+    default: {
+        std::string errMsg = io::xprintf("Unsupported data type %s.",
+                                         io::DenSupportedTypeToString(dataType).c_str());
         KCTERR(errMsg);
     }
+    }
+    PRG.endLog();
 }
 
-int Args::parseArguments(int argc, char* argv[])
+void Args::defineArguments()
 {
-    CLI::App app{ "Engineered bases orthogonalization by QR algorithm, cut colinear vectors." };
-    app.add_option("input_den_file", input_file, "File in a DEN format to process.")
-        ->required()
-        ->check(CLI::ExistingFile);
-    app.add_option("output_den_file", output_file, "File to output.")->required();
-    app.add_flag("-f,--force", force, "Force overwrite output file.");
-    try
-    {
-        app.parse(argc, argv);
-        if(!force)
-        {
-            if(io::pathExists(output_file))
-            {
-                std::string msg = io::xprintf(
-                    "Error: output file %s already exists, use -f to force overwrite.",
-                    output_file.c_str());
-                LOGE << msg;
-                return 1;
-            }
-        }
-        io::DenFileInfo di(input_file);
-        granularity = di.dimx();
-        baseSize = di.dimz();
-        if(di.dimy() != 1)
-        {
-            std::string msg = io::xprintf(
-                "Error: input file %s has invalid y dimension that must be 1 and is %d!",
-                input_file.c_str(), di.dimy());
-            LOGE << msg;
-            return 1;
-        }
-    } catch(const CLI::ParseError& e)
-    {
-        int exitcode = app.exit(e);
-        if(exitcode == 0) // Help message was printed
-        {
-            return 1;
-        } else
-        {
-            LOGE << "Parse error catched";
-            // Negative value should be returned
-            return -1;
-        }
-    }
+    cliApp->add_option("input_file", input_file, "Input file.")
+        ->check(CLI::ExistingFile)
+        ->required();
+    cliApp->add_option("output_file", output_file, "Output file.")->required();
+    addForceArgs();
+    addFramespecArgs();
+}
 
+int Args::postParse()
+{
+    bool removeIfExists = true;
+    int existFlag = handleFileExistence(output_file, force, removeIfExists);
+    if(existFlag != 0)
+    {
+        std::string msg
+            = io::xprintf("Error: output file %s already exists, use --force to force overwrite.",
+                          output_file.c_str());
+        LOGE << msg;
+        return 1;
+    }
+    io::DenFileInfo di(input_file);
+    if(di.getDimCount() != 3)
+    {
+        std::string ERR
+            = io::xprintf("The file %s has %d dimensions, three dimensional file expected.",
+                          input_file.c_str(), di.getDimCount());
+        LOGE << ERR;
+        return 1;
+    }
+    fillFramesVector(di.getFrameCount());
+    frameSize = di.getFrameSize();
     return 0;
 }
