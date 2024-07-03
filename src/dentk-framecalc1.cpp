@@ -7,30 +7,53 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctype.h>
+#include <future>
 #include <iostream>
 #include <regex>
 #include <string>
+#include <vector>
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
 #include "FrameMemoryViewer2D.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
+#include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
 
 using namespace KCT;
 using namespace KCT::util;
 
+template <typename T>
+using READER = io::DenFrame2DReader<T>;
+
+template <typename T>
+using READERPTR = std::shared_ptr<READER<T>>;
+
+template <typename T>
+using WRITER = io::DenAsyncFrame2DBufferedWritter<T>;
+
+template <typename T>
+using WRITERPTR = std::shared_ptr<WRITER<T>>;
+
+template <typename T>
+using FRAME = io::BufferedFrame2D<T>;
+
+template <typename T>
+using FRAMEPTR = std::shared_ptr<FRAME<T>>;
+
+using namespace KCT::util;
+
 // class declarations
 // class declarations
-class Args : public ArgumentsForce, public ArgumentsFramespec
+class Args : public ArgumentsForce, public ArgumentsFramespec, public ArgumentsThreading
 {
     void defineArguments();
     int postParse();
@@ -40,7 +63,8 @@ public:
     Args(int argc, char** argv, std::string prgName)
         : Arguments(argc, argv, prgName)
         , ArgumentsForce(argc, argv, prgName)
-        , ArgumentsFramespec(argc, argv, prgName){};
+        , ArgumentsFramespec(argc, argv, prgName)
+        , ArgumentsThreading(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
     bool sum = false;
@@ -55,146 +79,216 @@ public:
     bool median = false;
 };
 
-template <typename T>
-void sumFrames(Args a, T* sum)
+// Function to apply a given operation on a subset of frames
+template <typename T, typename Op>
+FRAMEPTR<T> aggregateFramesPartial(Args ARG, uint64_t start, uint64_t end, Op operation)
 {
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
-    std::fill(sum, sum + frameSize, T(0));
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    T* A_array;
-    std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const uint64_t& k : a.frames)
+    READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
+
+    // Read the first frame
+    FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
+    T* F_array = F->getDataPointer();
+
+    // Apply the operation for each subsequent frame in the range
+    for(uint64_t k = start + 1; k < end; ++k)
     {
-        std::shared_ptr<io::BufferedFrame2D<T>> A = denReader->readBufferedFrame(a.frames[k]);
-        A_array = A->getDataPointer();
-        std::transform(sum, sum + frameSize, A_array, sum, [](T a, T b) { return a + b; });
+        FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[k]);
+        T* A_array = A->getDataPointer();
+        std::transform(F_array, F_array + frameSize, A_array, F_array, operation);
+    }
+
+    return F;
+}
+
+// General function to aggregate frames using the specified operation and combination operation
+template <typename T, typename Op, typename AggOp>
+FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
+{
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameSize = di.getFrameSize();
+    uint64_t frameCount = ARG.frames.size();
+    uint32_t threadCount = ARG.threads;
+
+    if(threadCount == 0)
+    {
+        // Single-threaded processing
+        return aggregateFramesPartial<T>(ARG, 0, frameCount, operation);
+    } else
+    {
+        // Multi-threaded processing
+        uint64_t framesPerThread = frameCount / threadCount;
+        std::vector<std::future<FRAMEPTR<T>>> futures;
+
+        // Launch threads to process subsets of frames
+        for(uint32_t i = 0; i < threadCount; ++i)
+        {
+            uint64_t startFrame = i * framesPerThread;
+            uint64_t endFrame = std::min(startFrame + framesPerThread, frameCount);
+            futures.emplace_back(std::async(std::launch::async, aggregateFramesPartial<T, Op>, ARG,
+                                            startFrame, endFrame, operation));
+        }
+
+        // Aggregate results from each thread
+        FRAMEPTR<T> F = futures[0].get();
+        T* result = F->getDataPointer();
+        for(uint32_t i = 1; i < threadCount; ++i)
+        {
+            FRAMEPTR<T> A = futures[i].get();
+            T* A_array = A->getDataPointer();
+            std::transform(result, result + frameSize, A_array, result, combineOp);
+        }
+
+        return F;
     }
 }
 
 template <typename T>
-void averageFrames(Args a, T* avg)
+FRAMEPTR<T> sumFrames(Args ARG)
 {
-    io::DenFileInfo di(a.input_den);
+    return aggregateFrames<T>(ARG, std::plus<T>(), std::plus<T>());
+}
+
+template <typename T>
+FRAMEPTR<T> minFrames(Args ARG)
+{
+    return aggregateFrames<T>(
+        ARG, [](T a, T b) { return std::min(a, b); }, [](T a, T b) { return std::min(a, b); });
+}
+
+template <typename T>
+FRAMEPTR<T> maxFrames(Args ARG)
+{
+    return aggregateFrames<T>(
+        ARG, [](T a, T b) { return std::max(a, b); }, [](T a, T b) { return std::max(a, b); });
+}
+
+template <typename T>
+FRAMEPTR<T> averageFrames(Args ARG)
+{
+    io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
-    uint32_t frameCount = a.frames.size();
-    sumFrames(a, avg);
-    std::transform(avg, avg + frameSize, avg, [frameCount](T a) { return a / frameCount; });
+    uint64_t frameCount = ARG.frames.size();
+    FRAMEPTR<T> F = sumFrames<T>(ARG);
+    T* sum = F->getDataPointer();
+    std::transform(sum, sum + frameSize, sum, [frameCount](T x) { return x / frameCount; });
+    return F;
+}
+
+template <typename T>
+FRAMEPTR<T>
+sumOfSquaredDifferecesOfFramesPartial(Args ARG, FRAMEPTR<T> avg, uint64_t start, uint64_t end)
+{
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameSize = di.getFrameSize();
+    READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
+    T* avg_array = avg->getDataPointer();
+
+    // Read the first frame
+    FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
+    T* F_array = F->getDataPointer();
+    std::transform(F_array, F_array + frameSize, avg_array, F_array, [](T el, T avg) {
+        T vel = el - avg;
+        return vel * vel;
+    });
+    // Apply the operation for each subsequent frame in the range
+    for(uint64_t k = start + 1; k < end; ++k)
+    {
+        FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[k]);
+        T* A_array = A->getDataPointer();
+        std::transform(A_array, A_array + frameSize, avg_array, A_array, [](T el, T avg) {
+            T vel = el - avg;
+            return vel * vel;
+        });
+        std::transform(A_array, A_array + frameSize, F_array, F_array,
+                       [](T x, T v) { return x + v; });
+    }
+    return F;
+}
+
+template <typename T>
+FRAMEPTR<T> sumOfSquaredDifferecesOfFrames(Args ARG, FRAMEPTR<T> avg)
+{
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameSize = di.getFrameSize();
+    uint64_t frameCount = ARG.frames.size();
+    uint32_t threadCount = ARG.threads;
+
+    if(threadCount == 0)
+    {
+        // Single-threaded processing
+        return sumOfSquaredDifferecesOfFramesPartial<T>(ARG, avg, 0, frameCount);
+    } else
+    {
+        // Multi-threaded processing
+        uint64_t framesPerThread = frameCount / threadCount;
+        std::vector<std::future<FRAMEPTR<T>>> futures;
+
+        // Launch threads to process subsets of frames
+        for(uint32_t i = 0; i < threadCount; ++i)
+        {
+            uint64_t startFrame = i * framesPerThread;
+            uint64_t endFrame = std::min(startFrame + framesPerThread, frameCount);
+            futures.emplace_back(std::async(std::launch::async,
+                                            sumOfSquaredDifferecesOfFramesPartial<T>, ARG, avg,
+                                            startFrame, endFrame));
+        }
+
+        // Aggregate results from each thread
+        FRAMEPTR<T> F = futures[0].get();
+        T* result = F->getDataPointer();
+        for(uint32_t i = 1; i < threadCount; ++i)
+        {
+            FRAMEPTR<T> A = futures[i].get();
+            T* A_array = A->getDataPointer();
+            std::transform(result, result + frameSize, A_array, result,
+                           [](T a, T b) { return a + b; });
+        }
+        return F;
+    }
 }
 
 // Utilizing two pass algorithm as discribed
 // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
 template <typename T>
-void framesVariance(Args a, T* var, bool sampleVariance = false)
+FRAMEPTR<T> varianceOfFrames(Args ARG, bool sampleVariance = false)
 {
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameCount = ARG.frames.size();
     uint64_t frameSize = di.getFrameSize();
-    uint32_t frameCount = a.frames.size();
-    std::fill(var, var + frameSize, T(0));
-    T* avg = new T[frameSize];
-    averageFrames(a, avg);
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
+    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
+    FRAMEPTR<T> F = sumOfSquaredDifferecesOfFrames<T>(ARG, AVG);
+    T* sumSquaredDifferences = F->getDataPointer();
     uint32_t divideFactor = frameCount;
     if(sampleVariance)
     {
         divideFactor = frameCount - 1;
     }
-    T* A_array;
-    std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const uint64_t& k : a.frames)
-    {
-        A = denReader->readBufferedFrame(a.frames[k]);
-        A_array = A->getDataPointer();
-        std::transform(A_array, A_array + frameSize, avg, A_array, [](T& el, T& avg) {
-            T vel = el - avg;
-            return vel * vel;
-        });
-        std::transform(A_array, A_array + frameSize, var, var, [](T& x, T& v) { return x + v; });
-    }
-    delete[] avg;
-    std::transform(var, var + frameSize, var, [divideFactor](T& x) { return x / divideFactor; });
+    std::transform(sumSquaredDifferences, sumSquaredDifferences + frameSize, sumSquaredDifferences,
+                   [divideFactor](T x) { return x / divideFactor; });
+    return F;
 }
 
 // Utilizing two pass algorithm as discribed
 // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
 template <typename T>
-void framesStandardDeviation(Args a, T* stdev, bool sampleStandardDeviation = false)
+FRAMEPTR<T> framesStandardDeviation(Args ARG, bool sampleStandardDeviation = false)
 {
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameCount = ARG.frames.size();
     uint64_t frameSize = di.getFrameSize();
-    uint32_t frameCount = a.frames.size();
-    std::fill(stdev, stdev + frameSize, T(0));
-    T* avg = new T[frameSize];
-    averageFrames(a, avg);
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
+    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
+    FRAMEPTR<T> F = sumOfSquaredDifferecesOfFrames<T>(ARG, AVG);
+    T* sumSquaredDifferences = F->getDataPointer();
     uint32_t divideFactor = frameCount;
     if(sampleStandardDeviation)
     {
         divideFactor = frameCount - 1;
     }
-    T* A_array;
-    std::shared_ptr<io::BufferedFrame2D<T>> A;
-    for(const uint64_t& k : a.frames)
-    {
-        A = denReader->readBufferedFrame(a.frames[k]);
-        A_array = A->getDataPointer();
-        std::transform(A_array, A_array + frameSize, avg, A_array, [](T& el, T& avg) {
-            T vel = el - avg;
-            return vel * vel;
-        });
-        std::transform(A_array, A_array + frameSize, stdev, stdev,
-                       [](T& x, T& v) { return x + v; });
-    }
-    delete[] avg;
-    std::transform(stdev, stdev + frameSize, stdev,
-                   [divideFactor](T& x) { return std::sqrt(x / divideFactor); });
-}
-
-template <typename T>
-std::shared_ptr<io::Frame2DI<T>> minFrames(Args a)
-{
-    io::DenFileInfo di(a.input_den);
-    uint64_t frameSize = di.getFrameSize();
-    uint64_t frameCount = a.frames.size();
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::BufferedFrame2D<T>> F = denReader->readBufferedFrame(a.frames[0]);
-    T* F_array = F->getDataPointer();
-    std::shared_ptr<io::BufferedFrame2D<T>> A;
-    T* A_array;
-    for(uint64_t k = 1; k < frameCount; k++)
-    {
-        A = denReader->readBufferedFrame(a.frames[k]);
-        A_array = A->getDataPointer();
-        std::transform(F_array, F_array + frameSize, A_array, F_array,
-                       [](T a, T b) { return std::min(a, b); });
-    }
-    return std::static_pointer_cast<io::Frame2DI<T>>(F);
-}
-
-template <typename T>
-std::shared_ptr<io::Frame2DI<T>> maxFrames(Args a)
-{
-    io::DenFileInfo di(a.input_den);
-    uint64_t frameSize = di.getFrameSize();
-    uint32_t frameCount = a.frames.size();
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::BufferedFrame2D<T>> F = denReader->readBufferedFrame(a.frames[0]);
-    T* F_array = F->getDataPointer();
-    std::shared_ptr<io::BufferedFrame2D<T>> A;
-    T* A_array;
-    for(unsigned int k = 1; k < frameCount; k++)
-    {
-        A = denReader->readBufferedFrame(a.frames[k]);
-        A_array = A->getDataPointer();
-        std::transform(F_array, F_array + frameSize, A_array, F_array,
-                       [](T a, T b) { return std::max(a, b); });
-    }
-    return std::static_pointer_cast<io::Frame2DI<T>>(F);
+    std::transform(sumSquaredDifferences, sumSquaredDifferences + frameSize, sumSquaredDifferences,
+                   [divideFactor](T x) { return std::sqrt(x / divideFactor); });
+    return F;
 }
 
 template <typename T>
@@ -278,22 +372,22 @@ template <typename T>
  *
  * @return
  */
-std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
+FRAMEPTR<T> madFrames(Args ARG)
 {
 
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    uint32_t frameCount = a.frames.size();
+    uint32_t frameCount = ARG.frames.size();
     std::shared_ptr<io::Frame2DReaderI<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::Frame2DI<T>> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_den);
+    FRAMEPTR<T> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
     uint32_t frameSize = dimx * dimy;
     uint32_t maxArrayNum = 2147483647 / frameCount;
     uint32_t arraysCount = std::min(frameSize, maxArrayNum);
     // First I compute means of frame
-    T* avg = new T[frameSize];
-    averageFrames(a, avg);
+    FRAMEPTR<T> avg_frame = averageFrames<T>(ARG);
+    T* avg = avg_frame->getDataPointer();
     T** rowArrays = new T*[arraysCount];
     for(unsigned int i = 0; i != arraysCount; i++)
     {
@@ -304,7 +398,7 @@ std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
         int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
         for(unsigned int k = 0; k < frameCount; k++)
         {
-            std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
+            std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(ARG.frames[k]);
             for(int jnd = 0; jnd < maxjnd; jnd++)
             {
                 // Medians of absolute
@@ -328,104 +422,68 @@ std::shared_ptr<io::Frame2DI<T>> madFrames(Args a)
         delete[] rowArrays[i];
     }
     delete[] rowArrays;
-    delete[] avg;
     return F;
 }
 
 template <typename T>
-void processFiles(Args a)
+void processFiles(Args ARG)
 {
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    uint32_t frameSize = dimx * dimy;
-    std::shared_ptr<io::AsyncFrame2DWritterI<T>> outputWritter
-        = std::make_shared<io::DenAsyncFrame2DWritter<T>>(a.output_den, dimx, dimy, 1);
-    if(a.sum)
+    WRITERPTR<T> outputWritter = std::make_shared<WRITER<T>>(ARG.output_den, dimx, dimy, 1);
+    if(ARG.sum)
     {
-        T* sum = new T[frameSize];
-        sumFrames(a, sum);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(sum, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] sum;
-    }
-
-    if(a.avg)
-    {
-        T* avg = new T[frameSize];
-        averageFrames(a, avg);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(avg, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] avg;
-    }
-
-    if(a.variance)
-    {
-        T* var = new T[frameSize];
-        framesVariance(a, var, false);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(var, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] var;
-    }
-
-    if(a.sampleVariance)
-    {
-        T* var = new T[frameSize];
-        framesVariance(a, var, true);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(var, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] var;
-    }
-
-    if(a.standardDeviation)
-    {
-        T* stdev = new T[frameSize];
-        framesStandardDeviation(a, stdev, false);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(stdev, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] stdev;
-    }
-
-    if(a.sampleStandardDeviation)
-    {
-        T* stdev = new T[frameSize];
-        framesStandardDeviation(a, stdev, true);
-        std::unique_ptr<io::Frame2DI<T>> f
-            = std::make_unique<io::FrameMemoryViewer2D<T>>(stdev, dimx, dimy);
-        outputWritter->writeFrame(*f, 0);
-        delete[] stdev;
-    }
-
-    if(a.max)
-    {
-        std::shared_ptr<io::Frame2DI<T>> f = maxFrames<T>(a);
+        FRAMEPTR<T> f = sumFrames<T>(ARG);
         outputWritter->writeFrame(*f, 0);
     }
-
-    if(a.min)
+    if(ARG.avg)
     {
-        std::shared_ptr<io::Frame2DI<T>> f = minFrames<T>(a);
+        FRAMEPTR<T> f = averageFrames<T>(ARG);
         outputWritter->writeFrame(*f, 0);
     }
-
-    if(a.median)
+    if(ARG.min)
     {
-        std::shared_ptr<io::Frame2DI<T>> f = medianFrames<T>(a);
+        FRAMEPTR<T> f = minFrames<T>(ARG);
+        //    outputWritter->writeFrame(*f, 0);
+    }
+    /*
+    if(ARG.max)
+    {
+        FRAMEPTR<T> f = maxFrames<T>(ARG);
         outputWritter->writeFrame(*f, 0);
     }
-
-    if(a.mad)
+*/
+    if(ARG.variance)
     {
-        std::shared_ptr<io::Frame2DI<T>> f = madFrames<T>(a);
+        FRAMEPTR<T> f = varianceOfFrames<T>(ARG, false);
         outputWritter->writeFrame(*f, 0);
     }
-
-    // given angle attenuation is maximal
+    if(ARG.sampleVariance)
+    {
+        FRAMEPTR<T> f = varianceOfFrames<T>(ARG, true);
+        outputWritter->writeFrame(*f, 0);
+    }
+    if(ARG.standardDeviation)
+    {
+        FRAMEPTR<T> f = framesStandardDeviation<T>(ARG, false);
+        outputWritter->writeFrame(*f, 0);
+    }
+    if(ARG.sampleStandardDeviation)
+    {
+        FRAMEPTR<T> f = framesStandardDeviation<T>(ARG, true);
+        outputWritter->writeFrame(*f, 0);
+    }
+    if(ARG.median)
+    {
+        std::shared_ptr<io::Frame2DI<T>> f = medianFrames<T>(ARG);
+        outputWritter->writeFrame(*f, 0);
+    }
+    if(ARG.mad)
+    {
+        std::shared_ptr<io::Frame2DI<T>> f = madFrames<T>(ARG);
+        outputWritter->writeFrame(*f, 0);
+    }
 }
 
 int main(int argc, char* argv[])
@@ -473,6 +531,7 @@ void Args::defineArguments()
     cliApp->add_option("output_den", output_den, "Output file.")->required();
     addForceArgs();
     addFramespecArgs();
+    addThreadingArgs();
     CLI::Option_group* op_clg = cliApp->add_option_group(
         "Operation", "Mathematical operation f to perform element wise to get OUTPUT=f(INPUT).");
     registerOptionGroup("operation", op_clg);

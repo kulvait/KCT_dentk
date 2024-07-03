@@ -668,6 +668,7 @@ set_target_properties(
         SUFFIX ""
 )
 target_link_libraries(dentk_framecalc1 ctiol)
+target_link_libraries(dentk_framecalc1 ${CMAKE_THREAD_LIBS_INIT})
 install (TARGETS dentk_framecalc1 RUNTIME DESTINATION .)
 
 SET(DENTK_FRAMECALC_SOURCES src/dentk-framecalc.cpp)
