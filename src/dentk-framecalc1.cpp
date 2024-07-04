@@ -19,6 +19,7 @@
 // Internal libraries
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
+#include "DEN/DenFile.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "Frame2DReaderI.hpp"
@@ -292,15 +293,68 @@ FRAMEPTR<T> framesStandardDeviation(Args ARG, bool sampleStandardDeviation = fal
 }
 
 template <typename T>
-T getMedian(T* array, uint32_t count)
+T getMedian(T* array, uint32_t arrayLen)
 {
-    std::sort(array, array + count);
-    if(count % 2 == 0)
+    uint32_t n = arrayLen / 2;
+    std::nth_element(array, array + n, array + arrayLen);
+    T v = array[n];
+    if(arrayLen % 2 == 1)
     {
-        return (array[count / 2 - 1] + array[count / 2]) / 2;
+        return v;
     } else
     {
-        return array[count / 2];
+        T* max_it = std::max_element(array, array + n);
+        T v_second = *max_it;
+        return (v + v_second) / 2;
+    }
+}
+
+template <typename T>
+void medianFramesPartial(Args ARG,
+                         std::shared_ptr<io::DenFile<T>> denFile,
+                         T* medianArray,
+                         uint64_t startFramePos,
+                         uint64_t endFramePos)
+{
+    uint64_t frameCount = ARG.frames.size();
+    uint32_t IND;
+    std::vector<T> elements;
+    elements.reserve(frameCount);
+    for(uint64_t i = startFramePos; i < endFramePos; ++i)
+    {
+        for(uint64_t k = 0; k < frameCount; ++k)
+        {
+            IND = ARG.frames[k];
+            T* framePtr = denFile->getFramePointer(IND);
+            elements.push_back(*(framePtr + i));
+        }
+        medianArray[i] = getMedian(elements.data(), elements.size());
+    }
+}
+
+template <typename T>
+void madFramesPartial(Args ARG,
+                      std::shared_ptr<io::DenFile<T>> denFile,
+                      T* avgArray,
+                      T* madArray,
+                      uint64_t startFramePos,
+                      uint64_t endFramePos)
+{
+    uint64_t frameCount = ARG.frames.size();
+    uint32_t IND;
+    std::vector<T> elements;
+    elements.reserve(frameCount);
+    for(uint64_t i = startFramePos; i < endFramePos; ++i)
+    {
+        for(uint64_t k = 0; k < frameCount; ++k)
+        {
+            IND = ARG.frames[k];
+            T* framePtr = denFile->getFramePointer(IND);
+            T elm = *(framePtr + i);
+            T val = std::abs(elm - avgArray[i]);
+            elements.push_back(val);
+        }
+        madArray[i] = getMedian(elements.data(), elements.size());
     }
 }
 
@@ -314,51 +368,31 @@ template <typename T>
  *
  * @return
  */
-FRAMEPTR<T> medianFrames(Args a)
+FRAMEPTR<T> medianFrames(Args ARG)
 {
-    io::DenFileInfo di(a.input_den);
+    io::DenFileInfo di(ARG.input_den);
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    uint32_t frameCount = a.frames.size();
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    FRAMEPTR<T> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
-    uint32_t frameSize = dimx * dimy;
-    uint32_t maxArrayNum = 2147483647 / frameCount;
-    uint32_t arraysCount = std::min(frameSize, maxArrayNum);
-    T** rowArrays = new T*[arraysCount];
-    for(unsigned int i = 0; i != arraysCount; i++)
+    uint64_t frameSize = di.getFrameSize();
+    FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    T* medianArray = F->getDataPointer();
+    std::shared_ptr<io::DenFile<T>> denFile
+        = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
+    if(ARG.threads <= 1)
     {
-        rowArrays[i] = new T[frameCount];
-    }
-    for(int ind = 0; ind != 1 + (((int)frameSize - 1) / (int)arraysCount); ind++)
+        medianFramesPartial(ARG, denFile, medianArray, 0, frameSize);
+    } else
     {
-        int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
-        for(unsigned int k = 0; k < frameCount; k++)
+        uint32_t elementsPerThread = frameSize / ARG.threads;
+        std::vector<std::future<void>> futures;
+        for(uint32_t i = 0; i < ARG.threads; ++i)
         {
-            std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(a.frames[k]);
-            for(int jnd = 0; jnd < maxjnd; jnd++)
-            {
-                int flatindex = ind * arraysCount + jnd;
-                int xindex = flatindex % dimx;
-                int yindex = flatindex / dimx;
-                rowArrays[jnd][k] = A->get(xindex, yindex);
-            }
-        }
-        for(int jnd = 0; jnd < maxjnd; jnd++)
-        {
-            int flatindex = ind * arraysCount + jnd;
-            int xindex = flatindex % dimx;
-            int yindex = flatindex / dimx;
-            T median = getMedian(rowArrays[jnd], frameCount);
-            F->set(median, xindex, yindex);
+            uint64_t startFramePos = i * elementsPerThread;
+            uint64_t endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
+            futures.emplace_back(std::async(std::launch::async, medianFramesPartial<T>, ARG,
+                                            denFile, medianArray, startFramePos, endFramePos));
         }
     }
-    for(unsigned int i = 0; i != arraysCount; i++)
-    {
-        delete[] rowArrays[i];
-    }
-    delete[] rowArrays;
     return F;
 }
 
@@ -374,54 +408,31 @@ template <typename T>
  */
 FRAMEPTR<T> madFrames(Args ARG)
 {
-
     io::DenFileInfo di(ARG.input_den);
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    uint32_t frameCount = ARG.frames.size();
-    std::shared_ptr<io::Frame2DReaderI<T>> denReader
-        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_den);
-    FRAMEPTR<T> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
-    uint32_t frameSize = dimx * dimy;
-    uint32_t maxArrayNum = 2147483647 / frameCount;
-    uint32_t arraysCount = std::min(frameSize, maxArrayNum);
-    // First I compute means of frame
-    FRAMEPTR<T> avg_frame = averageFrames<T>(ARG);
-    T* avg = avg_frame->getDataPointer();
-    T** rowArrays = new T*[arraysCount];
-    for(unsigned int i = 0; i != arraysCount; i++)
+    uint64_t frameSize = di.getFrameSize();
+    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
+    FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    T* madArray = F->getDataPointer();
+    T* avgArray = AVG->getDataPointer();
+    std::shared_ptr<io::DenFile<T>> denFile
+        = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
+    if(ARG.threads <= 1)
     {
-        rowArrays[i] = new T[frameCount];
-    }
-    for(unsigned int ind = 0; ind != 1 + ((frameSize - 1) / arraysCount); ind++)
+        madFramesPartial(ARG, denFile, avgArray, madArray, 0, frameSize);
+    } else
     {
-        int maxjnd = std::min(arraysCount, frameSize - ind * arraysCount);
-        for(unsigned int k = 0; k < frameCount; k++)
+        uint32_t elementsPerThread = frameSize / ARG.threads;
+        std::vector<std::future<void>> futures;
+        for(uint32_t i = 0; i < ARG.threads; ++i)
         {
-            std::shared_ptr<io::Frame2DI<T>> A = denReader->readFrame(ARG.frames[k]);
-            for(int jnd = 0; jnd < maxjnd; jnd++)
-            {
-                // Medians of absolute
-                int flatindex = ind * arraysCount + jnd;
-                int xindex = flatindex % dimx;
-                int yindex = flatindex / dimx;
-                rowArrays[jnd][k] = std::abs(avg[flatindex] - A->get(xindex, yindex));
-            }
-        }
-        for(int jnd = 0; jnd < maxjnd; jnd++)
-        {
-            int flatindex = ind * arraysCount + jnd;
-            int xindex = flatindex % dimx;
-            int yindex = flatindex / dimx;
-            T median = getMedian(rowArrays[jnd], frameCount);
-            F->set(median, xindex, yindex);
+            uint64_t startFramePos = i * elementsPerThread;
+            uint64_t endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
+            futures.emplace_back(std::async(std::launch::async, madFramesPartial<T>, ARG, denFile,
+                                            avgArray, madArray, startFramePos, endFramePos));
         }
     }
-    for(unsigned int i = 0; i != arraysCount; i++)
-    {
-        delete[] rowArrays[i];
-    }
-    delete[] rowArrays;
     return F;
 }
 
@@ -509,7 +520,7 @@ int main(int argc, char* argv[])
         KCTERR(errMsg);
     }
     }
-    PRG.endLog();
+    PRG.endLog(true);
 }
 
 void Args::defineArguments()
