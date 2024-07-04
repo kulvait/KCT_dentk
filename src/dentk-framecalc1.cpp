@@ -314,7 +314,7 @@ template <typename T>
  *
  * @return
  */
-std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
+FRAMEPTR<T> medianFrames(Args a)
 {
     io::DenFileInfo di(a.input_den);
     uint32_t dimx = di.dimx();
@@ -322,7 +322,7 @@ std::shared_ptr<io::Frame2DI<T>> medianFrames(Args a)
     uint32_t frameCount = a.frames.size();
     std::shared_ptr<io::Frame2DReaderI<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(a.input_den);
-    std::shared_ptr<io::Frame2DI<T>> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    FRAMEPTR<T> F = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
     uint32_t frameSize = dimx * dimy;
     uint32_t maxArrayNum = 2147483647 / frameCount;
     uint32_t arraysCount = std::min(frameSize, maxArrayNum);
@@ -432,56 +432,43 @@ void processFiles(Args ARG)
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
     WRITERPTR<T> outputWritter = std::make_shared<WRITER<T>>(ARG.output_den, dimx, dimy, 1);
+    FRAMEPTR<T> f = nullptr;
     if(ARG.sum)
     {
-        FRAMEPTR<T> f = sumFrames<T>(ARG);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.avg)
+        f = sumFrames<T>(ARG);
+    } else if(ARG.avg)
     {
-        FRAMEPTR<T> f = averageFrames<T>(ARG);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.min)
+        f = averageFrames<T>(ARG);
+    } else if(ARG.min)
     {
-        FRAMEPTR<T> f = minFrames<T>(ARG);
-        //    outputWritter->writeFrame(*f, 0);
-    }
-    /*
-    if(ARG.max)
+        f = minFrames<T>(ARG);
+    } else if(ARG.max)
     {
-        FRAMEPTR<T> f = maxFrames<T>(ARG);
-        outputWritter->writeFrame(*f, 0);
-    }
-*/
-    if(ARG.variance)
+        f = maxFrames<T>(ARG);
+    } else if(ARG.variance)
     {
-        FRAMEPTR<T> f = varianceOfFrames<T>(ARG, false);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.sampleVariance)
+        f = varianceOfFrames<T>(ARG, false);
+    } else if(ARG.sampleVariance)
     {
-        FRAMEPTR<T> f = varianceOfFrames<T>(ARG, true);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.standardDeviation)
+        f = varianceOfFrames<T>(ARG, true);
+    } else if(ARG.standardDeviation)
     {
-        FRAMEPTR<T> f = framesStandardDeviation<T>(ARG, false);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.sampleStandardDeviation)
+        f = framesStandardDeviation<T>(ARG, false);
+    } else if(ARG.sampleStandardDeviation)
     {
-        FRAMEPTR<T> f = framesStandardDeviation<T>(ARG, true);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.median)
+        f = framesStandardDeviation<T>(ARG, true);
+    } else if(ARG.median)
     {
-        std::shared_ptr<io::Frame2DI<T>> f = medianFrames<T>(ARG);
-        outputWritter->writeFrame(*f, 0);
-    }
-    if(ARG.mad)
+        f = medianFrames<T>(ARG);
+    } else if(ARG.mad)
     {
-        std::shared_ptr<io::Frame2DI<T>> f = madFrames<T>(ARG);
+        f = madFrames<T>(ARG);
+    } else
+    {
+        KCTERR("No operation selected.");
+    }
+    if(f != nullptr)
+    {
         outputWritter->writeFrame(*f, 0);
     }
 }
