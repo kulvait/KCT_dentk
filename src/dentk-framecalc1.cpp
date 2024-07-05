@@ -5,6 +5,7 @@
 // External libraries
 #include <algorithm>
 #include <cmath>
+#include <csignal>
 #include <cstdlib>
 #include <ctype.h>
 #include <future>
@@ -28,6 +29,57 @@
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
+
+// Signal handler
+// https://stackoverflow.com/questions/8400530/how-can-i-tell-in-linux-which-process-sent-my-process-a-signal/8400532#8400532
+
+static struct sigaction sigact;
+
+static std::string get_process_name(pid_t pid)
+{
+    std::string name = "<unknown>";
+
+    std::ifstream file("/proc/" + std::to_string(pid) + "/comm");
+    if(file.is_open())
+    {
+        std::getline(file, name);
+    }
+    return name;
+}
+
+volatile sig_atomic_t sigterm_caught = 0;
+
+static void signal_handler_pid(int signal_num, siginfo_t* info, void* context)
+{
+    //    printf("Signal %s received from process %s with PID %d.\n", strsignal_numal(sign),
+    //           get_process_name(info->si_pid).c_str(), info->si_pid);
+    std::string SIGNALNAME;
+    // char* SIGNALNAME = sigabbrev_np(signal_num);
+    if(signal_num == SIGTERM)
+    {
+        SIGNALNAME = "SIGTERM";
+        sigterm_caught = 1;
+    } else if(signal_num == SIGINT)
+    {
+        SIGNALNAME = "SIGINT";
+    } else
+    {
+        SIGNALNAME = strdup(sys_siglist[signal_num]);
+    }
+    printf("Signal %s received from process %s with PID %d.\n", SIGNALNAME.c_str(),
+           get_process_name(info->si_pid).c_str(), info->si_pid);
+
+    switch(signal_num)
+    {
+    case SIGINT:
+        exit(signal_num);
+        break;
+    case SIGTERM:
+        break;
+    default:
+        break;
+    }
+}
 
 using namespace KCT;
 using namespace KCT::util;
@@ -84,6 +136,10 @@ public:
 template <typename T, typename Op>
 FRAMEPTR<T> aggregateFramesPartial(Args ARG, uint64_t start, uint64_t end, Op operation)
 {
+    if(start >= end)
+    {
+        return nullptr;
+    }
     io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
     READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
@@ -110,7 +166,7 @@ FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
     io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
     uint64_t frameCount = ARG.frames.size();
-    uint32_t threadCount = ARG.threads;
+    uint64_t threadCount = ARG.threads;
 
     if(threadCount == 0)
     {
@@ -119,22 +175,25 @@ FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
     } else
     {
         // Multi-threaded processing
-        uint64_t framesPerThread = frameCount / threadCount;
+        threadCount = std::min(threadCount, frameCount);
+        uint64_t framesPerThread = (frameCount + threadCount - 1) / threadCount;
         std::vector<std::future<FRAMEPTR<T>>> futures;
 
         // Launch threads to process subsets of frames
-        for(uint32_t i = 0; i < threadCount; ++i)
+        uint64_t startFrame = 0;
+        uint64_t endFrame = 0;
+        while(startFrame < frameCount)
         {
-            uint64_t startFrame = i * framesPerThread;
-            uint64_t endFrame = std::min(startFrame + framesPerThread, frameCount);
+            endFrame = std::min(startFrame + framesPerThread, frameCount);
             futures.emplace_back(std::async(std::launch::async, aggregateFramesPartial<T, Op>, ARG,
                                             startFrame, endFrame, operation));
+            startFrame = endFrame;
         }
 
         // Aggregate results from each thread
         FRAMEPTR<T> F = futures[0].get();
         T* result = F->getDataPointer();
-        for(uint32_t i = 1; i < threadCount; ++i)
+        for(uint32_t i = 1; i < futures.size(); ++i)
         {
             FRAMEPTR<T> A = futures[i].get();
             T* A_array = A->getDataPointer();
@@ -181,6 +240,10 @@ template <typename T>
 FRAMEPTR<T>
 sumOfSquaredDifferecesOfFramesPartial(Args ARG, FRAMEPTR<T> avg, uint64_t start, uint64_t end)
 {
+    if(start >= end)
+    {
+        return nullptr;
+    }
     io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
     READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
@@ -214,32 +277,34 @@ FRAMEPTR<T> sumOfSquaredDifferecesOfFrames(Args ARG, FRAMEPTR<T> avg)
     io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
     uint64_t frameCount = ARG.frames.size();
-    uint32_t threadCount = ARG.threads;
+    uint64_t threadCount = ARG.threads;
 
-    if(threadCount == 0)
+    if(threadCount <= 1)
     {
         // Single-threaded processing
         return sumOfSquaredDifferecesOfFramesPartial<T>(ARG, avg, 0, frameCount);
     } else
     {
         // Multi-threaded processing
-        uint64_t framesPerThread = frameCount / threadCount;
+        threadCount = std::min(threadCount, frameCount);
+        uint64_t framesPerThread = (frameCount + threadCount - 1) / threadCount;
         std::vector<std::future<FRAMEPTR<T>>> futures;
 
         // Launch threads to process subsets of frames
-        for(uint32_t i = 0; i < threadCount; ++i)
+        uint64_t startFrame = 0, endFrame = 0;
+        while(startFrame < frameCount)
         {
-            uint64_t startFrame = i * framesPerThread;
-            uint64_t endFrame = std::min(startFrame + framesPerThread, frameCount);
+            endFrame = std::min(startFrame + framesPerThread, frameCount);
             futures.emplace_back(std::async(std::launch::async,
                                             sumOfSquaredDifferecesOfFramesPartial<T>, ARG, avg,
                                             startFrame, endFrame));
+            startFrame = endFrame;
         }
 
         // Aggregate results from each thread
         FRAMEPTR<T> F = futures[0].get();
         T* result = F->getDataPointer();
-        for(uint32_t i = 1; i < threadCount; ++i)
+        for(uint32_t i = 1; i < futures.size(); ++i)
         {
             FRAMEPTR<T> A = futures[i].get();
             T* A_array = A->getDataPointer();
@@ -310,51 +375,97 @@ T getMedian(T* array, uint32_t arrayLen)
 }
 
 template <typename T>
-void medianFramesPartial(Args ARG,
-                         std::shared_ptr<io::DenFile<T>> denFile,
-                         T* medianArray,
-                         uint64_t startFramePos,
-                         uint64_t endFramePos)
+void medianFramesPartial(
+    Args ARG, T* contigousFrames, T* medianArray, uint64_t startFramePos, uint64_t endFramePos)
 {
+    if(startFramePos >= endFramePos)
+    {
+        return;
+    }
     uint64_t frameCount = ARG.frames.size();
-    uint32_t IND;
-    std::vector<T> elements;
-    elements.reserve(frameCount);
     for(uint64_t i = startFramePos; i < endFramePos; ++i)
     {
-        for(uint64_t k = 0; k < frameCount; ++k)
-        {
-            IND = ARG.frames[k];
-            T* framePtr = denFile->getFramePointer(IND);
-            elements.push_back(*(framePtr + i));
-        }
-        medianArray[i] = getMedian(elements.data(), elements.size());
+        medianArray[i] = getMedian(contigousFrames + i * frameCount, frameCount);
     }
 }
 
 template <typename T>
 void madFramesPartial(Args ARG,
-                      std::shared_ptr<io::DenFile<T>> denFile,
+                      T* contigousFrames,
                       T* avgArray,
                       T* madArray,
                       uint64_t startFramePos,
                       uint64_t endFramePos)
 {
+    if(startFramePos >= endFramePos)
+    {
+        return;
+    }
     uint64_t frameCount = ARG.frames.size();
-    uint32_t IND;
-    std::vector<T> elements;
-    elements.reserve(frameCount);
     for(uint64_t i = startFramePos; i < endFramePos; ++i)
     {
-        for(uint64_t k = 0; k < frameCount; ++k)
+        T avg = avgArray[i];
+        std::transform(contigousFrames + i * frameCount, contigousFrames + (i + 1) * frameCount,
+                       contigousFrames + i * frameCount, [avg](T x) { return std::abs(x - avg); });
+        madArray[i] = getMedian(contigousFrames + i * frameCount, frameCount);
+    }
+}
+
+template <typename T>
+void swapArrayPartial(Args ARG,
+                      T* array_in,
+                      T* array_out,
+                      uint64_t dimx,
+                      uint64_t dimy,
+                      uint64_t dimy_from,
+                      uint64_t dimy_to)
+{
+    if(dimy_from >= dimy_to)
+    {
+        return;
+    }
+
+    uint64_t frameCount = ARG.frames.size();
+    uint64_t frameSizeIn = dimy * dimx;
+    uint64_t frameSizeOut = frameCount * dimx;
+    for(uint64_t k = 0; k < frameCount; ++k)
+    {
+        uint64_t IND = ARG.frames[k];
+        T* startKIn = array_in + IND * frameSizeIn;
+        for(uint64_t j = dimy_from; j < dimy_to; ++j)
         {
-            IND = ARG.frames[k];
-            T* framePtr = denFile->getFramePointer(IND);
-            T elm = *(framePtr + i);
-            T val = std::abs(elm - avgArray[i]);
-            elements.push_back(val);
+            T* startIndexIn = startKIn + j * dimx;
+            T* startIndexOut = array_out + j * frameSizeOut + k * dimx;
+            std::copy(startIndexIn, startIndexIn + dimx, startIndexOut);
         }
-        madArray[i] = getMedian(elements.data(), elements.size());
+    }
+}
+
+template <typename T>
+void transposeArrayPartial(T* array_in,
+                           T* array_out,
+                           uint64_t dimx,
+                           uint64_t dimy,
+                           uint64_t dimz,
+                           uint64_t dimz_from,
+                           uint64_t dimz_to)
+{
+    if(dimz_from >= dimz_to)
+    {
+        return;
+    }
+    uint64_t frameSize = dimy * dimx;
+    for(uint64_t k = dimz_from; k < dimz_to; ++k)
+    {
+        T* startKIn = array_in + k * frameSize;
+        T* startKOut = array_out + k * frameSize;
+        for(uint64_t j = 0; j < dimy; ++j)
+        {
+            for(uint64_t i = 0; i < dimx; ++i)
+            {
+                startKOut[i * dimy + j] = startKIn[j * dimx + i];
+            }
+        }
     }
 }
 
@@ -374,25 +485,72 @@ FRAMEPTR<T> medianFrames(Args ARG)
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
     uint64_t frameSize = di.getFrameSize();
+    uint64_t frameCount = ARG.frames.size();
     FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
     T* medianArray = F->getDataPointer();
+    LOGI << "Reading data from file";
     std::shared_ptr<io::DenFile<T>> denFile
         = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
+    T* fileArray = denFile->getDataPointer();
+    LOGI << "Allocating memory for swapping array";
+    T* swappedArray = new T[frameSize * frameCount];
     if(ARG.threads <= 1)
     {
-        medianFramesPartial(ARG, denFile, medianArray, 0, frameSize);
+        swapArrayPartial<T>(ARG, fileArray, swappedArray, dimx, dimy, 0, dimy);
+        transposeArrayPartial<T>(swappedArray, fileArray, dimx, frameCount, dimy, 0, dimy);
+        medianFramesPartial<T>(ARG, fileArray, medianArray, 0, frameSize);
     } else
     {
-        uint32_t elementsPerThread = frameSize / ARG.threads;
-        std::vector<std::future<void>> futures;
-        for(uint32_t i = 0; i < ARG.threads; ++i)
+        uint32_t threads = std::min(dimy, ARG.threads);
+        uint32_t rowsPerThread = (dimy + threads - 1) / threads;
+        std::vector<std::future<void>> futures_swap;
+        LOGI << io::xprintf("Swapping data with %d threads", threads);
+        uint64_t startRow = 0, endRow = 0;
+        while(startRow < dimy)
         {
-            uint64_t startFramePos = i * elementsPerThread;
-            uint64_t endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
+            endRow = std::min(startRow + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_swap.emplace_back(std::async(std::launch::async, swapArrayPartial<T>, ARG,
+                                                 fileArray, swappedArray, dimx, dimy, startRow,
+                                                 endRow));
+            startRow = endRow;
+        }
+        for(auto& f : futures_swap)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Transposing data with %d threads", threads);
+        std::vector<std::future<void>> futures_transpose;
+        uint64_t startK = 0, endK = 0;
+        while(startK < dimy)
+        {
+            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_transpose.emplace_back(std::async(std::launch::async, transposeArrayPartial<T>,
+                                                      swappedArray, fileArray, dimx, frameCount,
+                                                      dimy, startK, endK));
+            startK = endK;
+        }
+        for(auto& f : futures_transpose)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Computing medians with %d threads", threads);
+        threads = std::min(frameSize, static_cast<uint64_t>(ARG.threads));
+        uint32_t elementsPerThread = (frameSize + threads - 1) / threads;
+        std::vector<std::future<void>> futures;
+        uint64_t startFramePos = 0, endFramePos = 0;
+        while(startFramePos < frameSize)
+        {
+            endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
             futures.emplace_back(std::async(std::launch::async, medianFramesPartial<T>, ARG,
-                                            denFile, medianArray, startFramePos, endFramePos));
+                                            fileArray, medianArray, startFramePos, endFramePos));
+            startFramePos = endFramePos;
+        }
+        for(auto& f : futures)
+        {
+            f.get();
         }
     }
+    delete[] swappedArray;
     return F;
 }
 
@@ -412,28 +570,77 @@ FRAMEPTR<T> madFrames(Args ARG)
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
     uint64_t frameSize = di.getFrameSize();
-    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
+    uint64_t frameCount = ARG.frames.size();
     FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
     T* madArray = F->getDataPointer();
     T* avgArray = AVG->getDataPointer();
+    LOGI << "Reading data from file";
     std::shared_ptr<io::DenFile<T>> denFile
         = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
+    T* fileArray = denFile->getDataPointer();
+    LOGI << "Allocating memory for swapping array";
+    T* swappedArray = new T[frameSize * frameCount];
     if(ARG.threads <= 1)
     {
-        madFramesPartial(ARG, denFile, avgArray, madArray, 0, frameSize);
+        swapArrayPartial<T>(ARG, fileArray, swappedArray, dimx, dimy, 0, dimy);
+        transposeArrayPartial<T>(swappedArray, fileArray, dimx, frameCount, dimy, 0, dimy);
+        madFramesPartial<T>(ARG, fileArray, avgArray, madArray, 0, frameSize);
     } else
     {
-        uint32_t elementsPerThread = frameSize / ARG.threads;
-        std::vector<std::future<void>> futures;
-        for(uint32_t i = 0; i < ARG.threads; ++i)
+        uint32_t threads = std::min(dimy, ARG.threads);
+        uint32_t rowsPerThread = (dimy + threads - 1) / threads;
+        std::vector<std::future<void>> futures_swap;
+        LOGI << io::xprintf("Swapping data with %d threads", threads);
+        uint64_t startRow = 0, endRow = 0;
+        while(startRow < dimy)
         {
-            uint64_t startFramePos = i * elementsPerThread;
-            uint64_t endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
-            futures.emplace_back(std::async(std::launch::async, madFramesPartial<T>, ARG, denFile,
+            endRow = std::min(startRow + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_swap.emplace_back(std::async(std::launch::async, swapArrayPartial<T>, ARG,
+                                                 fileArray, swappedArray, dimx, dimy, startRow,
+                                                 endRow));
+            startRow = endRow;
+        }
+        for(auto& f : futures_swap)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Transposing data with %d threads", threads);
+        std::vector<std::future<void>> futures_transpose;
+        uint64_t startK = 0, endK = 0;
+        while(startK < dimy)
+        {
+            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_transpose.emplace_back(std::async(std::launch::async, transposeArrayPartial<T>,
+                                                      swappedArray, fileArray, dimx, frameCount,
+                                                      dimy, startK, endK));
+            startK = endK;
+        }
+        for(auto& f : futures_transpose)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Computing MADs with %d threads", threads);
+        threads = std::min(frameSize, static_cast<uint64_t>(ARG.threads));
+        uint32_t elementsPerThread = (frameSize + threads - 1) / threads;
+        threads = (frameSize + elementsPerThread - 1) / elementsPerThread;
+        std::vector<std::future<void>> futures;
+        uint64_t startFramePos = 0, endFramePos = 0;
+        while(startFramePos < frameSize)
+        {
+            endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
+            futures.emplace_back(std::async(std::launch::async, madFramesPartial<T>, ARG, fileArray,
                                             avgArray, madArray, startFramePos, endFramePos));
+            startFramePos = endFramePos;
+        }
+        for(auto& f : futures)
+        {
+            f.get();
         }
     }
+    delete[] swappedArray;
     return F;
+    return AVG;
 }
 
 template <typename T>
@@ -486,6 +693,11 @@ void processFiles(Args ARG)
 
 int main(int argc, char* argv[])
 {
+    sigact.sa_sigaction = signal_handler_pid;
+    sigact.sa_flags = SA_SIGINFO;
+    sigaction(SIGTERM, &sigact, NULL);
+    sigaction(SIGINT, &sigact, NULL);
+
     Program PRG(argc, argv);
     // Argument parsing
     Args ARG(argc, argv, "Aggregate data along the XY frame.");
