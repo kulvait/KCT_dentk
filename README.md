@@ -1,6 +1,6 @@
 # KCT DENTK Toolkit
 
-KCT DENTK is a versatile toolkit designed for manipulating raw files in DEN format, a raw file format with a header specifying dimensions and type of the on disk multidimensional arrays. These files typically represent 3D stacks used in tomographic data analysis, but the format is flexible enough to accommodate various other data structures. 
+KCT DENTK is a versatile toolkit designed for manipulating raw files in [DEN format](https://kulvait.github.io/KCT_doc/den-format.html), a raw file format with a header specifying dimensions and type of the on disk multidimensional arrays. These files typically represent 3D stacks used in tomographic data analysis, but the format is flexible enough to accommodate various other data structures. 
 
 DENTK provides a set of command line programs to manipulate DEN files. It is designed for easily performing various manipulations, from simple frame extraction to complex mathematical operations.
 The toolkit is designed to be used in the command line environment of Linux shell. It is written in C++ and uses the CMake build system. 
@@ -175,7 +175,7 @@ Options:
 
 ### dentk-framecalc1
 
-Aggregates data along the XY frame.
+Aggregates data along the XY frame using efficient aggregation algorithms.
 ```
 Usage: dentk-framecalc1 [OPTIONS] input_den output_den
 
@@ -185,6 +185,7 @@ Options:
   -f, --frames TEXT    Frames to process. Accepts ranges and individual frames.
   -r, --reverse-order  Output in reverse order.
   -k, --each-kth UINT  Process only each k-th frame.
+  -j, --threads UINT   Number of extra threads, default is 0.
 [Operation]
   --sum, --avg, --variance, --sample-variance,
   --standard-deviation, --sample-standard-deviation,
