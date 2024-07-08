@@ -68,6 +68,7 @@ public:
     bool min = false;
     double maxArgument = 0.0;
     double minArgument = 0.0;
+    bool softplus = false;
 };
 
 void Args::defineArguments()
@@ -87,6 +88,7 @@ void Args::defineArguments()
     registerOption("square", op_clg->add_flag("--square", square, "Square."));
     registerOption("abs", op_clg->add_flag("--abs", absoluteValue, "Absolute value."));
     registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
+    registerOption("softplus", op_clg->add_flag("--softplus", softplus, "Softplus of value."));
     registerOption("nan-and-inf-to-zero",
                    op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero,
                                     "Convert NaN and Inf values to zero."));
@@ -169,13 +171,13 @@ void processFrame(int _FTPLID,
     }
     if(ARG.absoluteValue)
     {
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wpragmas"
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wabsolute-value"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wabsolute-value"
         o = [](const T& x) { return T(std::abs(x)); };
-        #pragma GCC diagnostic pop
-        #pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
     }
     if(ARG.invert)
     {
@@ -196,6 +198,14 @@ void processFrame(int _FTPLID,
                 return x;
             }
         };
+    }
+    if(ARG.softplus)
+    {
+        //Stable softplus, see e.g. https://stackoverflow.com/a/51828104
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wabsolute-value"
+        o = [](const T& x) { return T(std::max(x, T(0)) + std::log1p(std::exp(-std::abs(x)))); };
+#pragma GCC diagnostic pop
     }
     if(o != nullptr)
     {
@@ -233,7 +243,8 @@ void processFrame(int _FTPLID,
             LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out,
+                                outputWritter->getFrameCount());
         }
     }
 }
