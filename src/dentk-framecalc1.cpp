@@ -130,6 +130,8 @@ public:
     bool min = false;
     bool max = false;
     bool median = false;
+    bool runningAverage = false;
+    uint32_t runningAverageWindow = 0;
 };
 
 // Function to apply a given operation on a subset of frames
@@ -571,6 +573,97 @@ FRAMEPTR<T> madFrames(Args ARG)
     uint32_t dimy = di.dimy();
     uint64_t frameSize = di.getFrameSize();
     uint64_t frameCount = ARG.frames.size();
+    WRITERPTR<T> outputWritter
+        = std::make_shared<WRITER<T>>(ARG.output_den, dimx, dimy, frameCount);
+    FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
+    T* madArray = F->getDataPointer();
+    T* avgArray = AVG->getDataPointer();
+    LOGI << "Reading data from file";
+    std::shared_ptr<io::DenFile<T>> denFile
+        = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
+    T* fileArray = denFile->getDataPointer();
+    LOGI << "Allocating memory for swapping array";
+    T* swappedArray = new T[frameSize * frameCount];
+    if(ARG.threads <= 1)
+    {
+        swapArrayPartial<T>(ARG, fileArray, swappedArray, dimx, dimy, 0, dimy);
+        transposeArrayPartial<T>(swappedArray, fileArray, dimx, frameCount, dimy, 0, dimy);
+        madFramesPartial<T>(ARG, fileArray, avgArray, madArray, 0, frameSize);
+    } else
+    {
+        uint32_t threads = std::min(dimy, ARG.threads);
+        uint32_t rowsPerThread = (dimy + threads - 1) / threads;
+        std::vector<std::future<void>> futures_swap;
+        LOGI << io::xprintf("Swapping data with %d threads", threads);
+        uint64_t startRow = 0, endRow = 0;
+        while(startRow < dimy)
+        {
+            endRow = std::min(startRow + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_swap.emplace_back(std::async(std::launch::async, swapArrayPartial<T>, ARG,
+                                                 fileArray, swappedArray, dimx, dimy, startRow,
+                                                 endRow));
+            startRow = endRow;
+        }
+        for(auto& f : futures_swap)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Transposing data with %d threads", threads);
+        std::vector<std::future<void>> futures_transpose;
+        uint64_t startK = 0, endK = 0;
+        while(startK < dimy)
+        {
+            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_transpose.emplace_back(std::async(std::launch::async, transposeArrayPartial<T>,
+                                                      swappedArray, fileArray, dimx, frameCount,
+                                                      dimy, startK, endK));
+            startK = endK;
+        }
+        for(auto& f : futures_transpose)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Computing MADs with %d threads", threads);
+        threads = std::min(frameSize, static_cast<uint64_t>(ARG.threads));
+        uint32_t elementsPerThread = (frameSize + threads - 1) / threads;
+        threads = (frameSize + elementsPerThread - 1) / elementsPerThread;
+        std::vector<std::future<void>> futures;
+        uint64_t startFramePos = 0, endFramePos = 0;
+        while(startFramePos < frameSize)
+        {
+            endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
+            futures.emplace_back(std::async(std::launch::async, madFramesPartial<T>, ARG, fileArray,
+                                            avgArray, madArray, startFramePos, endFramePos));
+            startFramePos = endFramePos;
+        }
+        for(auto& f : futures)
+        {
+            f.get();
+        }
+    }
+    delete[] swappedArray;
+    return F;
+    return AVG;
+}
+
+template <typename T>
+/**
+ * @brief Here for computation of medians is needed to fill an array with all the values, sort it
+ * and obtain its median. That is memory intensive for the whole dataset. But it would be I/O
+ * intensive for every frame element. So we decided to do I/O row wise.
+ *
+ * @param a
+ *
+ * @return
+ */
+void runningAverage(Args ARG)
+{
+    io::DenFileInfo di(ARG.input_den);
+    uint32_t dimx = di.dimx();
+    uint32_t dimy = di.dimy();
+    uint64_t frameSize = di.getFrameSize();
+    uint64_t frameCount = ARG.frames.size();
     FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
     FRAMEPTR<T> AVG = averageFrames<T>(ARG);
     T* madArray = F->getDataPointer();
@@ -649,6 +742,11 @@ void processFiles(Args ARG)
     io::DenFileInfo di(ARG.input_den);
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
+    if(ARG.runningAverage)
+    {
+        runningAverage<T>(ARG);
+        return;
+    }
     WRITERPTR<T> outputWritter = std::make_shared<WRITER<T>>(ARG.output_den, dimx, dimy, 1);
     FRAMEPTR<T> f = nullptr;
     if(ARG.sum)
@@ -773,6 +871,9 @@ void Args::defineArguments()
     registerOption("mad",
                    op_clg->add_flag("--mad", mad,
                                     "Median absolute deviation of the data aggregated by frame."));
+    registerOption("runningaverage",
+                   op_clg->add_option("--runningaverage", runningAverageWindow,
+                                      "Running average of the data aggregated by frame."));
     op_clg->require_option(1);
 }
 
@@ -785,6 +886,10 @@ int Args::postParse()
             LOGE << "Error: output file already exists, use --force to force overwrite.";
             return 1;
         }
+    }
+    if(getRegisteredOption("runningaverage")->count() > 0)
+    {
+        runningAverage = true;
     }
     if(getRegisteredOption("avg")->count() > 0)
     {
