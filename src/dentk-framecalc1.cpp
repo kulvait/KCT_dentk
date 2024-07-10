@@ -29,6 +29,7 @@
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
+#include "PROG/ThreadPool.hpp"
 
 // Signal handler
 // https://stackoverflow.com/questions/8400530/how-can-i-tell-in-linux-which-process-sent-my-process-a-signal/8400532#8400532
@@ -102,10 +103,25 @@ using FRAME = io::BufferedFrame2D<T>;
 template <typename T>
 using FRAMEPTR = std::shared_ptr<FRAME<T>>;
 
+template <typename T>
+using TP = io::ThreadPool<WRITER<T>>;
+
+template <typename T>
+using TPPTR = std::shared_ptr<TP<T>>;
+
+template <typename T>
+using TPINFO = typename TP<T>::ThreadInfo;
+
+template <typename T>
+using TPINFOPTR = std::shared_ptr<TPINFO<T>>;
+
 using namespace KCT::util;
 
 // class declarations
-// class declarations
+
+//Enum used for computation of the running average
+enum BorderMode { CROP, ONE_TAIL, WRAP };
+
 class Args : public ArgumentsForce, public ArgumentsFramespec, public ArgumentsThreading
 {
     void defineArguments();
@@ -131,7 +147,11 @@ public:
     bool max = false;
     bool median = false;
     bool runningAverage = false;
-    uint32_t runningAverageWindow = 0;
+    BorderMode runningAverageBorderMode = BorderMode::ONE_TAIL;
+    bool oneTail = false;
+    bool wrapTail = false;
+    bool cropTail = false;
+    uint32_t halfTailSize = 0;
 };
 
 // Function to apply a given operation on a subset of frames
@@ -142,9 +162,8 @@ FRAMEPTR<T> aggregateFramesPartial(Args ARG, uint64_t start, uint64_t end, Op op
     {
         return nullptr;
     }
-    io::DenFileInfo di(ARG.input_den);
-    uint64_t frameSize = di.getFrameSize();
     READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
+    uint64_t frameSize = denReader->getFrameSize();
 
     // Read the first frame
     FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
@@ -170,7 +189,7 @@ FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
     uint64_t frameCount = ARG.frames.size();
     uint64_t threadCount = ARG.threads;
 
-    if(threadCount == 0)
+    if(threadCount <= 1)
     {
         // Single-threaded processing
         return aggregateFramesPartial<T>(ARG, 0, frameCount, operation);
@@ -203,6 +222,145 @@ FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
         }
 
         return F;
+    }
+}
+
+template <typename T>
+void partialRunningAverage(
+    TPINFOPTR<T> threadinfo, Args& ARG, int64_t start, int64_t end, int64_t writeOffset)
+{
+    if(start > end)
+    {
+        return;
+    }
+    READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
+    WRITERPTR<T> wp = threadinfo->worker;
+    BorderMode mode = ARG.runningAverageBorderMode;
+    uint64_t frameSize = denReader->getFrameSize();
+    uint32_t dimx = denReader->dimx();
+    uint32_t dimy = denReader->dimy();
+    int64_t frameCount = ARG.frames.size();
+    int64_t halfTailSize = ARG.halfTailSize;
+
+    FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
+    T* F_array = F->getDataPointer(); //For running sum
+    FRAMEPTR<T> AVG = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
+    T* AVG_array = AVG->getDataPointer(); // average computation
+    uint64_t count = 0;
+    int64_t ind;
+    // Initialize the running sum and count for the first window for index start-1
+    for(int64_t i = start - 1 - halfTailSize; i < start + halfTailSize; ++i)
+    {
+        if(i >= 0 && i < frameCount)
+        {
+            FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[i]);
+            T* A_array = A->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
+            ++count;
+        } else if(mode == WRAP)
+        {
+            ind = i % frameCount;
+            FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[ind]);
+            T* A_array = A->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
+            ++count;
+        }
+    }
+
+    // Main loop to calculate running average for this chunk
+    for(int64_t i = start; i < end; ++i)
+    {
+        int outIndex = i - halfTailSize - 1;
+        int inIndex = i + halfTailSize;
+
+        if(outIndex >= 0)
+        {
+            FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[outIndex]);
+            T* A_array = A->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::minus<T>());
+            --count;
+        } else if(mode == WRAP)
+        {
+            ind = outIndex % frameCount;
+            T* A_array = denReader->readBufferedFrame(ARG.frames[ind])->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::minus<T>());
+            --count;
+        }
+
+        if(inIndex < frameCount)
+        {
+            T* A_array = denReader->readBufferedFrame(ARG.frames[inIndex])->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
+            ++count;
+        } else if(mode == WRAP)
+        {
+            T* A_array
+                = denReader->readBufferedFrame(ARG.frames[inIndex % frameCount])->getDataPointer();
+            std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
+            ++count;
+        }
+
+        // Adjust the sum and count for the edges
+        std::transform(F_array, F_array + frameSize, AVG_array, [count](T x) { return x / count; });
+
+        //Write result
+        wp->writeBufferedFrame(*AVG, i - writeOffset);
+    }
+}
+// Here I take special care to address running sum but aggregate frames in a simmilar way as in agregateFrames
+template <typename T>
+void aggregateRunningAverage(Args& ARG)
+{
+    io::DenFileInfo di(ARG.input_den);
+    uint64_t frameByteSize = di.getFrameByteSize();
+    uint64_t frameCount = ARG.frames.size();
+    uint64_t threadCount = ARG.threads;
+    WRITERPTR<T> wp = nullptr;
+    //First create the file
+    uint64_t outputFrameCount = frameCount;
+    uint64_t writeOffset = 0;
+    uint64_t firstFrame = 0;
+    uint64_t lastFrame = frameCount;
+    if(ARG.runningAverageBorderMode == BorderMode::CROP)
+    {
+        firstFrame = ARG.halfTailSize;
+        lastFrame = frameCount - ARG.halfTailSize;
+        writeOffset = ARG.halfTailSize;
+        outputFrameCount = frameCount - 2 * ARG.halfTailSize;
+    }
+    io::DenFileInfo::createEmpty3DDenFile(ARG.output_den, di.getElementType(), di.dimx(), di.dimy(),
+                                          outputFrameCount);
+    if(threadCount < 1)
+    {
+        wp = std::make_shared<WRITER<T>>(ARG.output_den, 5 * frameByteSize);
+        TPINFOPTR<T> thread_info
+            = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, wp });
+        partialRunningAverage<T>(thread_info, ARG, firstFrame, lastFrame, writeOffset);
+    } else
+    {
+        // Multi-threaded processing
+        threadCount = std::min(threadCount, frameCount);
+        std::vector<WRITERPTR<T>> workers;
+        WRITERPTR<T> wp = nullptr;
+        for(uint32_t i = 0; i < threadCount; ++i)
+        {
+            wp = std::make_shared<WRITER<T>>(ARG.output_den, 5 * frameByteSize);
+            workers.push_back(wp);
+        }
+        TPPTR<T> threadPool = std::make_shared<TP<T>>(threadCount, workers);
+        uint64_t framesPerThread = (frameCount + threadCount - 1) / threadCount;
+
+        // Launch threads to process subsets of frames
+        uint64_t startFrame = firstFrame;
+        uint64_t endFrame = 0;
+
+        while(startFrame < lastFrame)
+        {
+            endFrame = std::min(startFrame + framesPerThread, lastFrame);
+            threadPool->submit(partialRunningAverage<T>, ARG, startFrame, endFrame, writeOffset);
+            startFrame = endFrame;
+        }
+        threadPool->waitAll();
     }
 }
 
@@ -648,92 +806,9 @@ FRAMEPTR<T> madFrames(Args ARG)
 }
 
 template <typename T>
-/**
- * @brief Here for computation of medians is needed to fill an array with all the values, sort it
- * and obtain its median. That is memory intensive for the whole dataset. But it would be I/O
- * intensive for every frame element. So we decided to do I/O row wise.
- *
- * @param a
- *
- * @return
- */
 void runningAverage(Args ARG)
 {
-    io::DenFileInfo di(ARG.input_den);
-    uint32_t dimx = di.dimx();
-    uint32_t dimy = di.dimy();
-    uint64_t frameSize = di.getFrameSize();
-    uint64_t frameCount = ARG.frames.size();
-    FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
-    FRAMEPTR<T> AVG = averageFrames<T>(ARG);
-    T* madArray = F->getDataPointer();
-    T* avgArray = AVG->getDataPointer();
-    LOGI << "Reading data from file";
-    std::shared_ptr<io::DenFile<T>> denFile
-        = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
-    T* fileArray = denFile->getDataPointer();
-    LOGI << "Allocating memory for swapping array";
-    T* swappedArray = new T[frameSize * frameCount];
-    if(ARG.threads <= 1)
-    {
-        swapArrayPartial<T>(ARG, fileArray, swappedArray, dimx, dimy, 0, dimy);
-        transposeArrayPartial<T>(swappedArray, fileArray, dimx, frameCount, dimy, 0, dimy);
-        madFramesPartial<T>(ARG, fileArray, avgArray, madArray, 0, frameSize);
-    } else
-    {
-        uint32_t threads = std::min(dimy, ARG.threads);
-        uint32_t rowsPerThread = (dimy + threads - 1) / threads;
-        std::vector<std::future<void>> futures_swap;
-        LOGI << io::xprintf("Swapping data with %d threads", threads);
-        uint64_t startRow = 0, endRow = 0;
-        while(startRow < dimy)
-        {
-            endRow = std::min(startRow + rowsPerThread, static_cast<uint64_t>(dimy));
-            futures_swap.emplace_back(std::async(std::launch::async, swapArrayPartial<T>, ARG,
-                                                 fileArray, swappedArray, dimx, dimy, startRow,
-                                                 endRow));
-            startRow = endRow;
-        }
-        for(auto& f : futures_swap)
-        {
-            f.get();
-        }
-        LOGI << io::xprintf("Transposing data with %d threads", threads);
-        std::vector<std::future<void>> futures_transpose;
-        uint64_t startK = 0, endK = 0;
-        while(startK < dimy)
-        {
-            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
-            futures_transpose.emplace_back(std::async(std::launch::async, transposeArrayPartial<T>,
-                                                      swappedArray, fileArray, dimx, frameCount,
-                                                      dimy, startK, endK));
-            startK = endK;
-        }
-        for(auto& f : futures_transpose)
-        {
-            f.get();
-        }
-        LOGI << io::xprintf("Computing MADs with %d threads", threads);
-        threads = std::min(frameSize, static_cast<uint64_t>(ARG.threads));
-        uint32_t elementsPerThread = (frameSize + threads - 1) / threads;
-        threads = (frameSize + elementsPerThread - 1) / elementsPerThread;
-        std::vector<std::future<void>> futures;
-        uint64_t startFramePos = 0, endFramePos = 0;
-        while(startFramePos < frameSize)
-        {
-            endFramePos = std::min(startFramePos + elementsPerThread, frameSize);
-            futures.emplace_back(std::async(std::launch::async, madFramesPartial<T>, ARG, fileArray,
-                                            avgArray, madArray, startFramePos, endFramePos));
-            startFramePos = endFramePos;
-        }
-        for(auto& f : futures)
-        {
-            f.get();
-        }
-    }
-    delete[] swappedArray;
-    return F;
-    return AVG;
+    aggregateRunningAverage<T>(ARG);
 }
 
 template <typename T>
@@ -872,9 +947,28 @@ void Args::defineArguments()
                    op_clg->add_flag("--mad", mad,
                                     "Median absolute deviation of the data aggregated by frame."));
     registerOption("runningaverage",
-                   op_clg->add_option("--runningaverage", runningAverageWindow,
+                   op_clg->add_option("--runningaverage", halfTailSize,
                                       "Running average of the data aggregated by frame."));
     op_clg->require_option(1);
+    CLI::Option_group* op_rav
+        = cliApp->add_option_group("Running average", "Running average options.");
+    registerOptionGroup("runningaverage", op_rav);
+    registerOption(
+        "one-tail",
+        op_rav->add_flag("--one-tail", oneTail, "Running average border mode one tail."));
+    registerOption(
+        "wrap-tail",
+        op_rav->add_flag("--wrap-tail", wrapTail, "Running average border mode wrap tail."));
+    registerOption("crop-tail",
+                   op_rav->add_option("--crop-tail", cropTail, "Running average window size."));
+    op_rav->require_option(0, 1);
+    CLI::Option* one_tail_opt = getRegisteredOption("one-tail");
+    CLI::Option* wrap_tail_opt = getRegisteredOption("wrap-tail");
+    CLI::Option* crop_tail_opt = getRegisteredOption("crop-tail");
+    CLI::Option* runningaverage_opt = getRegisteredOption("runningaverage");
+    one_tail_opt->needs(runningaverage_opt);
+    wrap_tail_opt->needs(runningaverage_opt);
+    crop_tail_opt->needs(runningaverage_opt);
 }
 
 int Args::postParse()
@@ -898,6 +992,18 @@ int Args::postParse()
     if(getRegisteredOption("sum")->count() > 0)
     {
         sum = true;
+    }
+    if(oneTail)
+    {
+        runningAverageBorderMode = BorderMode::ONE_TAIL;
+    }
+    if(wrapTail)
+    {
+        runningAverageBorderMode = BorderMode::WRAP;
+    }
+    if(cropTail)
+    {
+        runningAverageBorderMode = BorderMode::CROP;
     }
     io::DenFileInfo di(input_den);
     fillFramesVector(di.dimz());
