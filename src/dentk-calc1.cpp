@@ -69,6 +69,7 @@ public:
     double maxArgument = 0.0;
     double minArgument = 0.0;
     bool softplus = false;
+    bool doubleSoftplus = false;
 };
 
 void Args::defineArguments()
@@ -89,6 +90,9 @@ void Args::defineArguments()
     registerOption("abs", op_clg->add_flag("--abs", absoluteValue, "Absolute value."));
     registerOption("inv", op_clg->add_flag("--inv", invert, "Invert value."));
     registerOption("softplus", op_clg->add_flag("--softplus", softplus, "Softplus of value."));
+    registerOption(
+        "doubleSoftplus",
+        op_clg->add_flag("--double-softplus", doubleSoftplus, "Softplus of softplus of value."));
     registerOption("nan-and-inf-to-zero",
                    op_clg->add_flag("--nan-and-inf-to-zero", nanandinftozero,
                                     "Convert NaN and Inf values to zero."));
@@ -205,6 +209,17 @@ void processFrame(int _FTPLID,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wabsolute-value"
         o = [](const T& x) { return T(std::max(x, T(0)) + std::log1p(std::exp(-std::abs(x)))); };
+#pragma GCC diagnostic pop
+    }
+    if(ARG.doubleSoftplus)
+    {
+        //Stable softplus, see e.g. https://stackoverflow.com/a/51828104
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wabsolute-value"
+        o = [](const T& x) {
+            T softplus = T(std::max(x, T(0)) + std::log1p(std::exp(-std::abs(x))));
+            return T(std::max(softplus, T(0)) + std::log1p(std::exp(-std::abs(softplus))));
+        };
 #pragma GCC diagnostic pop
     }
     if(o != nullptr)
