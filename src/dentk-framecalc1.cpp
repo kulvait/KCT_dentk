@@ -247,7 +247,6 @@ void partialRunningAverage(
     FRAMEPTR<T> AVG = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
     T* AVG_array = AVG->getDataPointer(); // average computation
     uint64_t count = 0;
-    int64_t ind;
     // Initialize the running sum and count for the first window for index start-1
     for(int64_t i = start - 1 - halfTailSize; i < start + halfTailSize; ++i)
     {
@@ -259,8 +258,8 @@ void partialRunningAverage(
             ++count;
         } else if(mode == WRAP)
         {
-            ind = i % frameCount;
-            FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[ind]);
+            FRAMEPTR<T> A
+                = denReader->readBufferedFrame(ARG.frames[(i + frameCount) % frameCount]);
             T* A_array = A->getDataPointer();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
@@ -270,8 +269,8 @@ void partialRunningAverage(
     // Main loop to calculate running average for this chunk
     for(int64_t i = start; i < end; ++i)
     {
-        int outIndex = i - halfTailSize - 1;
-        int inIndex = i + halfTailSize;
+        int64_t outIndex = i - halfTailSize - 1;
+        int64_t inIndex = i + halfTailSize;
 
         if(outIndex >= 0)
         {
@@ -281,8 +280,9 @@ void partialRunningAverage(
             --count;
         } else if(mode == WRAP)
         {
-            ind = outIndex % frameCount;
-            T* A_array = denReader->readBufferedFrame(ARG.frames[ind])->getDataPointer();
+            T* A_array
+                = denReader->readBufferedFrame(ARG.frames[(outIndex + frameCount) % frameCount])
+                      ->getDataPointer();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::minus<T>());
             --count;
         }
@@ -295,7 +295,8 @@ void partialRunningAverage(
         } else if(mode == WRAP)
         {
             T* A_array
-                = denReader->readBufferedFrame(ARG.frames[inIndex % frameCount])->getDataPointer();
+                = denReader->readBufferedFrame(ARG.frames[(inIndex + frameCount) % frameCount])
+                      ->getDataPointer();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
         }
@@ -953,14 +954,24 @@ void Args::defineArguments()
     CLI::Option_group* op_rav
         = cliApp->add_option_group("Running average", "Running average options.");
     registerOptionGroup("runningaverage", op_rav);
-    registerOption(
-        "one-tail",
-        op_rav->add_flag("--one-tail", oneTail, "Running average border mode one tail."));
+    registerOption("one-tail",
+                   op_rav->add_flag(
+                       "--one-tail", oneTail,
+                       "Running average border mode one tail, window is cropped to the array size "
+                       "so the boundary elements are averaged over less data points, returned "
+                       "sequnce frameCount is the input sequence frameCount. [default]"));
     registerOption(
         "wrap-tail",
-        op_rav->add_flag("--wrap-tail", wrapTail, "Running average border mode wrap tail."));
+        op_rav->add_flag(
+            "--wrap-tail", wrapTail,
+            "Running average border mode wrap tail. The window is wrapped around the array using "
+            "circular indexing. Returned sequence frameCount is the input sequence frameCount."));
     registerOption("crop-tail",
-                   op_rav->add_option("--crop-tail", cropTail, "Running average window size."));
+                   op_rav->add_option(
+                       "--crop-tail", cropTail,
+                       "Running average border mode crop tail. The data are cropped so that only "
+                       "the datapoint, where window fits completely is returned. Returned sequence "
+                       "frameCount is the input sequence frameCount - 2 * halfTailSize."));
     op_rav->require_option(0, 1);
     CLI::Option* one_tail_opt = getRegisteredOption("one-tail");
     CLI::Option* wrap_tail_opt = getRegisteredOption("wrap-tail");
