@@ -135,20 +135,30 @@ void writeFrame(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo,
 
 template <typename T>
 void writeValue(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo,
-                     T value,
-                     uint32_t dimx, uint32_t dimy,
-                     uint32_t k)
+                T value,
+                uint32_t dimx,
+                uint32_t dimy,
+                uint32_t k)
 {
     WRITERPTR<T> writer = threadInfo->worker;
     io::BufferedFrame2D<T> f(value, dimx, dimy);
-        writer->writeBufferedFrame(f, k);
+    writer->writeBufferedFrame(f, k);
 }
 
 template <typename T>
 void createConstantDEN(
     std::string fileName, uint32_t sizex, uint32_t sizey, uint32_t K, T value, uint32_t threads = 0)
 {
+    if(threads > K)
+    {
+        threads = K;
+    }
+    if(K == 0)
+    {
+        return;
+    }
     uint64_t frameByteSize = static_cast<uint64_t>(sizex) * sizey * sizeof(T);
+    uint64_t writerBufferSize = std::min(K, 5u) * frameByteSize;
     std::shared_ptr<io::BufferedFrame2D<T>> f
         = std::make_shared<io::BufferedFrame2D<T>>(value, sizex, sizey);
     TPPTR<T> threadpool = nullptr;
@@ -164,15 +174,16 @@ void createConstantDEN(
         {
             if(i % divisionBoundaries == 0 || wp == nullptr)
             {
-                wp = std::make_shared<WRITER<T>>(fileName, 5 * frameByteSize);
+                wp = std::make_shared<WRITER<T>>(fileName, writerBufferSize);
             }
             workers.push_back(wp);
         }
         threadpool = std::make_shared<TP<T>>(threads, workers);
     } else
     {
+        //Optimalized buffer size
         WRITERPTR<T> singleThreadWritter
-            = std::make_shared<WRITER<T>>(fileName, 10 * frameByteSize); //Optimalized buffer size
+            = std::make_shared<WRITER<T>>(fileName, std::min(K, 10u) * frameByteSize);
         thread_info
             = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, singleThreadWritter });
     }
