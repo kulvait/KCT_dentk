@@ -238,7 +238,7 @@ IF(TARGET CUDA::cufft)
 				CUDA_SEPARABLE_COMPILATION ON
 				CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM})
 	
-	SET(CUDA_TOMOGRAPHIC_SOURCES cuda/tomographicFiltering.cu)
+	SET(CUDA_TOMOGRAPHIC_SOURCES cuda/tomographicFiltering.cu cuda/padding.cu)
 	add_library(cuda_tomography ${CUDA_TOMOGRAPHIC_SOURCES})
 #	target_compile_features(cuda_poisson_equation PUBLIC cxx_std_11)
 	set_target_properties(cuda_tomography
@@ -263,6 +263,24 @@ IF(TARGET CUDA::cufft)
 	target_link_libraries(dentk_poisson CUDA::cufft)
 	target_link_libraries(dentk_poisson CUDA::cuda_driver)
 	install (TARGETS dentk_poisson RUNTIME DESTINATION .)
+	
+	SET(DENTK_GAUSS_SOURCES src/dentk-gauss.cpp)
+	add_executable(dentk_gauss ${DENTK_GAUSS_SOURCES})
+	set_target_properties(
+		dentk_gauss 
+		PROPERTIES 
+			OUTPUT_NAME "dentk-gauss"
+			SUFFIX ""
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES_NUM}
+	)
+	target_link_libraries(dentk_gauss ctiol)
+	target_link_libraries(dentk_gauss cuda_tomography)
+	target_link_libraries(dentk_gauss ${CMAKE_THREAD_LIBS_INIT})
+	target_link_libraries(dentk_gauss CUDA::cudart)
+	target_link_libraries(dentk_gauss CUDA::cufft)
+	target_link_libraries(dentk_gauss CUDA::cuda_driver)
+	install (TARGETS dentk_gauss RUNTIME DESTINATION .)
 
 	SET(DENTK_FILTER_SOURCES src/dentk-filter.cpp)
 	add_executable(dentk_filter ${DENTK_FILTER_SOURCES})

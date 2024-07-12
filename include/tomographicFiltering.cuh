@@ -170,3 +170,20 @@ void CUDASymmPad(dim3 threads,
                  const int SIZEX,
                  const int SIZEXPAD,
                  const int SIZEY);
+
+template <typename T, typename W>
+__global__ void SpectralGaussianBlur2D(const W* __restrict__ VEC, 
+                                     const int SIZEX,
+                                     const int SIZEY,
+                                     T sigma_x,
+                                     T sigma_y);
+
+template <typename T, typename W>
+void CUDASpectralGaussianBlur2D(dim3 threads,
+                              void* GPU_vec,
+                              const int SIZEX,
+                              const int SIZEY,
+                              const T sigma_x,
+                              const T sigma_y);
+
+

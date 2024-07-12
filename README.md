@@ -5,10 +5,6 @@ KCT DENTK is a versatile toolkit designed for manipulating raw files in [DEN for
 DENTK provides a set of command line programs to manipulate DEN files. It is designed for easily performing various manipulations, from simple frame extraction to complex mathematical operations.
 The toolkit is designed to be used in the command line environment of Linux shell. It is written in C++ and uses the CMake build system. 
  
-## Introduction
-
-
-
 ## Cloning the repository
 To clone the repository, use either HTTPS or SSH
 
