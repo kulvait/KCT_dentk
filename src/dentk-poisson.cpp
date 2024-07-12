@@ -405,7 +405,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     const int dummy_FTPLID = 0;
     uint32_t k_in, k_out;
     cufftHandle FFT, IFT;
-    // First is  slowest changing dimension, last is  slowest changing dimension
+    // First is  slowest changing dimension, last is fastest changing dimension
     if(ARG.periodicBCs)
     {
         EXECUFFT(cufftPlan2d(&FFT, ARG.dimy, ARG.dimx, CUFFT_R2C));
