@@ -100,13 +100,13 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_den", output_den, "Output file with Gaussian blur.")->required();
     cliApp
-        ->add_option("--sigma_x", sigma_x, "Sigma in x dimension for Gaussian blur [default=0.0].")
+        ->add_option("--sigma-x", sigma_x, "Sigma in x dimension for Gaussian blur [default=0.0].")
         ->check(CLI::NonNegativeNumber);
     cliApp
-        ->add_option("--sigma_y", sigma_y, "Sigma in y dimension for Gaussian blur [default=0.0].")
+        ->add_option("--sigma-y", sigma_y, "Sigma in y dimension for Gaussian blur [default=0.0].")
         ->check(CLI::NonNegativeNumber);
     cliApp
-        ->add_option("--sigma_z", sigma_z, "Sigma in z dimension for Gaussian blur [default=0.0].")
+        ->add_option("--sigma-z", sigma_z, "Sigma in z dimension for Gaussian blur [default=0.0].")
         ->check(CLI::NonNegativeNumber);
     CLI::Option_group* op_xpd = cliApp->add_option_group(
         "Padding in xy dimension", "Padding in xy dimension, defaults to PaddingMode::NOPAD.");
