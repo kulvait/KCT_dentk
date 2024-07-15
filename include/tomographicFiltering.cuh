@@ -2,6 +2,7 @@
 
 #include <cufft.h>
 #include <stdio.h>
+#include <math_constants.h>
 
 #define EXECUDA(INF) _assert_CUDA(INF, __FILE__, __LINE__)
 #define EXECUFFT(INF) _assert_CUFFT(INF, __FILE__, __LINE__)
@@ -9,6 +10,7 @@
 #define PI 3.141592653589793
 #define TWOPI 6.283185307179586
 #define FOURPISQUARED 39.47841760435743
+#define MINUSTWOPISQUARED -19.739208802178716
 
 __global__ void RadonFilter(float2* __restrict__ x,
                             const int SIZEX,
@@ -24,8 +26,11 @@ void CUDARadonFilter(dim3 threads,
                      const float pixel_size_x,
                      const bool ifftshift = false);
 
-__global__ void ParkerFilter(
-    float* __restrict__ x, const int SIZEX, const int SIZEY, const float corpos, const float zslope);
+__global__ void ParkerFilter(float* __restrict__ x,
+                             const int SIZEX,
+                             const int SIZEY,
+                             const float corpos,
+                             const float zslope);
 
 void CUDAParkerFilter(dim3 threads,
                       dim3 blocks,
@@ -172,18 +177,13 @@ void CUDASymmPad(dim3 threads,
                  const int SIZEY);
 
 template <typename T, typename W>
-__global__ void SpectralGaussianBlur2D(const W* __restrict__ VEC, 
-                                     const int SIZEX,
-                                     const int SIZEY,
-                                     T sigma_x,
-                                     T sigma_y);
+__global__ void SpectralGaussianBlur2D(
+    W* __restrict__ VEC, const int SIZEX, const int SIZEY, const T sigma_x, const T sigma_y);
 
 template <typename T, typename W>
 void CUDASpectralGaussianBlur2D(dim3 threads,
-                              void* GPU_vec,
-                              const int SIZEX,
-                              const int SIZEY,
-                              const T sigma_x,
-                              const T sigma_y);
-
-
+                                void* GPU_vec,
+                                const int SIZEX,
+                                const int SIZEY,
+                                const T sigma_x,
+                                const T sigma_y);

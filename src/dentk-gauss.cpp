@@ -88,7 +88,6 @@ public:
     uint32_t dimx, dimy, dimz;
     uint64_t frameSize;
     uint64_t totalSize;
-    std::vector<uint32_t> frames;
     //To remove
     double pixelSizeX = 1.0;
     double pixelSizeY = 1.0;
@@ -157,7 +156,9 @@ int Args::postParse()
     dimy = input_den_inf.dimy();
     dimz = input_den_inf.dimz();
     frameSize = static_cast<uint64_t>(dimx) * static_cast<uint64_t>(dimy);
-    fillFramesVector(dimz);
+    LOGI << io::xprintf("Filling frames vector with dimz=%d.", input_den_inf.getFrameCount());
+    fillFramesVector(input_den_inf.getFrameCount());
+    LOGD << io::xprintf("Total number of frames: %d", frames.size());
     totalSize = frameSize * static_cast<uint64_t>(frames.size());
     return 0;
 }
@@ -250,6 +251,22 @@ void _assert_CUFFT(cufftResult inf, const char* file, int line, bool abort = tru
 template <typename T>
 struct WORKER
 {
+    WORKER(Args& ARG)
+        : ARG(ARG)
+        , dataType(io::DenSupportedType::FLOAT32)
+        , CUDADeviceID(0)
+        , isGPUInitialized(false)
+        , GPU_f(nullptr)
+        , GPU_extendedf(nullptr)
+        , GPU_FTf(nullptr)
+        , padding(false)
+        , dimx(0)
+        , dimy(0)
+        , dimx_padded(0)
+        , dimy_padded(0)
+        , dimx_padded_hermitian(0)
+        , frameSize_padded(0)
+        , frameSize_padded_complex(0){};
     Args ARG;
     io::DenSupportedType dataType;
     cufftHandle FFT;
@@ -268,6 +285,67 @@ struct WORKER
     uint64_t frameSize_padded;
     uint64_t frameSize_padded_complex;
 };
+
+
+void checkCudaError(cudaError_t result, const char* func) {
+    if (result != cudaSuccess) {
+        std::cerr << "CUDA error in " << func << ": " << cudaGetErrorString(result) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+void queryGPUs(std::vector<size_t>& gpuMemSizes) {
+    int deviceCount;
+    checkCudaError(cudaGetDeviceCount(&deviceCount), "cudaGetDeviceCount");
+
+    for(int i = 0; i < deviceCount; i++)
+    {
+        cudaDeviceProp prop;
+        checkCudaError(cudaGetDeviceProperties(&prop, i), "cudaGetDeviceProperties");
+        gpuMemSizes.push_back(prop.totalGlobalMem);
+        std::cout << "GPU " << i << ": " << prop.name << ", Total Memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+    }
+}
+
+size_t estimateChunkSize(const std::vector<size_t>& gpuMemSizes, size_t blurrArrayLength)
+{
+    size_t maxChunkSize = 0;
+    size_t requiredMemoryPerChunk = 5 * blurrArrayLength * sizeof(double);
+
+    for(size_t memSize : gpuMemSizes)
+    {
+        size_t availableMemory = static_cast<size_t>(0.8 * memSize); // Use 80% of GPU memory
+        size_t chunkSize = availableMemory / requiredMemoryPerChunk;
+        if(chunkSize > maxChunkSize)
+        {
+            maxChunkSize = chunkSize;
+        }
+    }
+    return maxChunkSize;
+}
+
+template <typename T>
+void processTransformed1DData(Args& ARG,
+                              io::DenSupportedType dataType,
+                              T* dataBuffer,
+                              uint64_t blurrArrayLength,
+                              uint64_t blurrArrayCount)
+
+{
+    std::vector<size_t> gpuMemSizes;
+    queryGPUs(gpuMemSizes);
+    size_t heuristicChunkSize = estimateChunkSize(gpuMemSizes, blurrArrayLength);
+	LOGI << io::xprintf("Estimated heuristicChunkSize=%lu means that blurArrayCount=%lu fits %d times", heuristicChunkSize, blurrArrayCount, (blurrArrayCount + heuristicChunkSize - 1) / heuristicChunkSize);
+    size_t chunkSize = std::min(heuristicChunkSize, blurrArrayCount);
+    size_t chunkCount = (blurrArrayCount + chunkSize - 1) / chunkSize;
+    LOGI << io::xprintf("Processing %d chunks of size %d", chunkCount, chunkSize);
+    for(size_t chunk = 0; chunk < chunkCount; chunk++)
+    {
+	size_t startFrame = chunk * chunkSize;
+	size_t endFrame = std::min(startFrame + chunkSize, blurrArrayCount);
+	LOGI << io::xprintf("Processing chunk %d/%d with frames %d-%d", chunk, chunkCount, startFrame, endFrame);
+    }
+}
 
 template <typename T>
 using WORKERPTR = std::shared_ptr<WORKER<T>>;
@@ -293,7 +371,6 @@ void processXYFrame(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo, uint
         EXECUDA(cudaSetDevice(worker->CUDADeviceID));
         worker->dimx = worker->ARG.dimx;
         worker->dimy = worker->ARG.dimy;
-        worker->frameSize = worker->ARG.frameSize;
         if(worker->ARG.xypadding == NOPAD)
         {
             //Initialize worker
@@ -339,6 +416,10 @@ void processXYFrame(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo, uint
                 cufftPlan2d(&worker->IFT, worker->dimy_padded, worker->dimx_padded, CUFFT_Z2D));
         }
         worker->isGPUInitialized = true;
+    } else
+    {
+        //This is needed to be done in case the worker is already initialized and the device ID is different
+        EXECUDA(cudaSetDevice(worker->CUDADeviceID));
     }
     Args ARG = worker->ARG;
     //cufftHandle FFT = worker->FFT;
@@ -380,13 +461,14 @@ void processXYFrame(std::shared_ptr<typename TP<T>::ThreadInfo> threadInfo, uint
     //Multiplication with the Gaussian kernel
     if(worker->dataType == io::DenSupportedType::FLOAT32)
     {
-        CUDASpectralGaussianBlur2D<T, cufftComplex>(threads, worker->GPU_FTf, worker->dimx_padded,
-                                                    worker->dimy_padded, ARG.sigma_x, ARG.sigma_y);
+        CUDASpectralGaussianBlur2D<float, cufftComplex>(threads, worker->GPU_FTf,
+                                                        worker->dimx_padded, worker->dimy_padded,
+                                                        ARG.sigma_x, ARG.sigma_y);
     } else if(worker->dataType == io::DenSupportedType::FLOAT64)
     {
-        CUDASpectralGaussianBlur2D<T, cufftDoubleComplex>(threads, worker->GPU_FTf,
-                                                          worker->dimx_padded, worker->dimy_padded,
-                                                          ARG.sigma_x, ARG.sigma_y);
+        CUDASpectralGaussianBlur2D<double, cufftDoubleComplex>(
+            threads, worker->GPU_FTf, worker->dimx_padded, worker->dimy_padded, ARG.sigma_x,
+            ARG.sigma_y);
     }
     //Perform IFFT
     if(worker->dataType == io::DenSupportedType::FLOAT32)
@@ -482,6 +564,73 @@ void writeFramesParallel(Args& ARG, io::DenSupportedType dataType, T* inputBuffe
 }
 
 template <typename T>
+/**
+* @brief Partial transform of (x, y, z) array to (x, z, y) array
+*
+* @param array_in
+* @param array_out
+* @param dimx
+* @param dimy
+* @param dimz
+* @param dimy_from
+* @param dimy_to
+*/
+void swapArrayPartial(T* array_in,
+                      T* array_out,
+                      uint64_t dimx,
+                      uint64_t dimy,
+                      uint64_t dimz,
+                      uint64_t dimy_from,
+                      uint64_t dimy_to)
+{
+    if(dimy_from >= dimy_to)
+    {
+        return;
+    }
+
+    uint64_t frameSizeIn = dimy * dimx;
+    uint64_t frameSizeOut = dimz * dimx;
+    for(uint64_t k = 0; k < dimz; ++k)
+    {
+        T* startKIn = array_in + k * frameSizeIn;
+        for(uint64_t j = dimy_from; j < dimy_to; ++j)
+        {
+            T* startIndexIn = startKIn + j * dimx;
+            T* startIndexOut = array_out + j * frameSizeOut + k * dimx;
+            std::copy(startIndexIn, startIndexIn + dimx, startIndexOut);
+        }
+    }
+}
+
+template <typename T>
+void transposeArrayPartial(T* array_in,
+                           T* array_out,
+                           uint64_t dimx,
+                           uint64_t dimy,
+                           uint64_t dimz,
+                           uint64_t dimz_from,
+                           uint64_t dimz_to)
+{
+    if(dimz_from >= dimz_to)
+    {
+        return;
+    }
+    uint64_t frameSize = dimy * dimx;
+    for(uint64_t k = dimz_from; k < dimz_to; ++k)
+    {
+        T* startKIn = array_in + k * frameSize;
+        T* startKOut = array_out + k * frameSize;
+        for(uint64_t j = 0; j < dimy; ++j)
+        {
+            for(uint64_t i = 0; i < dimx; ++i)
+            {
+                startKOut[i * dimy + j] = startKIn[j * dimx + i];
+            }
+        }
+    }
+}
+
+template <typename T>
 void processFiles(Args ARG, io::DenSupportedType dataType)
 {
     //First I determine number of CUDA capable devices
@@ -522,7 +671,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         std::shared_ptr<WORKER<T>> worker;
         for(uint64_t t = 0; t < threadCount; t++)
         {
-            worker = std::make_shared<WORKER<T>>();
+            worker = std::make_shared<WORKER<T>>(ARG);
             worker->ARG = ARG;
             worker->dataType = dataType;
             worker->CUDADeviceID = t % deviceCount;
@@ -533,14 +682,90 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
 
         for(uint64_t k = 0; k < frameCount; k++)
         {
-            LOGI << io::xprintf("Processing %d/%d frame.", k, frameCount);
+            //            LOGI << io::xprintf("Processing %d/%d frame.", k, frameCount);
             threadpool->submit(processXYFrame<T>, k, dataBuffer);
         }
     }
     if(ARG.sigma_z > 0.0)
     {
         LOGI << io::xprintf("Adding gauss blur in z direction with sigma_z=%f.", ARG.sigma_z);
-        KCTERR("Not implemented yet!");
+        LOGI << io::xprintf("Allocating temporary memory");
+        T* swpBuffer = new T[ARG.totalSize];
+        uint64_t dimy = ARG.dimy;
+        uint64_t threadCount = std::max(1lu, std::min(static_cast<uint64_t>(ARG.threads), dimy));
+        uint32_t rowsPerThread = (dimy + threadCount - 1) / threadCount;
+        std::vector<std::future<void>> futures_swap;
+        LOGI << io::xprintf("Swapping data with %d threads and %d rows per thread", threadCount,
+                            rowsPerThread);
+        uint64_t startRow = 0, endRow = 0;
+        while(startRow < dimy)
+        {
+            endRow = std::min(startRow + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_swap.emplace_back(std::async(std::launch::async, swapArrayPartial<T>,
+                                                 dataBuffer, swpBuffer, ARG.dimx, ARG.dimy,
+                                                 frameCount, startRow, endRow));
+            startRow = endRow;
+        }
+        for(auto& f : futures_swap)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Transposing data with %d threads", threadCount);
+        std::vector<std::future<void>> futures_transpose;
+        uint64_t startK = 0, endK = 0;
+        while(startK < dimy)
+        {
+            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_transpose.emplace_back(std::async(std::launch::async, transposeArrayPartial<T>,
+                                                      swpBuffer, dataBuffer, ARG.dimx, frameCount,
+                                                      ARG.dimy, startK, endK));
+            startK = endK;
+        }
+        for(auto& f : futures_transpose)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Adding Gauss blurr in z direction with sigma_z=%f.", ARG.sigma_z);
+        //Now I treat dataBuffer as a ARG.dimx * ARG.dimy individual frameCount arrays to process
+        uint64_t arrayCount = static_cast<uint64_t>(ARG.dimx) * static_cast<uint64_t>(ARG.dimy);
+        processTransformed1DData<T>(ARG, dataType, dataBuffer, frameCount, arrayCount);
+        LOGI << io::xprintf("Transposing data back with %d threads", threadCount);
+        std::vector<std::future<void>> futures_transpose_back;
+        startK = 0;
+        endK = 0;
+        while(startK < dimy)
+        {
+            endK = std::min(startK + rowsPerThread, static_cast<uint64_t>(dimy));
+            futures_transpose_back.emplace_back(
+                std::async(std::launch::async, transposeArrayPartial<T>, dataBuffer, swpBuffer,
+                           frameCount, ARG.dimx, ARG.dimy, startK, endK));
+            startK = endK;
+        }
+        for(auto& f : futures_transpose_back)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Swapping data back with %d threads", threadCount);
+        std::vector<std::future<void>> futures_swap_back;
+        threadCount = std::max(1lu, std::min(static_cast<uint64_t>(ARG.threads), frameCount));
+        uint32_t framesPerThread = (frameCount + threadCount - 1) / threadCount;
+        uint64_t startFrame = 0, endFrame = 0;
+        startFrame = 0;
+        endFrame = 0;
+        while(startFrame < frameCount)
+        {
+            endFrame = std::min(startFrame + framesPerThread, static_cast<uint64_t>(frameCount));
+            futures_swap_back.emplace_back(std::async(std::launch::async, swapArrayPartial<T>,
+                                                      swpBuffer, dataBuffer, ARG.dimx, frameCount,
+                                                      ARG.dimy, startFrame, endFrame));
+            startFrame = endFrame;
+        }
+        for(auto& f : futures_swap_back)
+        {
+            f.get();
+        }
+        LOGI << io::xprintf("Swap and transpose done, deleting temporary buffer.");
+        delete[] swpBuffer;
     }
     LOGI << "Writing frames...";
     writeFramesParallel<T>(ARG, dataType, dataBuffer);
@@ -585,7 +810,8 @@ int main(int argc, char* argv[])
         LOGI << "Padding in xy dimension: SYMPAD";
     }
     LOGI << io::xprintf(
-        "ARG.input_den=%s, ARG.output_den=%s, ARG.sigma_x=%f, ARG.sigma_y=%f, ARG.sigma_z=%f, "
+        "ARG.input_den=%s, ARG.output_den=%s, ARG.sigma_x=%f, ARG.sigma_y=%f, "
+        "ARG.sigma_z=%f, "
         "ARG.zpadding=%d, ARG.xypadding=%d, ARG.dimx=%d, ARG.dimy=%d, ARG.dimz=%d, "
         "ARG.frameSize=%d, ARG.frames.size()=%d, ARG.pixelSizeX=%f, ARG.pixelSizeY=%f",
         ARG.input_den.c_str(), ARG.output_den.c_str(), ARG.sigma_x, ARG.sigma_y, ARG.sigma_z,
@@ -597,7 +823,7 @@ int main(int argc, char* argv[])
     switch(dataType)
     {
     case io::DenSupportedType::FLOAT32: {
-        //processFiles<float>(ARG, dataType);
+        processFiles<float>(ARG, dataType);
         break;
     }
     default: {

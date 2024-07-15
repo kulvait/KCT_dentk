@@ -56,7 +56,6 @@ __global__ void AsymmPad2D(T* __restrict__ IN,
 template <typename T>
 __global__ void RemovePadding(
     T* __restrict__ IN, T* __restrict__ OUT, const int SIZEX, const int SIZEY, const int SIZEXPAD);
-
 // Host function wrapper for zero padding (1D)
 template <typename T>
 void CUDAZeroPad(dim3 threads,
@@ -122,3 +121,6 @@ void CUDARemovePadding(dim3 threads,
                        const int SIZEX,
                        const int SIZEY,
                        const int SIZEXPAD);
+
+dim3 getNumBlocks(dim3 threads, int SIZEX, int SIZEY);
+

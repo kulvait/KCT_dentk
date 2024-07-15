@@ -351,3 +351,108 @@ void CUDARemovePadding(
         exit(EXIT_FAILURE);
     }
 }
+
+//Explicit instantinations of CUDA functions for float and double
+template void CUDAZeroPad<float>(dim3 threads,
+                                 void* GPU_in,
+                                 void* GPU_out,
+                                 const int SIZEX,
+                                 const int SIZEY,
+                                 const int SIZEXPAD);
+
+template void CUDAZeroPad<double>(dim3 threads,
+                                  void* GPU_in,
+                                  void* GPU_out,
+                                  const int SIZEX,
+                                  const int SIZEY,
+                                  const int SIZEXPAD);
+
+template void CUDAZeroPad2D<float>(dim3 threads,
+                                   void* GPU_in,
+                                   void* GPU_out,
+                                   const int SIZEX,
+                                   const int SIZEY,
+                                   const int SIZEXPAD,
+                                   const int SIZEYPAD);
+
+template void CUDAZeroPad2D<double>(dim3 threads,
+                                    void* GPU_in,
+                                    void* GPU_out,
+                                    const int SIZEX,
+                                    const int SIZEY,
+                                    const int SIZEXPAD,
+                                    const int SIZEYPAD);
+
+template void CUDASymmPad<float>(dim3 threads,
+                                 void* GPU_in,
+                                 void* GPU_out,
+                                 const int SIZEX,
+                                 const int SIZEXPAD,
+                                 const int SIZEY);
+
+template void CUDASymmPad<double>(dim3 threads,
+                                  void* GPU_in,
+                                  void* GPU_out,
+                                  const int SIZEX,
+                                  const int SIZEXPAD,
+                                  const int SIZEY);
+
+template void CUDASymmPad2D<float>(dim3 threads,
+                                   void* GPU_in,
+                                   void* GPU_out,
+                                   const int SIZEX,
+                                   const int SIZEY,
+                                   const int SIZEXPAD,
+                                   const int SIZEYPAD);
+
+template void CUDASymmPad2D<double>(dim3 threads,
+                                    void* GPU_in,
+                                    void* GPU_out,
+                                    const int SIZEX,
+                                    const int SIZEY,
+                                    const int SIZEXPAD,
+                                    const int SIZEYPAD);
+
+template void CUDAAsymmPad<float>(dim3 threads,
+                                  void* GPU_in,
+                                  void* GPU_out,
+                                  const int SIZEX,
+                                  const int SIZEXPAD,
+                                  const int SIZEY);
+
+template void CUDAAsymmPad<double>(dim3 threads,
+                                   void* GPU_in,
+                                   void* GPU_out,
+                                   const int SIZEX,
+                                   const int SIZEXPAD,
+                                   const int SIZEY);
+
+template void CUDAAsymmPad2D<float>(dim3 threads,
+                                    void* GPU_in,
+                                    void* GPU_out,
+                                    const int SIZEX,
+                                    const int SIZEY,
+                                    const int SIZEXPAD,
+                                    const int SIZEYPAD);
+
+template void CUDAAsymmPad2D<double>(dim3 threads,
+                                     void* GPU_in,
+                                     void* GPU_out,
+                                     const int SIZEX,
+                                     const int SIZEY,
+                                     const int SIZEXPAD,
+                                     const int SIZEYPAD);
+
+template void CUDARemovePadding<float>(dim3 threads,
+                                       void* GPU_in,
+                                       void* GPU_out,
+                                       const int SIZEX,
+                                       const int SIZEY,
+                                       const int SIZEXPAD);
+
+template void CUDARemovePadding<double>(dim3 threads,
+                                        void* GPU_in,
+                                        void* GPU_out,
+                                        const int SIZEX,
+                                        const int SIZEY,
+                                        const int SIZEXPAD);
