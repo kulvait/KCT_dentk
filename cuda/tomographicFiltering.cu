@@ -335,6 +335,57 @@ void CUDAStripPad(dim3 threads,
 }
 
 //Template argument W is of the type cufftComplex or cufftDoubleComplex
+//Assuming array is of the size SIZEX_HERMITIAN * chunkSize
+template <typename T, typename W>
+__global__ void
+SpectralGaussianBlur1D(W* __restrict__ VEC, const int SIZEX, const int SIZEY, const T sigma_z)
+{
+    const int SIZEX_HERMITIAN = SIZEX / 2 + 1;
+
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x; // y-dimension
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y; // x-dimension
+
+    if(PX >= SIZEX_HERMITIAN || PY >= SIZEY)
+    {
+        return;
+    }
+
+    const int IDX = SIZEX_HERMITIAN * PY + PX;
+
+    T real_in = VEC[IDX].x;
+    T imag_in = VEC[IDX].y;
+    // Inline Gaussian kernel computation
+    int u = PX <= SIZEX / 2 ? PX : PX - SIZEX;
+    T sigma_z_u_over_width = sigma_z * u / SIZEX;
+    T real_ker = exp(MINUSTWOPISQUARED * (sigma_z_u_over_width * sigma_z_u_over_width));
+    //CUDA IFFT normalization
+    real_ker /= SIZEX;
+
+    VEC[IDX].x = real_in * real_ker;
+    VEC[IDX].y = imag_in * real_ker;
+}
+
+template <typename T, typename W>
+void CUDASpectralGaussianBlur1D(
+    dim3 threads, void* GPU_vec, const int SIZEX, const int SIZEY, const T sigma_z)
+{
+    // Calculate the number of blocks needed
+    const int SIZEX_HERMITIAN = SIZEX / 2 + 1;
+    dim3 numBlocks((SIZEY + threads.x - 1) / threads.x,
+                   (SIZEX_HERMITIAN + threads.y - 1) / threads.y);
+
+    SpectralGaussianBlur1D<T, W><<<numBlocks, threads>>>((W*)GPU_vec, SIZEX, SIZEY, sigma_z);
+
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        fprintf(stderr, "Failed to launch SpectralGaussianBlur kernel (error code %s)!\n",
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
+//Template argument W is of the type cufftComplex or cufftDoubleComplex
 //Assuming array is of the size SIZEX_HERMITIAN * SIZEY
 template <typename T, typename W>
 __global__ void SpectralGaussianBlur2D(
@@ -362,7 +413,8 @@ __global__ void SpectralGaussianBlur2D(
     T real_ker = exp(MINUSTWOPISQUARED
                      * (sigma_x_u_over_width * sigma_x_u_over_width
                         + sigma_y_v_over_height * sigma_y_v_over_height));
-
+    //CUDA IFFT normalization
+    real_ker /= (SIZEX * SIZEY);
     VEC[IDX].x = real_in * real_ker;
     VEC[IDX].y = imag_in * real_ker;
 
@@ -372,11 +424,37 @@ __global__ void SpectralGaussianBlur2D(
         OUT[IDX].y = real_in * imag_ker + imag_in * real_ker;
 */
 }
+/*
+template <typename T>
+T ComputeNormalizationFactor(const int SIZEX, const int SIZEY, const T sigma_x, const T sigma_y)
+{
+    T normalization_factor = 0.0;
+    const int SIZEX_HERMITIAN = SIZEX / 2 + 1;
 
+    for(int PY = 0; PY < SIZEY; ++PY)
+    {
+        for(int PX = 0; PX < SIZEX_HERMITIAN; ++PX)
+        {
+            int u = PX <= SIZEX / 2 ? PX : PX - SIZEX;
+            int v = PY <= SIZEY / 2 ? PY : PY - SIZEY;
+            T sigma_x_u_over_width = sigma_x * u / SIZEX;
+            T sigma_y_v_over_height = sigma_y * v / SIZEY;
+            T real_ker = exp(MINUSTWOPISQUARED
+                             * (sigma_x_u_over_width * sigma_x_u_over_width
+                                + sigma_y_v_over_height * sigma_y_v_over_height));
+            normalization_factor += real_ker;
+        }
+    }
+
+    return normalization_factor;
+}
+*/
 template <typename T, typename W>
 void CUDASpectralGaussianBlur2D(
     dim3 threads, void* GPU_vec, const int SIZEX, const int SIZEY, const T sigma_x, const T sigma_y)
 {
+    //  T normalization_factor = ComputeNormalizationFactor(SIZEX, SIZEY, sigma_x, sigma_y);
+    //  printf("Normalization factor: %f\n", normalization_factor);
     /*
     printf("CUDASpectralGaussianBlur threads=(%d, %d, %d), SIZEX=%d, SIZEY=%d, sigma_x=%f, "
            "sigma_y=%f\n",
@@ -414,6 +492,13 @@ template void CUDASpectralGaussianBlur2D<double, cufftDoubleComplex>(dim3 thread
                                                                      const double sigma_x,
                                                                      const double sigma_y);
 
+//Explicit instance of CUDASpectralGaussianBlur1D for float and double
+template void CUDASpectralGaussianBlur1D<float, cufftComplex>(
+    dim3 threads, void* GPU_vec, const int SIZEX, const int SIZEY, const float sigma_z);
+
+template void CUDASpectralGaussianBlur1D<double, cufftDoubleComplex>(
+    dim3 threads, void* GPU_vec, const int SIZEX, const int SIZEY, const double sigma_z);
+
 //Explicit instances of SpectralGaussianBlur2D for float and double
 template __global__ void SpectralGaussianBlur2D<float, cufftComplex>(cufftComplex* __restrict__ VEC,
                                                                      const int SIZEX,
@@ -427,3 +512,12 @@ SpectralGaussianBlur2D<double, cufftDoubleComplex>(cufftDoubleComplex* __restric
                                                    const int SIZEY,
                                                    const double sigma_x,
                                                    const double sigma_y);
+
+//Explicit instances of SpectralGaussianBlur1D for float and double
+template __global__ void SpectralGaussianBlur1D<float, cufftComplex>(cufftComplex* __restrict__ VEC,
+                                                                     const int SIZEX,
+                                                                     const int SIZEY,
+                                                                     const float sigma_z);
+
+template __global__ void SpectralGaussianBlur1D<double, cufftDoubleComplex>(
+    cufftDoubleComplex* __restrict__ VEC, const int SIZEX, const int SIZEY, const double sigma_z);

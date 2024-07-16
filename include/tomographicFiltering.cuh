@@ -1,8 +1,8 @@
 // Logging
 
 #include <cufft.h>
-#include <stdio.h>
 #include <math_constants.h>
+#include <stdio.h>
 
 #define EXECUDA(INF) _assert_CUDA(INF, __FILE__, __LINE__)
 #define EXECUFFT(INF) _assert_CUFFT(INF, __FILE__, __LINE__)
@@ -187,3 +187,11 @@ void CUDASpectralGaussianBlur2D(dim3 threads,
                                 const int SIZEY,
                                 const T sigma_x,
                                 const T sigma_y);
+
+template <typename T, typename W>
+__global__ void
+SpectralGaussianBlur1D(W* __restrict__ VEC, const int SIZEX, const int SIZEY, const T sigma_z);
+
+template <typename T, typename W>
+void CUDASpectralGaussianBlur1D(
+    dim3 threads, void* GPU_vec, const int SIZEX, const int SIZEY, const T sigma_z);

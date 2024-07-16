@@ -286,15 +286,54 @@ struct WORKER
     uint64_t frameSize_padded_complex;
 };
 
+template <typename T>
+struct WORKER1D
+{
+    WORKER1D(Args& ARG)
+        : ARG(ARG)
+        , dataType(io::DenSupportedType::FLOAT32)
+        , CUDADeviceID(0)
+        , isGPUInitialized(false)
+        , GPU_f(nullptr)
+        , GPU_extendedf(nullptr)
+        , GPU_FTf(nullptr)
+        , padding(false)
+        , dimx(0)
+        , dimx_padded(0)
+        , dimx_padded_hermitian(0)
+        , chunkSize(0)
+        , totalArrayCount(0){};
+    Args ARG;
+    io::DenSupportedType dataType;
+    cufftHandle FFT;
+    cufftHandle IFT;
+    uint32_t CUDADeviceID;
+    bool isGPUInitialized;
+    void* GPU_f;
+    void* GPU_extendedf;
+    void* GPU_FTf;
+    bool padding;
+    uint64_t dimx;
+    uint64_t dimx_padded;
+    uint64_t dimx_padded_hermitian;
+    uint64_t chunkSize;
+    uint64_t chunkSize_times_dimx;
+    uint64_t chunkSize_times_dimx_padded;
+    uint64_t chunkSize_times_dimx_padded_hermitian;
+    uint64_t totalArrayCount;
+};
 
-void checkCudaError(cudaError_t result, const char* func) {
-    if (result != cudaSuccess) {
+void checkCudaError(cudaError_t result, const char* func)
+{
+    if(result != cudaSuccess)
+    {
         std::cerr << "CUDA error in " << func << ": " << cudaGetErrorString(result) << std::endl;
         exit(EXIT_FAILURE);
     }
 }
 
-void queryGPUs(std::vector<size_t>& gpuMemSizes) {
+void queryGPUs(std::vector<size_t>& gpuMemSizes)
+{
     int deviceCount;
     checkCudaError(cudaGetDeviceCount(&deviceCount), "cudaGetDeviceCount");
 
@@ -303,7 +342,9 @@ void queryGPUs(std::vector<size_t>& gpuMemSizes) {
         cudaDeviceProp prop;
         checkCudaError(cudaGetDeviceProperties(&prop, i), "cudaGetDeviceProperties");
         gpuMemSizes.push_back(prop.totalGlobalMem);
-        std::cout << "GPU " << i << ": " << prop.name << ", Total Memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+        std::cout << "GPU " << i << ": " << prop.name
+                  << ", Total Memory: " << prop.totalGlobalMem / (1024 * 1024) << " MB"
+                  << std::endl;
     }
 }
 
@@ -311,17 +352,173 @@ size_t estimateChunkSize(const std::vector<size_t>& gpuMemSizes, size_t blurrArr
 {
     size_t maxChunkSize = 0;
     size_t requiredMemoryPerChunk = 5 * blurrArrayLength * sizeof(double);
+    size_t arrayLengthPadded = 2 * blurrArrayLength - 2;
+    size_t requiredMemoryFFT
+        = (arrayLengthPadded + 2 * (arrayLengthPadded / 2 + 1)) * sizeof(double);
+    size_t requiredMemoryBuffers = requiredMemoryFFT + blurrArrayLength * sizeof(double);
+    size_t requiredMemoryTotal = requiredMemoryPerChunk + requiredMemoryBuffers;
 
     for(size_t memSize : gpuMemSizes)
     {
         size_t availableMemory = static_cast<size_t>(0.8 * memSize); // Use 80% of GPU memory
-        size_t chunkSize = availableMemory / requiredMemoryPerChunk;
+        size_t chunkSize = availableMemory / requiredMemoryTotal;
         if(chunkSize > maxChunkSize)
         {
             maxChunkSize = chunkSize;
         }
     }
     return maxChunkSize;
+}
+
+template <typename T>
+using WORKER1DPTR = std::shared_ptr<WORKER1D<T>>;
+
+template <typename T>
+using TP1D = io::ThreadPool<WORKER1D<T>>;
+
+template <typename T>
+using TP1DPTR = std::shared_ptr<TP1D<T>>;
+
+template <typename T>
+using TP1DINFO = typename TP1D<T>::ThreadInfo;
+
+template <typename T>
+using TP1DINFOPTR = std::shared_ptr<TP1DINFO<T>>;
+
+template <typename T>
+void processZ(std::shared_ptr<typename TP1D<T>::ThreadInfo> threadInfo, uint32_t k_in, T* data)
+{
+    std::shared_ptr<WORKER1D<T>> worker = threadInfo->worker;
+    if(!worker->isGPUInitialized)
+    {
+        EXECUDA(cudaSetDevice(worker->CUDADeviceID));
+        if(worker->ARG.zpadding == NOPAD)
+        {
+            //Initialize worker
+            worker->padding = false;
+            worker->dimx_padded = worker->dimx;
+            worker->dimx_padded_hermitian = worker->dimx_padded / 2 + 1;
+            worker->chunkSize_times_dimx = worker->chunkSize * worker->dimx;
+            worker->chunkSize_times_dimx_padded = worker->chunkSize * worker->dimx_padded;
+            worker->chunkSize_times_dimx_padded_hermitian
+                = worker->chunkSize * worker->dimx_padded_hermitian;
+            //Device memory allocation for GPU_f and GPU_FTf, GPU_extendedf is not needed to be allocated
+            EXECUDA(cudaMalloc((void**)&worker->GPU_f, worker->chunkSize_times_dimx * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&worker->GPU_FTf,
+                               worker->chunkSize_times_dimx_padded_hermitian * 2 * sizeof(T)));
+        } else
+        {
+            //Initialize worker
+            worker->padding = true;
+            worker->dimx_padded = 2 * worker->dimx - 2; //Proper padding for DFT symmetry
+            worker->dimx_padded_hermitian = worker->dimx_padded / 2 + 1;
+            worker->chunkSize_times_dimx = worker->chunkSize * worker->dimx;
+            worker->chunkSize_times_dimx_padded = worker->chunkSize * worker->dimx_padded;
+            worker->chunkSize_times_dimx_padded_hermitian
+                = worker->chunkSize * worker->dimx_padded_hermitian;
+            //Device memory allocation
+            EXECUDA(cudaMalloc((void**)&worker->GPU_f, worker->chunkSize_times_dimx * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&worker->GPU_extendedf,
+                               worker->chunkSize_times_dimx_padded * sizeof(T)));
+            EXECUDA(cudaMalloc((void**)&worker->GPU_FTf,
+                               worker->chunkSize_times_dimx_padded_hermitian * 2 * sizeof(T)));
+        }
+        if(worker->dataType == io::DenSupportedType::FLOAT32)
+        {
+            EXECUFFT(cufftPlan1d(&worker->FFT, worker->dimx_padded, CUFFT_R2C, worker->chunkSize));
+            EXECUFFT(cufftPlan1d(&worker->IFT, worker->dimx_padded, CUFFT_C2R, worker->chunkSize));
+        } else if(worker->dataType == io::DenSupportedType::FLOAT64)
+        {
+            EXECUFFT(cufftPlan1d(&worker->FFT, worker->dimx_padded, CUFFT_D2Z, worker->chunkSize));
+            EXECUFFT(cufftPlan1d(&worker->IFT, worker->dimx_padded, CUFFT_Z2D, worker->chunkSize));
+        }
+        worker->isGPUInitialized = true;
+    } else
+    {
+        //This is needed to be done in case the worker is already initialized and the device ID is different
+        EXECUDA(cudaSetDevice(worker->CUDADeviceID));
+    }
+    PaddingMode zpadding = worker->ARG.zpadding;
+    T sigma_z = worker->ARG.sigma_z;
+    //cufftHandle FFT = worker->FFT;
+    //We read proper memory block into GPU memory
+    T* framePointer = data + k_in * worker->chunkSize_times_dimx;
+    //Copy data to host memory
+    size_t currentChunkSize = worker->chunkSize;
+    size_t currentChunkSize_times_dimx;
+    if(k_in * worker->chunkSize + worker->chunkSize > worker->totalArrayCount)
+    {
+        currentChunkSize = worker->totalArrayCount - k_in * worker->chunkSize;
+        currentChunkSize_times_dimx = currentChunkSize * worker->dimx;
+    } else
+    {
+        currentChunkSize = worker->chunkSize;
+        currentChunkSize_times_dimx = currentChunkSize * worker->dimx;
+    }
+    EXECUDA(cudaMemcpy((void*)worker->GPU_f, (void*)framePointer,
+                       currentChunkSize_times_dimx * sizeof(T), cudaMemcpyHostToDevice));
+    dim3 threads(16, 16);
+    //Do padding if needed or at least do pointer copy so that the GPU data are pointed by worker->GPU_extendedf and their size is worker->dimx_padded*worker->dimy_padded
+    if(zpadding == NOPAD)
+    {
+
+        worker->GPU_extendedf = worker->GPU_f;
+    } else
+    {
+        if(zpadding == SYMPAD)
+        { //Neumann extension provides exactly symmetric padding
+            CUDASymmPad<T>(threads, worker->GPU_f, worker->GPU_extendedf, worker->dimx,
+                           currentChunkSize, worker->dimx_padded);
+        } else if(zpadding == ZEROPAD)
+        {
+            CUDAZeroPad<T>(threads, worker->GPU_f, worker->GPU_extendedf, worker->dimx,
+                           currentChunkSize, worker->dimx_padded);
+        }
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
+    }
+    //FFT of GPU_extendedf
+    if(worker->dataType == io::DenSupportedType::FLOAT32)
+    {
+        EXECUFFT(cufftExecR2C(worker->FFT, (cufftReal*)worker->GPU_extendedf,
+                              (cufftComplex*)worker->GPU_FTf));
+    } else if(worker->dataType == io::DenSupportedType::FLOAT64)
+    {
+        EXECUFFT(cufftExecD2Z(worker->FFT, (cufftDoubleReal*)worker->GPU_extendedf,
+                              (cufftDoubleComplex*)worker->GPU_FTf));
+    }
+    //Multiplication with the Gaussian kernel
+    if(worker->dataType == io::DenSupportedType::FLOAT32)
+    {
+        CUDASpectralGaussianBlur1D<float, cufftComplex>(
+            threads, worker->GPU_FTf, worker->dimx_padded, currentChunkSize, sigma_z);
+    } else if(worker->dataType == io::DenSupportedType::FLOAT64)
+    {
+        CUDASpectralGaussianBlur1D<double, cufftDoubleComplex>(
+            threads, worker->GPU_FTf, worker->dimx_padded, currentChunkSize, sigma_z);
+    }
+    //Perform IFFT
+    if(worker->dataType == io::DenSupportedType::FLOAT32)
+    {
+        EXECUFFT(cufftExecC2R(worker->IFT, (cufftComplex*)worker->GPU_FTf,
+                              (cufftReal*)worker->GPU_extendedf));
+    } else if(worker->dataType == io::DenSupportedType::FLOAT64)
+    {
+        EXECUFFT(cufftExecZ2D(worker->IFT, (cufftDoubleComplex*)worker->GPU_FTf,
+                              (cufftDoubleReal*)worker->GPU_extendedf));
+    }
+    //Remove padding if needed
+    if(zpadding == NOPAD)
+    {
+        worker->GPU_f = worker->GPU_extendedf;
+    } else
+    {
+        CUDARemovePadding<T>(threads, worker->GPU_extendedf, worker->GPU_f, worker->dimx,
+                             currentChunkSize, worker->dimx_padded);
+    }
+    //Copy data back to host memory
+    EXECUDA(cudaMemcpy((void*)framePointer, (void*)worker->GPU_f,
+                       currentChunkSize_times_dimx * sizeof(T), cudaMemcpyDeviceToHost));
 }
 
 template <typename T>
@@ -334,17 +531,61 @@ void processTransformed1DData(Args& ARG,
 {
     std::vector<size_t> gpuMemSizes;
     queryGPUs(gpuMemSizes);
+    uint64_t deviceCount = gpuMemSizes.size();
     size_t heuristicChunkSize = estimateChunkSize(gpuMemSizes, blurrArrayLength);
-	LOGI << io::xprintf("Estimated heuristicChunkSize=%lu means that blurArrayCount=%lu fits %d times", heuristicChunkSize, blurrArrayCount, (blurrArrayCount + heuristicChunkSize - 1) / heuristicChunkSize);
+    size_t heuristicChunkCount = (blurrArrayCount + heuristicChunkSize - 1) / heuristicChunkSize;
+    LOGI << io::xprintf("Estimated heuristicChunkSize=%lu with given blurrArrayLength=%lu means "
+                        "that blurArrayCount=%lu fits %d times",
+                        heuristicChunkSize, blurrArrayLength, blurrArrayCount, heuristicChunkCount);
     size_t chunkSize = std::min(heuristicChunkSize, blurrArrayCount);
     size_t chunkCount = (blurrArrayCount + chunkSize - 1) / chunkSize;
-    LOGI << io::xprintf("Processing %d chunks of size %d", chunkCount, chunkSize);
-    for(size_t chunk = 0; chunk < chunkCount; chunk++)
+    if(chunkCount < ARG.dimx && chunkCount < ARG.dimy)
     {
-	size_t startFrame = chunk * chunkSize;
-	size_t endFrame = std::min(startFrame + chunkSize, blurrArrayCount);
-	LOGI << io::xprintf("Processing chunk %d/%d with frames %d-%d", chunk, chunkCount, startFrame, endFrame);
+        if(heuristicChunkCount < gpuMemSizes.size())
+        {
+            chunkCount = gpuMemSizes.size();
+            chunkSize = (blurrArrayCount + chunkCount - 1) / chunkCount;
+        }
     }
+    LOGI << io::xprintf("Processing %d chunks of size %d", chunkCount, chunkSize);
+    uint64_t threadCount = std::max(1lu, std::min(static_cast<uint64_t>(ARG.threads), chunkCount));
+    threadCount = std::min(threadCount, deviceCount);
+    std::vector<WORKER1DPTR<T>> workers;
+    std::shared_ptr<WORKER1D<T>> worker;
+    for(uint64_t t = 0; t < threadCount; t++)
+    {
+        worker = std::make_shared<WORKER1D<T>>(ARG);
+        worker->ARG = ARG;
+        worker->dataType = dataType;
+        worker->CUDADeviceID = t % deviceCount;
+        worker->isGPUInitialized = false;
+        worker->chunkSize = chunkSize;
+        worker->dimx = blurrArrayLength;
+        worker->totalArrayCount = blurrArrayCount;
+        workers.push_back(worker);
+    }
+    TP1DPTR<T> threadpool = std::make_shared<TP1D<T>>(threadCount, workers);
+    /*
+    worker = workers[0];
+    TP1DINFOPTR<T> threadInfo
+        = std::make_shared<typename TP1D<T>::ThreadInfo>(TP1DINFO<T>{ 0, 0, workers[0] });
+    for(uint64_t k = 0; k < chunkCount; k++)
+    {
+        LOGI << io::xprintf("Processing chunk %d/%d", k, chunkCount);
+        LOGI << io::xprintf("worker->CUDADeviceID=%d, worker->dataType=%d, worker->chunkSize=%d, "
+                            "worker->dimx=%d, worker->totalArrayCount=%d",
+                            worker->CUDADeviceID, worker->dataType, worker->chunkSize, worker->dimx,
+                            worker->totalArrayCount);
+        processZ<T>(threadInfo, k, dataBuffer);
+    }
+
+    */
+    for(uint64_t k = 0; k < chunkCount; k++)
+    {
+        LOGI << io::xprintf("Processing chunk %d/%d", k, chunkCount);
+        threadpool->submit(processZ<T>, k, dataBuffer);
+    }
+    threadpool->waitAll();
 }
 
 template <typename T>
@@ -685,6 +926,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
             //            LOGI << io::xprintf("Processing %d/%d frame.", k, frameCount);
             threadpool->submit(processXYFrame<T>, k, dataBuffer);
         }
+        threadpool->waitAll();
     }
     if(ARG.sigma_z > 0.0)
     {
