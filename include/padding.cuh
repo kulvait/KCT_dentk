@@ -122,5 +122,42 @@ void CUDARemovePadding(dim3 threads,
                        const int SIZEY,
                        const int SIZEXPAD);
 
+// Kernel to apply antisymmetric padding with Dirichlet boundary condition on both x and y axes.
+// This sets the edges at PX == 0 or PY == 0 to 0.
+template <typename T>
+__global__ void AsymmPadDirichlet2D(T* __restrict__ IN,
+                                    T* __restrict__ OUT,
+                                    const int SIZEX,
+                                    const int SIZEY,
+                                    const int SIZEXPAD,
+                                    const int SIZEYPAD);
+
+// Wrapper function to launch the AsymmPadDirichlet2D kernel.
+// Sets edges at PX == 0 or PY == 0 to 0 to maintain antisymmetry for FFT.
+template <typename T>
+void CUDAAsymmPadDirichlet2D(dim3 threads,
+                             void* GPU_in,
+                             void* GPU_out,
+                             const int SIZEX,
+                             const int SIZEY,
+                             const int SIZEXPAD,
+                             const int SIZEYPAD);
+
+// Kernel to apply antisymmetric padding with Dirichlet boundary condition on the x-axis only.
+// This sets the left edge at PX == 0 to 0.
+template <typename T>
+__global__ void AsymmPadDirichlet(
+    T* __restrict__ IN, T* __restrict__ OUT, const int SIZEX, const int SIZEXPAD, const int SIZEY);
+
+// Wrapper function to launch the AsymmPadDirichlet_x kernel.
+// Sets left edge at PX == 0 to 0 to maintain antisymmetry in the x direction.
+template <typename T>
+void CUDAAsymmPadDirichlet(dim3 threads,
+                           void* GPU_in,
+                           void* GPU_out,
+                           const int SIZEX,
+                           const int SIZEXPAD,
+                           const int SIZEY);
+
 dim3 getNumBlocks(dim3 threads, int SIZEX, int SIZEY);
 
