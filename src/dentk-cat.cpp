@@ -11,13 +11,12 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
-#include "DEN/DenAsyncFrame2DWritter.hpp"
+#include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
-#include "Frame2DReaderI.hpp"
+#include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
 #include "PROG/ArgumentsThreading.hpp"
 #include "PROG/Program.hpp"
@@ -28,7 +27,7 @@ using namespace KCT::util;
 // Function declarations (definition at the end of the file)
 
 // class declarations
-struct Args : public ArgumentsFramespec, public ArgumentsThreading
+struct Args : public ArgumentsFramespec, public ArgumentsThreading, public ArgumentsForce
 {
     void defineArguments();
     int postParse();
@@ -38,23 +37,56 @@ public:
     Args(int argc, char** argv, std::string prgName)
         : Arguments(argc, argv, prgName)
         , ArgumentsFramespec(argc, argv, prgName)
-        , ArgumentsThreading(argc, argv, prgName){};
+        , ArgumentsThreading(argc, argv, prgName)
+        , ArgumentsForce(argc, argv, prgName){};
     std::string input_file;
     std::string output_file;
 };
 
-template <class T>
-void writeFrame(int ftpl_id,
-                uint32_t fromId,
-                std::shared_ptr<io::Frame2DReaderI<T>> denFrameReader,
-                uint32_t toId,
-                std::shared_ptr<io::AsyncFrame2DWritterI<T>> imagesWritter)
+template <typename T>
+void process(Args& ARG, io::DenFileInfo& di)
 {
-    imagesWritter->writeFrame(*(denFrameReader->readFrame(fromId)), toId);
-    //    LOGD << io::xprintf("Writting %d th slice from %d th image.", toId, fromId);
+    std::string outputFile = ARG.output_file;
+    uint64_t frameSize = di.getFrameSize();
+    uint64_t frameByteSize = frameSize * sizeof(T);
+    uint64_t frameCount = ARG.frames.size();
+    uint64_t num_threads
+        = std::min(static_cast<uint64_t>(ARG.threads), static_cast<uint64_t>(ARG.frames.size()));
+    num_threads = std::max(num_threads, 1lu);
+    std::shared_ptr<io::DenFrame2DReader<T>> inputReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_file, num_threads);
+    uint64_t frames_per_thread = (frameCount + num_threads - 1) / num_threads; // ceil
+    std::vector<std::thread> threads;
+    for(uint64_t t = 0; t < num_threads; t++)
+    {
+        uint64_t start_frame = t * frames_per_thread;
+        uint64_t end_frame
+            = std::min((t + 1) * frames_per_thread, static_cast<uint64_t>(frameCount));
+        if(start_frame >= end_frame)
+        {
+            break;
+        }
+        uint64_t bufferSize
+            = std::min(static_cast<uint64_t>(10u), end_frame - start_frame) * frameByteSize;
+        threads.emplace_back([&inputReader, &ARG, bufferSize, outputFile, start_frame, end_frame]() {
+            std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWriter
+                = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(outputFile, bufferSize);
+            std::shared_ptr<io::BufferedFrame2D<T>> f;
+            for(uint32_t k = start_frame; k < end_frame; k++)
+            {
+                uint32_t IND = ARG.frames[k];
+                f = inputReader->readBufferedFrame(IND);
+                outputWriter->writeBufferedFrame(*f, k);
+            }
+        });
+    }
+    for(auto& t : threads)
+    {
+        t.join();
+    }
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
     Program PRG(argc, argv);
     // Argument parsing
@@ -73,84 +105,28 @@ int main(int argc, char* argv[])
     io::DenSupportedType dataType = di.getElementType();
     uint32_t dimx = di.dimx();
     uint32_t dimy = di.dimy();
-    ftpl::thread_pool* threadpool = nullptr;
-    if(ARG.threads != 0)
-    {
-        threadpool = new ftpl::thread_pool(ARG.threads);
-    }
+    uint32_t dimz = ARG.frames.size();
+
+    io::DenFileInfo::createEmpty3DDenFile(ARG.output_file, dataType, dimx, dimy, dimz);
+    LOGI << io::xprintf("Output file %s created to store swap result.", ARG.output_file.c_str());
     switch(dataType)
     {
-    case io::DenSupportedType::UINT16: {
-        std::shared_ptr<io::Frame2DReaderI<uint16_t>> denFrameReader
-            = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.input_file);
-        std::shared_ptr<io::AsyncFrame2DWritterI<uint16_t>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<uint16_t>>(ARG.output_file, dimx, dimy,
-                                                                     ARG.frames.size());
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            // Try asynchronous calls
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeFrame<uint16_t>, ARG.frames[i], denFrameReader, i,
-                                 imagesWritter);
-            } else
-            {
-                writeFrame<uint16_t>(0, ARG.frames[i], denFrameReader, i, imagesWritter);
-            }
-        }
+    case io::DenSupportedType::UINT16:
+        process<uint16_t>(ARG, di);
         break;
-    }
-    case io::DenSupportedType::FLOAT32: {
-        std::shared_ptr<io::Frame2DReaderI<float>> denFrameReader
-            = std::make_shared<io::DenFrame2DReader<float>>(ARG.input_file);
-        std::shared_ptr<io::AsyncFrame2DWritterI<float>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<float>>(ARG.output_file, dimx, dimy,
-                                                                  ARG.frames.size());
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            // Try asynchronous calls
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeFrame<float>, ARG.frames[i], denFrameReader, i,
-                                 imagesWritter);
-            } else
-            {
-                writeFrame<float>(0, ARG.frames[i], denFrameReader, i, imagesWritter);
-            }
-        }
+    case io::DenSupportedType::FLOAT32:
+        process<float>(ARG, di);
         break;
-    }
-    case io::DenSupportedType::FLOAT64: {
-        std::shared_ptr<io::Frame2DReaderI<double>> denFrameReader
-            = std::make_shared<io::DenFrame2DReader<double>>(ARG.input_file);
-        std::shared_ptr<io::AsyncFrame2DWritterI<double>> imagesWritter
-            = std::make_shared<io::DenAsyncFrame2DWritter<double>>(ARG.output_file, dimx, dimy,
-                                                                   ARG.frames.size());
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            // Try asynchronous calls
-            if(threadpool != nullptr)
-            {
-                threadpool->push(writeFrame<double>, ARG.frames[i], denFrameReader, i,
-                                 imagesWritter);
-            } else
-            {
-                writeFrame<double>(0, ARG.frames[i], denFrameReader, i, imagesWritter);
-            }
-        }
+    case io::DenSupportedType::FLOAT64:
+        process<double>(ARG, di);
         break;
-    }
     default:
         std::string errMsg = io::xprintf("Unsupported data type %s.",
                                          io::DenSupportedTypeToString(dataType).c_str());
         KCTERR(errMsg);
     }
-    if(threadpool != nullptr)
-    {
-        threadpool->stop(true);
-        delete threadpool;
-    }
-    PRG.endLog();
+    PRG.endLog(true);
+    return 0;
 }
 
 void Args::defineArguments()
@@ -161,6 +137,7 @@ void Args::defineArguments()
     cliApp->add_option("output_den_file", output_file, "File in a DEN format to output.")
         ->required();
     addFramespecArgs();
+    addForceArgs();
     addThreadingArgs();
 }
 
@@ -173,7 +150,20 @@ int Args::postParse()
         LOGE << err;
         return -1;
     }
+    bool removeIfExists = true;
+    int existFlag = handleFileExistence(output_file, force, removeIfExists);
+    if(existFlag != 0)
+    {
+        return 1;
+    }
     io::DenFileInfo inf(input_file);
+    if(inf.getDimCount() != 3)
+    {
+        std::string ERR
+            = io::xprintf("The file %s has %d dimensions!", input_file.c_str(), inf.getDimCount());
+        LOGE << ERR;
+        return 1;
+    }
     fillFramesVector(inf.dimz());
     return 0;
 }
