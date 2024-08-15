@@ -65,7 +65,7 @@ static void signal_handler_pid(int signal_num, siginfo_t* info, void* context)
         SIGNALNAME = "SIGINT";
     } else
     {
-        SIGNALNAME = strdup(sys_siglist[signal_num]);
+        SIGNALNAME = strsignal(signal_num); // Use strsignal() instead of sys_siglist
     }
     printf("Signal %s received from process %s with PID %d.\n", SIGNALNAME.c_str(),
            get_process_name(info->si_pid).c_str(), info->si_pid);
@@ -258,8 +258,7 @@ void partialRunningAverage(
             ++count;
         } else if(mode == WRAP)
         {
-            FRAMEPTR<T> A
-                = denReader->readBufferedFrame(ARG.frames[(i + frameCount) % frameCount]);
+            FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[(i + frameCount) % frameCount]);
             T* A_array = A->getDataPointer();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;

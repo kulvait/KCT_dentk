@@ -207,19 +207,25 @@ void processFrame(int _FTPLID,
     {
         //Stable softplus, see e.g. https://stackoverflow.com/a/51828104
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wabsolute-value"
         o = [](const T& x) { return T(std::max(x, T(0)) + std::log1p(std::exp(-std::abs(x)))); };
+#pragma GCC diagnostic pop
 #pragma GCC diagnostic pop
     }
     if(ARG.doubleSoftplus)
     {
         //Stable softplus, see e.g. https://stackoverflow.com/a/51828104
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wabsolute-value"
         o = [](const T& x) {
             T softplus = T(std::max(x, T(0)) + std::log1p(std::exp(-std::abs(x))));
             return T(std::max(softplus, T(0)) + std::log1p(std::exp(-std::abs(softplus))));
         };
+#pragma GCC diagnostic pop
 #pragma GCC diagnostic pop
     }
     if(o != nullptr)

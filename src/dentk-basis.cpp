@@ -51,13 +51,13 @@ void shiftBasis(std::string inputFile, std::string outputFile, int shift)
     for(uint32_t i = 0; i != baseSize; i++)
     {
         f = denSliceReader->readFrame(i);
-        for(int j = 0; j != granularity; j++)
+        for(uint32_t j = 0; j != granularity; j++)
         {
             int index = j + shift;
             if(index < 0)
             {
                 index = 0;
-            } else if(index >= granularity)
+            } else if(static_cast<uint32_t>(index) >= granularity)
             {
                 index = granularity - 1;
             }
@@ -86,7 +86,7 @@ void resampleFunctions(std::string inputFile, std::string outputFile, uint16_t r
     double* newValues = new double[resampledGranularity];
     MKL_INT bc_type = DF_BC_1ST_LEFT_DER | DF_BC_1ST_RIGHT_DER;
     double bc[2] = { 0.0, 0.0 };
-    for(int i = 0; i != baseSize; i++)
+    for(uint32_t i = 0; i != baseSize; i++)
     {
         f = denSliceReader->readFrame(i);
         for(int j = 0; j != granularity; j++)
