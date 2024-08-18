@@ -93,6 +93,8 @@ int Args::postParse()
     {
         outputFileExists = true;
     }
+    threads = 0; //No multithreading to fix curent issues
+        //TODO: Fix multithreading
     dimx = input_inf.dimx();
     dimy = input_inf.dimy();
     frameCount = input_inf.getFrameCount();
