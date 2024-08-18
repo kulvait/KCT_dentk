@@ -12,6 +12,7 @@
 #include <cufft.h> //Nvidia CUDA FFT
 //#include <cufftw.h> //Plan dependent on particular data, not convenient when I would like it to be
 // performed on multiple frames
+#include "padding.cuh"
 #include "spectralMethod.cuh"
 #include <iostream>
 #include <regex>
@@ -77,7 +78,8 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_x", output_x, "Component x in the equation \\Delta x = f.")
         ->required();
-    cliApp->add_option("--epsilon", epsilon, "Solve  \\Delta x  - \\epsilon x = f, plays a role of regularizer.");
+    cliApp->add_option("--epsilon", epsilon,
+                       "Solve  \\Delta x  - \\epsilon x = f, plays a role of regularizer.");
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
     CLI::Option_group* op_clg
         = cliApp->add_option_group("Boundary conditions", "Boundary conditions to use.");
@@ -263,7 +265,8 @@ void processFramePeriodic(int _FTPLID,
             LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out,
+                                outputWritter->getFrameCount());
         }
     }
 }
@@ -299,37 +302,34 @@ void processFrameNonperiodic(int _FTPLID,
     EXECUDA(cudaMalloc((void**)&GPU_extendedf, ARG.frameSize * 4 * sizeof(T)));
     if(ARG.dirichletBCs)
     {
-        dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
-                    (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
-        CUDADirichletExtension(threads, blocks, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy);
-        EXECUDA(cudaPeekAtLastError());
-        EXECUDA(cudaDeviceSynchronize());
+        //Antisymmetric padding
+        CUDAAsymmPadDirichlet2D<T>(threads, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy,
+                                   2 * ARG.dimx - 2, 2 * ARG.dimy - 2);
     } else if(ARG.neumannBCs)
     {
-        dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
-                    (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
-        CUDANeumannExtension(threads, blocks, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy);
-        EXECUDA(cudaPeekAtLastError());
-        EXECUDA(cudaDeviceSynchronize());
+        CUDASymmPad2D<T>(threads, GPU_f, GPU_extendedf, ARG.dimx, ARG.dimy, 2 * ARG.dimx - 2,
+                         2 * ARG.dimy - 2);
     }
-    int xSizeHermitan = 2 * ARG.dimx / 2 + 1;
-    uint64_t complexBufferSize = 2 * ARG.dimy * xSizeHermitan;
+    int xSizeHermitan = (2 * ARG.dimx - 2) / 2 + 1;
+    uint64_t complexBufferSize = (2 * ARG.dimy - 2) * xSizeHermitan;
     EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
 
     if(dataType == io::DenSupportedType::FLOAT32)
     {
         EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_extendedf, (cufftComplex*)GPU_FTf));
         // Now divide by (k_x^2+k_y^2)
-        int xSizeHermitan = 2 * ARG.dimx / 2 + 1;
+        /*
         dim3 blocks((2 * ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
                     (xSizeHermitan + THREADSIZE2 - 1) / THREADSIZE2);
-        CUDAspectralDivision(threads, blocks, GPU_FTf, 2 * ARG.dimx, 2 * ARG.dimy, ARG.pixelSizeX,
-                             ARG.pixelSizeY, ARG.epsilon);
+        CUDAspectralDivision(threads, blocks, GPU_FTf, 2 * ARG.dimx - 2, 2 * ARG.dimy - 2,
+                             ARG.pixelSizeX, ARG.pixelSizeY, ARG.epsilon);
+	*/
+        CUDAspectralDivisionHermitian<float>(threads, GPU_FTf, 2 * ARG.dimx - 2, 2 * ARG.dimy - 2,
+                                             ARG.pixelSizeX, ARG.pixelSizeY, ARG.epsilon);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
 
         EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_extendedf));
-
     } else if(dataType == io::DenSupportedType::FLOAT64)
     {
         KCTERR("Implemented just for FLOAT32!");
@@ -337,11 +337,14 @@ void processFrameNonperiodic(int _FTPLID,
         // Now divide by (k_x^2+k_y^2)
         EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf, (cufftDoubleReal*)GPU_f));
     }
-    dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
-                (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
-    CUDAFunctionRestriction(threads, blocks, GPU_extendedf, GPU_f, ARG.dimx, ARG.dimy);
+    CUDARemovePadding<T>(threads, GPU_extendedf, GPU_f, ARG.dimx, ARG.dimy, 2 * ARG.dimx - 2);
     EXECUDA(cudaPeekAtLastError());
     EXECUDA(cudaDeviceSynchronize());
+    float factor = 1.0f / ((2 * ARG.dimx - 2) * (2 * ARG.dimy - 2));
+    dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
+    CUDAconstantMultiplication(threads, blocks, GPU_f, factor, ARG.dimx, ARG.dimy, ARG.dimx,
+                               ARG.dimy);
     EXECUDA(cudaMemcpy((void*)x_array, (void*)(GPU_f), ARG.frameSize * sizeof(T),
                        cudaMemcpyDeviceToHost));
     EXECUDA(cudaFree(GPU_f));
@@ -355,7 +358,8 @@ void processFrameNonperiodic(int _FTPLID,
             LOGD << io::xprintf("Processed frame %d/%d.", k_in, outputWritter->getFrameCount());
         } else
         {
-            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out, outputWritter->getFrameCount());
+            LOGD << io::xprintf("Processed frame %d->%d/%d.", k_in, k_out,
+                                outputWritter->getFrameCount());
         }
     }
 }
@@ -412,8 +416,8 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         EXECUFFT(cufftPlan2d(&IFT, ARG.dimy, ARG.dimx, CUFFT_C2R));
     } else
     {
-        EXECUFFT(cufftPlan2d(&FFT, 2 * ARG.dimy, 2 * ARG.dimx, CUFFT_R2C));
-        EXECUFFT(cufftPlan2d(&IFT, 2 * ARG.dimy, 2 * ARG.dimx, CUFFT_C2R));
+        EXECUFFT(cufftPlan2d(&FFT, 2 * ARG.dimy - 2, 2 * ARG.dimx - 2, CUFFT_R2C));
+        EXECUFFT(cufftPlan2d(&IFT, 2 * ARG.dimy - 2, 2 * ARG.dimx - 2, CUFFT_C2R));
     }
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
@@ -421,7 +425,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         if(ARG.outputFileExists)
         {
             k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
-                          // BETA.den BETA.den
+                // BETA.den BETA.den
         } else
         {
             k_out = IND;

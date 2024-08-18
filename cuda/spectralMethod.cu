@@ -95,7 +95,7 @@ __global__ void regularizedSpectralDivision(float2* __restrict__ x,
         {
             ky = PY - SIZEY;
         }
-        K *= -((kx2scale * kx * kx + ky2scale * ky * ky)) - epsilon;
+        K *= -(kx2scale * kx * kx + ky2scale * ky * ky + epsilon);
         x[IDX].x /= K;
         x[IDX].y /= K;
     }
@@ -124,6 +124,76 @@ void CUDAspectralDivision(dim3 threads,
         }
         regularizedSpectralDivision<<<blocks, threads>>>((float2*)x, epsilon, SIZEX, SIZEY,
                                                          pixel_size_x, pixel_size_y);
+    }
+}
+
+template <typename T>
+__global__ void RegularizedSpectralDivisionHermitian(T* __restrict__ xFourier,
+                                                     const T epsilon,
+                                                     const int SIZEX,
+                                                     const int SIZEY,
+                                                     const T pixelSizeX,
+                                                     const T pixelSizeY)
+{
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x; // y-dimension (frequency domain)
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y; // x-dimension (frequency domain)
+    const int xSizeHermitian = SIZEX / 2 + 1;
+    const int IDX = xSizeHermitian * PY + PX;
+
+    if((PX >= xSizeHermitian) || (PY >= SIZEY))
+        return;
+
+    if(PX == 0 && PY == 0)
+    {
+        xFourier[0 * 2] /= -epsilon; // Real part
+        xFourier[0 * 2 + 1] /= -epsilon; // Imaginary part
+    } else
+    {
+        double K = FOURPISQUARED;
+
+        // Scaling factors for wave numbers
+        // double kx2scale = ((double)SIZEX) / (((double)SIZEY) * pixelSizeX * pixelSizeX);
+        // double ky2scale = ((double)SIZEY) / (((double)SIZEX) * pixelSizeY * pixelSizeY);
+
+        // Wave numbers
+        double kx = PX;
+        double ky = (PY <= SIZEY / 2) ? PY : PY - SIZEY;
+        kx /= (pixelSizeX * SIZEX);
+        ky /= (pixelSizeY * SIZEY);
+
+        K *= -(kx * kx + ky * ky + epsilon);
+        xFourier[IDX * 2] /= K; // Real part
+        xFourier[IDX * 2 + 1] /= K; // Imaginary part
+    }
+}
+
+template <typename T>
+void CUDAspectralDivisionHermitian(dim3 threads,
+                                   void* GPU_xFourier,
+                                   const int SIZEX,
+                                   const int SIZEY,
+                                   const T pixelSizeX,
+                                   const T pixelSizeY,
+                                   const T epsilon)
+{
+    // Compute the dimensions of the Hermitian symmetric array
+    int xSizeHermitian = SIZEX / 2 + 1;
+
+    // Calculate the number of blocks needed
+    dim3 blocks((SIZEY + threads.x - 1) / threads.x, (xSizeHermitian + threads.y - 1) / threads.y);
+
+    // Launch the kernel
+    RegularizedSpectralDivisionHermitian<T>
+        <<<blocks, threads>>>((T*)GPU_xFourier, epsilon, SIZEX, SIZEY, pixelSizeX, pixelSizeY);
+
+    // Check for kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        fprintf(stderr,
+                "Failed to launch RegularizedSpectralDivisionHermitian kernel (error code %s)!\n",
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -361,3 +431,21 @@ void CUDAFunctionRestriction(
            threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
     functionRestriction<<<blocks, threads>>>((float*)GPU_extendedf, (float*)GPU_f, SIZEX, SIZEY);
 }
+
+// Explicit instantiation for float
+template void CUDAspectralDivisionHermitian<float>(dim3 threads,
+                                                   void* GPU_xFourier,
+                                                   const int SIZEX,
+                                                   const int SIZEY,
+                                                   const float pixelSizeX,
+                                                   const float pixelSizeY,
+                                                   const float epsilon);
+
+// Explicit instantiation for double
+template void CUDAspectralDivisionHermitian<double>(dim3 threads,
+                                                    void* GPU_xFourier,
+                                                    const int SIZEX,
+                                                    const int SIZEY,
+                                                    const double pixelSizeX,
+                                                    const double pixelSizeY,
+                                                    const double epsilon);

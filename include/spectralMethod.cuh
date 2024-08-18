@@ -77,3 +77,20 @@ __global__ void functionRestriction(float* __restrict__ fx,
 
 void CUDAFunctionRestriction(
     dim3 threads, dim3 blocks, void* GPU_extendedf, void* GPU_f, const int SIZEX, const int SIZEY);
+
+template <typename T>
+__global__ void RegularizedSpectralDivisionHermitian(T* __restrict__ xFourier, 
+                                                     const T epsilon, 
+                                                     const int SIZEX, 
+                                                     const int SIZEY, 
+                                                     const T pixelSizeX, 
+                                                     const T pixelSizeY);
+
+template <typename T>
+void CUDAspectralDivisionHermitian(dim3 threads, 
+                                   void* GPU_xFourier, 
+                                   const int SIZEX, 
+                                   const int SIZEY, 
+                                   const T pixelSizeX, 
+                                   const T pixelSizeY, 
+                                   const T epsilon);

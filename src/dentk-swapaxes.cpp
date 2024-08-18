@@ -74,13 +74,18 @@ void swapAxes(Args& ARG,
               uint32_t dimz)
 {
     uint64_t frameSizeAfter = static_cast<uint64_t>(dimx) * static_cast<uint64_t>(dimz);
-    uint64_t num_threads = std::max(ARG.threads, 1u);
+    uint64_t num_threads = std::min(static_cast<uint64_t>(ARG.threads), static_cast<uint64_t>(dimz));
+    num_threads = std::max(num_threads, 1lu);
     uint64_t frames_per_thread = (dimz + num_threads - 1) / num_threads; // ceil
     std::vector<std::thread> threads;
     for(uint64_t t = 0; t < num_threads; t++)
     {
         uint64_t start_frame = t * frames_per_thread;
         uint64_t end_frame = std::min((t + 1) * frames_per_thread, static_cast<uint64_t>(dimz));
+        if(start_frame >= end_frame)
+        {
+            break;
+        }
         threads.emplace_back(
             [&inputReader, &outputBuffer, &dimx, &dimy, &frameSizeAfter, start_frame, end_frame]() {
                 std::shared_ptr<io::BufferedFrame2D<T>> f;
@@ -110,13 +115,18 @@ void writeFramesParallel(Args& ARG, T* outputBuffer, uint32_t dimx, uint32_t dim
     std::string outputFile = ARG.output_file;
     uint64_t frameSize = static_cast<uint64_t>(dimx) * static_cast<uint64_t>(dimy);
     uint64_t frameByteSize = frameSize * sizeof(T);
-    uint64_t num_threads = std::max(ARG.threads, 1u);
+    uint64_t num_threads = std::min(static_cast<uint64_t>(ARG.threads), static_cast<uint64_t>(dimz));
+    num_threads = std::max(num_threads, 1lu);
     uint64_t frames_per_thread = (dimz + num_threads - 1) / num_threads; // ceil
     std::vector<std::thread> threads;
     for(uint64_t t = 0; t < num_threads; t++)
     {
         uint64_t start_frame = t * frames_per_thread;
         uint64_t end_frame = std::min((t + 1) * frames_per_thread, static_cast<uint64_t>(dimz));
+        if(start_frame >= end_frame)
+        {
+            break;
+        }
         uint64_t bufferSize
             = std::min(static_cast<uint64_t>(10u), end_frame - start_frame) * frameByteSize;
         threads.emplace_back([&outputFile, &outputBuffer, frameSize, start_frame, end_frame,
