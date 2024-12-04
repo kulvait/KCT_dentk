@@ -331,7 +331,7 @@ public:
 
         for(uint32_t workerID = 0; workerID < numWorkers; workerID++)
         {
-            std::thread worker([this, workerID]() {
+            workers.emplace_back([this, workerID]() {
                 while(true)
                 {
                     std::function<void(uint32_t)> task;

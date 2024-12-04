@@ -83,7 +83,25 @@ else()
     set(CUDA_ARCHITECTURES_LIST "50;52;60;61;70;75;80;86")
 endif()
 
-set(CMAKE_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
+
+# By default, the install prefix is set to ${DEFAULT_INSTALL_PREFIX}.
+# If you wish to use a custom installation location, configure CMake with:
+#     cmake -DCMAKE_INSTALL_PREFIX=/your/custom/path ..
+# Note: This custom value must be provided **every time** you run CMake, as
+# the value of CMAKE_INSTALL_PREFIX is not cached or stored between runs.
+# Define the default installation prefix
+set(DEFAULT_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
+# Set CMAKE_INSTALL_PREFIX to the default if not explicitly defined by the user
+if(NOT DEFINED CMAKE_INSTALL_PREFIX)
+    set(CMAKE_INSTALL_PREFIX ${DEFAULT_INSTALL_PREFIX})
+else()
+    # If CMAKE_INSTALL_PREFIX is explicitly set, check if it deviates from the default
+    if(NOT CMAKE_INSTALL_PREFIX STREQUAL ${DEFAULT_INSTALL_PREFIX})
+        message(STATUS "Non-default install prefix set ${CMAKE_INSTALL_PREFIX}")
+    endif()
+endif()
+
+
 set(CMAKE_CXX_STANDARD 17) # Supported values are 98, 11, 17, 20, 23
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Default CMAKE_CXX_FLAGS are empty, default for CMAKE_CXX_FLAGS_DEBUG is -g and
