@@ -30,7 +30,7 @@
 #include "PROG/ArgumentsCTDetector.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
-#include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsThreadingCUDA.hpp"
 #include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/parseArgs.h"
@@ -43,7 +43,7 @@ using namespace KCT::util;
 class Args : public ArgumentsForce,
              public ArgumentsVerbose,
              public ArgumentsFramespec,
-             public ArgumentsThreading,
+             public ArgumentsThreadingCUDA,
              public ArgumentsCTDetector
 {
     void defineArguments();
@@ -56,7 +56,7 @@ public:
         , ArgumentsForce(argc, argv, prgName)
         , ArgumentsVerbose(argc, argv, prgName)
         , ArgumentsFramespec(argc, argv, prgName)
-        , ArgumentsThreading(argc, argv, prgName)
+        , ArgumentsThreadingCUDA(argc, argv, prgName)
         , ArgumentsCTDetector(argc, argv, prgName){};
     std::string input_intensity = "";
     std::string input_phase = "";

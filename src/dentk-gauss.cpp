@@ -31,7 +31,7 @@
 #include "PROG/ArgumentsCTDetector.hpp"
 #include "PROG/ArgumentsForce.hpp"
 #include "PROG/ArgumentsFramespec.hpp"
-#include "PROG/ArgumentsThreading.hpp"
+#include "PROG/ArgumentsThreadingCUDA.hpp"
 #include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
 #include "PROG/ThreadPool.hpp"
@@ -65,7 +65,7 @@ enum PaddingMode { NOPAD, ZEROPAD, SYMPAD };
 class Args : public ArgumentsForce,
              public ArgumentsVerbose,
              public ArgumentsFramespec,
-             public ArgumentsThreading
+             public ArgumentsThreadingCUDA
 {
     void defineArguments();
     int postParse();
@@ -77,7 +77,7 @@ public:
         , ArgumentsForce(argc, argv, prgName)
         , ArgumentsVerbose(argc, argv, prgName)
         , ArgumentsFramespec(argc, argv, prgName)
-        , ArgumentsThreading(argc, argv, prgName){};
+        , ArgumentsThreadingCUDA(argc, argv, prgName){};
     std::string input_den = "";
     std::string output_den = "";
     double sigma_x = 0.0;
