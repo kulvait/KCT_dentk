@@ -83,9 +83,9 @@ void Args::defineArguments()
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
     CLI::Option_group* op_clg
         = cliApp->add_option_group("Boundary conditions", "Boundary conditions to use.");
-    op_clg->add_flag("--bc-neumann", neumannBCs, "Neumann boundary conditions.");
-    op_clg->add_flag("--bc-dirichlet", dirichletBCs, "Dirichlet boundary conditions.");
-    op_clg->add_flag("--bc-periodic", periodicBCs, "Periodic boundary conditions.");
+    op_clg->add_flag("--bc-dirichlet", dirichletBCs, "Dirichlet boundary conditions, with antisymmetric padding leaving cosine components in trigonometric polynomial basis.");
+    op_clg->add_flag("--bc-neumann", neumannBCs, "Neumann boundary conditions, with symmetric padding leaving sine components in trigonometric polynomial basis. This is often used in phase retrieval and often called symmetric padding.");
+    op_clg->add_flag("--bc-periodic", periodicBCs, "Periodic boundary conditions, no padding, full Fourier basis.");
     op_clg->require_option(1);
     addForceArgs();
     // Natural derivatives
