@@ -92,7 +92,7 @@ endif()
 # Define the default installation prefix
 set(DEFAULT_INSTALL_PREFIX $ENV{HOME}/KCT_bin)
 # Set CMAKE_INSTALL_PREFIX to the default if not explicitly defined by the user
-if(NOT DEFINED CMAKE_INSTALL_PREFIX)
+if(NOT DEFINED CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX ${DEFAULT_INSTALL_PREFIX})
 else()
     # If CMAKE_INSTALL_PREFIX is explicitly set, check if it deviates from the default
@@ -101,6 +101,7 @@ else()
     endif()
 endif()
 
+message(STATUS "Install prefix ${CMAKE_INSTALL_PREFIX}")
 
 set(CMAKE_CXX_STANDARD 17) # Supported values are 98, 11, 17, 20, 23
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")

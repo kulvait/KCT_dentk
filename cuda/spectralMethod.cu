@@ -145,8 +145,21 @@ __global__ void RegularizedSpectralDivisionHermitian(T* __restrict__ xFourier,
 
     if(PX == 0 && PY == 0)
     {
-        xFourier[0 * 2] /= -epsilon; // Real part
-        xFourier[0 * 2 + 1] /= -epsilon; // Imaginary part
+        const double K0 = -FOURPISQUARED * static_cast<double>(epsilon);
+        // Guard if epsilon==0 (pure Poisson): set to zero or keep as-is per your policy
+        if(epsilon != static_cast<T>(0))
+        {
+            xFourier[0 * 2] /= K0; // Real
+            xFourier[0 * 2 + 1] /= K0; // Imag
+        } else
+        {
+            // Pure Poisson case: DC is undefined. Common choices:
+            // 1) Force to zero to select zero-mean solution:
+            xFourier[0 * 2] = static_cast<T>(0);
+            xFourier[0 * 2 + 1] = static_cast<T>(0);
+            // or 2) leave unchanged and handle outside; but that risks NaN if you divide by 0.
+        }
+
     } else
     {
         double K = FOURPISQUARED;
