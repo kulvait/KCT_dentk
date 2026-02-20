@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.19)
 project(dentk LANGUAGES CXX)
 
+#Source modules as FindMKL.cmake from CTIOL submodule
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/submodules/CTIOL/cmake")
+
 # Define the desired CUDA versions and their corresponding GCC versions
 set(CUDA_VERSION "12.1") # Change to "11.8" for CUDA 11.x
 set(GCC_REQUIRED "12.2") # Set to "11.x" if using CUDA 11.x

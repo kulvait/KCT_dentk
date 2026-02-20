@@ -51,8 +51,10 @@ The DENTK project relies on several external libraries and tools. Below is a com
      ```
 4. **Intel MKL (Math Kernel Library)**
    - MKL is used for high-performance mathematical computations, it is a dependecy of the CTMAL submodule so that almost all tools are linked against it.
+   - FindMKL.cmake is now sourced from CTIOL submodule to manage it in single place. Curent tested version is 2025.3
    - Installation:
-     Follow the instructions on the [Intel MKL](https://software.intel.com/content/www/us/en/develop/tools/math-kernel-library.html) download page.
+     Follow the instructions on the [Intel MKL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html) download page.
+     For nonstandard instalation paths, you may need to set the `MKL_ROOT` environment variable or modify FindMKL.cmake in CTIOL submodule.
 
 5. **Python (>= 3.x)**
    - Python is required for `dentk-basis` and `dentk-orthogonalize`. It is due to the submodule `matplotlib-cpp`.
@@ -127,6 +129,11 @@ cd build
 cmake ..
 make
 ```
+To install the built tools to a custom directory, you can specify the installation prefix during the CMake configuration step e.g by doing this
+```
+cmake -DCMAKE_INSTALL_PREFIX=/your/custom/bin ..
+```
+tools will be installed to `/your/custom/bin`. You can also run `make install` to install the tools after building. Note that this setting is not cached and needs to be specified every time you run CMake.
 
 # Tools Overview
 KCT DENTK includes a variety of tools. Below is a brief overview of the tools and their functionalities. For more detailed information on each tool, refer to the respective tool's help message and the source code.
