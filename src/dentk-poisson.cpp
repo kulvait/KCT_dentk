@@ -83,8 +83,8 @@ void Args::defineArguments()
     // Adding radio group see https://github.com/CLIUtils/CLI11/pull/234
     CLI::Option_group* op_clg
         = cliApp->add_option_group("Boundary conditions", "Boundary conditions to use.");
-    op_clg->add_flag("--bc-dirichlet", dirichletBCs, "Dirichlet boundary conditions, with antisymmetric padding leaving cosine components in trigonometric polynomial basis.");
-    op_clg->add_flag("--bc-neumann", neumannBCs, "Neumann boundary conditions, with symmetric padding leaving sine components in trigonometric polynomial basis. This is often used in phase retrieval and often called symmetric padding.");
+    op_clg->add_flag("--bc-dirichlet", dirichletBCs, "Dirichlet boundary conditions, with antisymmetric padding leaving sine components in trigonometric polynomial basis.");
+    op_clg->add_flag("--bc-neumann", neumannBCs, "Neumann boundary conditions, with symmetric padding leaving cosine components in trigonometric polynomial basis. This is often used in phase retrieval and often called symmetric padding.");
     op_clg->add_flag("--bc-periodic", periodicBCs, "Periodic boundary conditions, no padding, full Fourier basis.");
     op_clg->require_option(1);
     addForceArgs();
@@ -236,10 +236,12 @@ void processFramePeriodic(int _FTPLID,
                             cufftComplex *GPU_FTf;*/
         EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
         // Now divide by (k_x^2+k_y^2)
-        CUDAspectralDivision(threads, blocks, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
-                             ARG.pixelSizeY, ARG.epsilon);
+//        CUDAspectralDivision(threads, blocks, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
+//                             ARG.pixelSizeY, ARG.epsilon);
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
+        CUDAspectralDivisionHermitian<float>(threads, GPU_FTf, ARG.dimx, ARG.dimy,
+                                             ARG.pixelSizeX, ARG.pixelSizeY, ARG.epsilon);
 
         EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f));
 
@@ -253,6 +255,11 @@ void processFramePeriodic(int _FTPLID,
         // Now divide by (k_x^2+k_y^2)
         EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf, (cufftDoubleReal*)GPU_f));
     }
+    float factor = 1.0f / (ARG.dimx * ARG.dimy);
+    dim3 blocks_fullframe((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
+                (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
+    CUDAconstantMultiplication(threads, blocks_fullframe, GPU_f, factor, ARG.dimx, ARG.dimy, ARG.dimx,
+                               ARG.dimy);
     EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
                        cudaMemcpyDeviceToHost));
     EXECUDA(cudaFree(GPU_f));
