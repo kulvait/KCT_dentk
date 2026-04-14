@@ -107,10 +107,10 @@ void processFrame(int _FTPLID,
                   Args ARG,
                   uint64_t k_in,
                   uint64_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& fr,
+                  std::shared_ptr<io::Frame2DReaderI<T>>& fr,
                   std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& fw)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> A = fr->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> A = fr->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> X(T(0), ARG.dimx, ARG.dimy);
     T val;
     uint32_t i_out, j_out;
@@ -149,7 +149,7 @@ void run(Args ARG)
     {
         dim.push_back(di.dim(i));
     }
-    std::shared_ptr<io::DenFrame2DReader<T>> fr
+    std::shared_ptr<io::Frame2DReaderI<T>> fr
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_file);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> fw;
     bool consistentIndexing;

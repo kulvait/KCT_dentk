@@ -749,14 +749,10 @@ void readFileToMemory(Args ARG, std::shared_ptr<io::DenFrame2DReader<T>>& inputR
             = std::min(start_frame + frames_per_thread, static_cast<uint64_t>(frameCount));
         threads.push_back(std::thread([&ARG, &inputReader, &inputData, start_frame, end_frame]() {
             uint64_t k_in;
-            std::shared_ptr<io::BufferedFrame2D<T>> f;
-            T* f_array;
             for(uint64_t IND = start_frame; IND < end_frame; IND++)
             {
                 k_in = ARG.frames[IND];
-                f = inputReader->readBufferedFrame(k_in);
-                f_array = f->getDataPointer();
-                std::copy(f_array, f_array + ARG.frameSize, inputData + IND * ARG.frameSize);
+                inputReader->readFrameIntoBuffer(k_in, inputData + IND * ARG.frameSize);
             }
         }));
     }

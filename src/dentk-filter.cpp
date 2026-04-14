@@ -16,6 +16,7 @@
 
 //KCT specific
 #include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -197,10 +198,10 @@ void processFrameNopad(int _FTPLID,
                        std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
                        std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> F = fReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> F = fReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
-    T* F_array = F->getDataPointer();
-    T* x_array = x.getDataPointer();
+    T* F_array = F->data();
+    T* x_array = x.data();
     //std::copy(F_array, F_array + ARG.frameSize, x_array);
     //outputWritter->writeBufferedFrame(x, k_out);
     //return;
@@ -302,10 +303,10 @@ void processFramePad(int _FTPLID,
                      std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
                      std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> F = fReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> F = fReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
-    T* F_array = F->getDataPointer();
-    T* x_array = x.getDataPointer();
+    T* F_array = F->data();
+    T* x_array = x.data();
     uint32_t frameSizePad = NX * ARG.dimy;
     uint32_t THREADSIZE1 = 32;
     uint32_t THREADSIZE2 = 32;
@@ -338,7 +339,7 @@ void processFramePad(int _FTPLID,
             /*
             std::string fileName = io::xprintf("/tmp/padded_%03d.den", k_out);
             io::BufferedFrame2D<T> p(T(0), NX, ARG.dimy);
-            T* p_array = p.getDataPointer();
+            T* p_array = p.data();
             io::DenAsyncFrame2DBufferedWritter<T> padWriter(fileName, NX, ARG.dimy, 1);
 
             EXECUDA(cudaMemcpy((void*)p_array, (void*)GPU_f_padded, frameSizePad * sizeof(T),

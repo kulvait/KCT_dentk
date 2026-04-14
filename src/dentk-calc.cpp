@@ -162,16 +162,16 @@ void processFrame(int _FTPLID,
                   Args ARG,
                   uint32_t k_in,
                   uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& aReader,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& bReader,
+                  std::shared_ptr<io::Frame2DReaderI<T>>& aReader,
+                  std::shared_ptr<io::Frame2DReaderI<T>>& bReader,
                   std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(k_in);
-    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> A = aReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> B = bReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
-    T* A_array = A->getDataPointer();
-    T* B_array = B->getDataPointer();
-    T* x_array = x.getDataPointer();
+    T* A_array = A->data();
+    T* B_array = B->data();
+    T* x_array = x.data();
     Operator<T> op = nullptr;
 
     if(ARG.multiply)
@@ -218,9 +218,9 @@ void processFiles(Args ARG)
     {
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
-    std::shared_ptr<io::DenFrame2DReader<T>> aReader
+    std::shared_ptr<io::Frame2DReaderI<T>> aReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op1, ARG.threads);
-    std::shared_ptr<io::DenFrame2DReader<T>> bReader
+    std::shared_ptr<io::Frame2DReaderI<T>> bReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op2, ARG.threads);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter;
     if(ARG.outputFileExists)

@@ -101,7 +101,10 @@ template <typename T>
 using FRAME = io::BufferedFrame2D<T>;
 
 template <typename T>
-using FRAMEPTR = std::shared_ptr<FRAME<T>>;
+using FRAMEI = io::BufferedFrame2DI<T>;
+
+template <typename T>
+using FRAMEPTR = std::shared_ptr<FRAMEI<T>>;
 
 template <typename T>
 using TP = io::ThreadPool<WRITER<T>>;
@@ -167,13 +170,13 @@ FRAMEPTR<T> aggregateFramesPartial(Args ARG, uint64_t start, uint64_t end, Op op
 
     // Read the first frame
     FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
-    T* F_array = F->getDataPointer();
+    T* F_array = F->data();
 
     // Apply the operation for each subsequent frame in the range
     for(uint64_t k = start + 1; k < end; ++k)
     {
         FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[k]);
-        T* A_array = A->getDataPointer();
+        T* A_array = A->data();
         std::transform(F_array, F_array + frameSize, A_array, F_array, operation);
     }
 
@@ -213,11 +216,11 @@ FRAMEPTR<T> aggregateFrames(Args ARG, Op operation, AggOp combineOp)
 
         // Aggregate results from each thread
         FRAMEPTR<T> F = futures[0].get();
-        T* result = F->getDataPointer();
+        T* result = F->data();
         for(uint32_t i = 1; i < futures.size(); ++i)
         {
             FRAMEPTR<T> A = futures[i].get();
-            T* A_array = A->getDataPointer();
+            T* A_array = A->data();
             std::transform(result, result + frameSize, A_array, result, combineOp);
         }
 
@@ -243,9 +246,9 @@ void partialRunningAverage(
     int64_t halfTailSize = ARG.halfTailSize;
 
     FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
-    T* F_array = F->getDataPointer(); //For running sum
+    T* F_array = F->data(); //For running sum
     FRAMEPTR<T> AVG = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
-    T* AVG_array = AVG->getDataPointer(); // average computation
+    T* AVG_array = AVG->data(); // average computation
     uint64_t count = 0;
     // Initialize the running sum and count for the first window for index start-1
     for(int64_t i = start - 1 - halfTailSize; i < start + halfTailSize; ++i)
@@ -253,13 +256,13 @@ void partialRunningAverage(
         if(i >= 0 && i < frameCount)
         {
             FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[i]);
-            T* A_array = A->getDataPointer();
+            T* A_array = A->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
         } else if(mode == WRAP)
         {
             FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[(i + frameCount) % frameCount]);
-            T* A_array = A->getDataPointer();
+            T* A_array = A->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
         }
@@ -274,28 +277,28 @@ void partialRunningAverage(
         if(outIndex >= 0)
         {
             FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[outIndex]);
-            T* A_array = A->getDataPointer();
+            T* A_array = A->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::minus<T>());
             --count;
         } else if(mode == WRAP)
         {
             T* A_array
                 = denReader->readBufferedFrame(ARG.frames[(outIndex + frameCount) % frameCount])
-                      ->getDataPointer();
+                      ->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::minus<T>());
             --count;
         }
 
         if(inIndex < frameCount)
         {
-            T* A_array = denReader->readBufferedFrame(ARG.frames[inIndex])->getDataPointer();
+            T* A_array = denReader->readBufferedFrame(ARG.frames[inIndex])->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
         } else if(mode == WRAP)
         {
             T* A_array
                 = denReader->readBufferedFrame(ARG.frames[(inIndex + frameCount) % frameCount])
-                      ->getDataPointer();
+                      ->data();
             std::transform(F_array, F_array + frameSize, A_array, F_array, std::plus<T>());
             ++count;
         }
@@ -391,7 +394,7 @@ FRAMEPTR<T> averageFrames(Args ARG)
     uint64_t frameSize = di.getFrameSize();
     uint64_t frameCount = ARG.frames.size();
     FRAMEPTR<T> F = sumFrames<T>(ARG);
-    T* sum = F->getDataPointer();
+    T* sum = F->data();
     std::transform(sum, sum + frameSize, sum, [frameCount](T x) { return x / frameCount; });
     return F;
 }
@@ -407,11 +410,11 @@ sumOfSquaredDifferecesOfFramesPartial(Args ARG, FRAMEPTR<T> avg, uint64_t start,
     io::DenFileInfo di(ARG.input_den);
     uint64_t frameSize = di.getFrameSize();
     READERPTR<T> denReader = std::make_shared<READER<T>>(ARG.input_den);
-    T* avg_array = avg->getDataPointer();
+    T* avg_array = avg->data();
 
     // Read the first frame
     FRAMEPTR<T> F = denReader->readBufferedFrame(ARG.frames[start]);
-    T* F_array = F->getDataPointer();
+    T* F_array = F->data();
     std::transform(F_array, F_array + frameSize, avg_array, F_array, [](T el, T avg) {
         T vel = el - avg;
         return vel * vel;
@@ -420,7 +423,7 @@ sumOfSquaredDifferecesOfFramesPartial(Args ARG, FRAMEPTR<T> avg, uint64_t start,
     for(uint64_t k = start + 1; k < end; ++k)
     {
         FRAMEPTR<T> A = denReader->readBufferedFrame(ARG.frames[k]);
-        T* A_array = A->getDataPointer();
+        T* A_array = A->data();
         std::transform(A_array, A_array + frameSize, avg_array, A_array, [](T el, T avg) {
             T vel = el - avg;
             return vel * vel;
@@ -463,11 +466,11 @@ FRAMEPTR<T> sumOfSquaredDifferecesOfFrames(Args ARG, FRAMEPTR<T> avg)
 
         // Aggregate results from each thread
         FRAMEPTR<T> F = futures[0].get();
-        T* result = F->getDataPointer();
+        T* result = F->data();
         for(uint32_t i = 1; i < futures.size(); ++i)
         {
             FRAMEPTR<T> A = futures[i].get();
-            T* A_array = A->getDataPointer();
+            T* A_array = A->data();
             std::transform(result, result + frameSize, A_array, result,
                            [](T a, T b) { return a + b; });
         }
@@ -485,7 +488,7 @@ FRAMEPTR<T> varianceOfFrames(Args ARG, bool sampleVariance = false)
     uint64_t frameSize = di.getFrameSize();
     FRAMEPTR<T> AVG = averageFrames<T>(ARG);
     FRAMEPTR<T> F = sumOfSquaredDifferecesOfFrames<T>(ARG, AVG);
-    T* sumSquaredDifferences = F->getDataPointer();
+    T* sumSquaredDifferences = F->data();
     uint32_t divideFactor = frameCount;
     if(sampleVariance)
     {
@@ -506,7 +509,7 @@ FRAMEPTR<T> framesStandardDeviation(Args ARG, bool sampleStandardDeviation = fal
     uint64_t frameSize = di.getFrameSize();
     FRAMEPTR<T> AVG = averageFrames<T>(ARG);
     FRAMEPTR<T> F = sumOfSquaredDifferecesOfFrames<T>(ARG, AVG);
-    T* sumSquaredDifferences = F->getDataPointer();
+    T* sumSquaredDifferences = F->data();
     uint32_t divideFactor = frameCount;
     if(sampleStandardDeviation)
     {
@@ -647,7 +650,7 @@ FRAMEPTR<T> medianFrames(Args ARG)
     uint64_t frameSize = di.getFrameSize();
     uint64_t frameCount = ARG.frames.size();
     FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
-    T* medianArray = F->getDataPointer();
+    T* medianArray = F->data();
     LOGI << "Reading data from file";
     std::shared_ptr<io::DenFile<T>> denFile
         = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);
@@ -735,8 +738,8 @@ FRAMEPTR<T> madFrames(Args ARG)
         = std::make_shared<WRITER<T>>(ARG.output_den, dimx, dimy, frameCount);
     FRAMEPTR<T> F = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
     FRAMEPTR<T> AVG = averageFrames<T>(ARG);
-    T* madArray = F->getDataPointer();
-    T* avgArray = AVG->getDataPointer();
+    T* madArray = F->data();
+    T* avgArray = AVG->data();
     LOGI << "Reading data from file";
     std::shared_ptr<io::DenFile<T>> denFile
         = std::make_shared<io::DenFile<T>>(ARG.input_den, ARG.threads);

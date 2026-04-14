@@ -16,7 +16,7 @@
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
-#include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DCachedReader.hpp"
 #include "DEN/DenSupportedType.hpp"
@@ -91,7 +91,7 @@ void processFrame2(int _FTPLID,
                    double shift,
                    std::vector<io::onepassData<T>>* frameDataVector)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> f = inputReader->readBufferedFrame(k);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f = inputReader->readBufferedFrame(k);
     (*frameDataVector)[k] = onepassBuffframeInfo(f, shift);
 }
 
@@ -130,7 +130,7 @@ void processFile(Args ARG, io::DenFileInfo di)
         = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input_file, ARG.threads);
     const int dummy_FTPLID = 0;
     // As a heuristic we compute shift as a mean of the first frame
-    std::shared_ptr<io::BufferedFrame2D<T>> f0 = fReader->readBufferedFrame(0);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f0 = fReader->readBufferedFrame(0);
     double shift = meanFrameValue(*f0);
     std::vector<io::onepassData<T>> frameDataVector;
     frameDataVector.resize(ARG.dimz);

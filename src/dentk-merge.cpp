@@ -11,10 +11,10 @@
 
 // External libraries
 #include "CLI/CLI.hpp" //Command line parser
-#include "ftpl.h" //Threadpool
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -80,7 +80,7 @@ void writeFrameTask(std::shared_ptr<typename TP<T>::ThreadInfo> dummyInfo,
                     uint64_t writerIndex)
 {
     WRITERPTR<T> writer = dummyInfo->worker;
-    std::shared_ptr<io::BufferedFrame2D<T>> f = inputReader->readBufferedFrame(readerIndex);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f = inputReader->readBufferedFrame(readerIndex);
     writer->writeBufferedFrame(*f, writerIndex);
 }
 

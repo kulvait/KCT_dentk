@@ -7,6 +7,7 @@
 #include <vector>
 
 // Internal libraries
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFrame2DReader.hpp"
 #include "PROG/Arguments.hpp"
@@ -88,12 +89,12 @@ void swapAxes(Args& ARG,
         }
         threads.emplace_back(
             [&inputReader, &outputBuffer, &dimx, &dimy, &frameSizeAfter, start_frame, end_frame]() {
-                std::shared_ptr<io::BufferedFrame2D<T>> f;
+                std::shared_ptr<io::BufferedFrame2DI<T>> f;
                 T* f_array;
                 for(uint32_t k = start_frame; k < end_frame; k++)
                 {
                     f = inputReader->readBufferedFrame(k);
-                    f_array = f->getDataPointer();
+                    f_array = f->data();
                     for(uint32_t j = 0; j < dimy; j++)
                     {
                         std::copy(f_array + j * dimx, f_array + (j + 1) * dimx,

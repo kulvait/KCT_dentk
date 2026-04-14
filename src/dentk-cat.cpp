@@ -71,7 +71,7 @@ void process(Args& ARG, io::DenFileInfo& di)
         threads.emplace_back([&inputReader, &ARG, bufferSize, outputFile, start_frame, end_frame]() {
             std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWriter
                 = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(outputFile, bufferSize);
-            std::shared_ptr<io::BufferedFrame2D<T>> f;
+            std::shared_ptr<io::BufferedFrame2DI<T>> f;
             for(uint32_t k = start_frame; k < end_frame; k++)
             {
                 uint32_t IND = ARG.frames[k];

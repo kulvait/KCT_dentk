@@ -7,6 +7,9 @@
 
 //#include "FittingExecutor.hpp"
 #include "AsyncFrame2DWritterI.hpp"
+#include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
+#include "AsyncFrame2DWritterI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -153,28 +156,25 @@ int Args::postParse()
 }
 
 template <typename T>
-T scalarProduct(std::shared_ptr<io::BufferedFrame2D<T>> v1,
-                std::shared_ptr<io::BufferedFrame2D<T>> v2)
+T scalarProduct(std::shared_ptr<io::BufferedFrame2DI<T>> v1,
+                std::shared_ptr<io::BufferedFrame2DI<T>> v2)
 {
     uint64_t elmcount = (uint64_t)v1->dimx() * (uint64_t)v1->dimy();
-    T* p1 = v1->getDataPointer();
-    T* p2 = v2->getDataPointer();
+    T* p1 = v1->data();
+    T* p2 = v2->data();
     double product = std::inner_product(p1, p1 + elmcount, p2, 0.0);
     return static_cast<T>(product);
 }
 
 template <typename T>
-void a_equals_a_plus_c_times_b(std::shared_ptr<io::BufferedFrame2D<T>> a,
-                               std::shared_ptr<io::BufferedFrame2D<T>> b,
+void a_equals_a_plus_c_times_b(std::shared_ptr<io::BufferedFrame2DI<T>> a,
+                               std::shared_ptr<io::BufferedFrame2DI<T>> b,
                                T c)
 {
-    uint64_t elmcount = (uint64_t)a->dimx() * (uint64_t)a->dimy();
-    T* fa = a->getDataPointer();
-    T* fb = b->getDataPointer();
-    for(uint64_t i = 0; i != elmcount; i++)
-    {
-        *(fa + i) += c * (*(fb + i));
-    }
+	uint64_t frameSize = a->getFrameSize();
+    T* fa = a->data();
+    T* fb = b->data();
+	std::transform(fa, fa + frameSize, fb, fa, [c](T a_i, T b_i) { return a_i + c * b_i; });
 }
 
 template <typename T>
@@ -188,14 +188,14 @@ void processFrame(
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& orthogonalComplementWritter,
     std::shared_ptr<io::AsyncFrame2DWritterI<T>>& infoWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> imgFrame = imgReader->readBufferedFrame(k);
-    std::shared_ptr<io::BufferedFrame2D<T>> orthogonalProjectionFrame
+    std::shared_ptr<io::BufferedFrame2DI<T>> imgFrame = imgReader->readBufferedFrame(k);
+    std::shared_ptr<io::BufferedFrame2DI<T>> orthogonalProjectionFrame
         = std::make_shared<io::BufferedFrame2D<T>>(T(0), ARG.dimx, ARG.dimy);
-    std::shared_ptr<io::BufferedFrame2D<T>> orthogonalComplementFrame
+    std::shared_ptr<io::BufferedFrame2DI<T>> orthogonalComplementFrame
         = std::make_shared<io::BufferedFrame2D<T>>(*imgFrame);
-    std::shared_ptr<io::BufferedFrame2D<T>> infoFrame
+    std::shared_ptr<io::BufferedFrame2DI<T>> infoFrame
         = std::make_shared<io::BufferedFrame2D<T>>(T(0), ARG.basis_dimz, 1);
-    std::shared_ptr<io::BufferedFrame2D<T>> v;
+    std::shared_ptr<io::BufferedFrame2DI<T>> v;
     for(uint64_t ind = 0; ind != ARG.frames.size(); ind++)
     {
         v = basisReader->readBufferedFrame(ARG.frames[ind]);

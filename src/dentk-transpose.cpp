@@ -18,6 +18,7 @@
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -97,8 +98,8 @@ void transposeFrameTask(std::shared_ptr<typename TP<T>::ThreadInfo> thread_info,
     uint64_t frameSize = inputReader->getFrameSize();
     uint32_t dimx = inputReader->dimx();
     uint32_t dimy = inputReader->dimy();
-    std::shared_ptr<io::BufferedFrame2D<T>> f = inputReader->readBufferedFrame(frameIndex);
-    T* input = f->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2DI<T>> f = inputReader->readBufferedFrame(frameIndex);
+    T* input = f->data();
     T* trasposed = new T[frameSize];
     transposeArray(input, trasposed, dimx, dimy);
     writer->writeBuffer(trasposed, frameIndex);

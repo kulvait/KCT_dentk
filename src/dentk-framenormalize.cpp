@@ -117,8 +117,8 @@ int Args::postParse()
 }
 
 template <typename T>
-std::shared_ptr<io::BufferedFrame2D<T>> quantileShiftedBuffframe(
-    std::shared_ptr<io::BufferedFrame2D<T>> f_in, uint32_t k, double zeroAtQuantile)
+std::shared_ptr<io::BufferedFrame2DI<T>> quantileShiftedBuffframe(
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_in, uint32_t k, double zeroAtQuantile)
 {
     if(std::isnan(zeroAtQuantile))
     {
@@ -136,10 +136,10 @@ std::shared_ptr<io::BufferedFrame2D<T>> quantileShiftedBuffframe(
     {
         KCTERR("Can not compute quantile on empty frame!");
     }
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
         *f_in); // Construct copy not to destroy original array
-    T* in_array = f_in->getDataPointer();
-    T* out_array = f_out->getDataPointer();
+    T* in_array = f_in->data();
+    T* out_array = f_out->data();
     std::sort(out_array, out_array + frameSize);
     uint64_t quantileIndex = (uint64_t)(zeroAtQuantile * frameSize - 1);
     T quantile = out_array[quantileIndex];
@@ -150,8 +150,8 @@ std::shared_ptr<io::BufferedFrame2D<T>> quantileShiftedBuffframe(
 }
 
 template <typename T>
-std::shared_ptr<io::BufferedFrame2D<T>>
-shiftedBuffframe(std::shared_ptr<io::BufferedFrame2D<T>> f_in, double shift)
+std::shared_ptr<io::BufferedFrame2DI<T>>
+shiftedBuffframe(std::shared_ptr<io::BufferedFrame2DI<T>> f_in, double shift)
 {
     if(std::isnan(shift))
     {
@@ -165,18 +165,18 @@ shiftedBuffframe(std::shared_ptr<io::BufferedFrame2D<T>> f_in, double shift)
     {
         KCTERR("Can not compute quantile on empty frame!");
     }
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
-        T(0), f_in->dimx(), f_in->dimy()); // Construct copy not to destroy original array
-    T* in_array = f_in->getDataPointer();
-    T* out_array = f_out->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
+       f_in->dimx(), f_in->dimy()); // Allocates 2D frame
+    T* in_array = f_in->data();
+    T* out_array = f_out->data();
     std::transform(in_array, in_array + frameSize, out_array,
                    [shift](const T& x) { return T(x + shift); });
     return f_out;
 }
 
 template <typename T>
-std::shared_ptr<io::BufferedFrame2D<T>>
-scaledBuffframe(std::shared_ptr<io::BufferedFrame2D<T>> f_in, double factor)
+std::shared_ptr<io::BufferedFrame2DI<T>>
+scaledBuffframe(std::shared_ptr<io::BufferedFrame2DI<T>> f_in, double factor)
 {
     if(std::isnan(factor))
     {
@@ -190,10 +190,10 @@ scaledBuffframe(std::shared_ptr<io::BufferedFrame2D<T>> f_in, double factor)
     {
         KCTERR("Can not compute quantile on empty frame!");
     }
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
-        T(0), f_in->dimx(), f_in->dimy()); // Construct copy not to destroy original array
-    T* in_array = f_in->getDataPointer();
-    T* out_array = f_out->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out = std::make_shared<io::BufferedFrame2D<T>>(
+       f_in->dimx(), f_in->dimy()); // Allocates 2D frame
+    T* in_array = f_in->data();
+    T* out_array = f_out->data();
     std::transform(in_array, in_array + frameSize, out_array,
                    [factor](const T& x) { return T(x * factor); });
     return f_out;
@@ -204,11 +204,11 @@ void quantileShiftFrame(int _FTPLID,
                         double zeroQuantile,
                         uint32_t k_in,
                         uint32_t k_out,
-                        std::shared_ptr<io::DenFrame2DCachedReader<T>>& inReader,
+                        std::shared_ptr<io::Frame2DReaderI<T>>& inReader,
                         std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> f_in = inReader->readBufferedFrame(k_in);
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_in = inReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out
         = quantileShiftedBuffframe(f_in, k_in, zeroQuantile);
     outputWritter->writeBufferedFrame(*f_out, k_out);
 }
@@ -218,11 +218,11 @@ void shiftFrame(int _FTPLID,
                 double currentMean,
                 uint32_t k_in,
                 uint32_t k_out,
-                std::shared_ptr<io::DenFrame2DCachedReader<T>>& inReader,
+                std::shared_ptr<io::Frame2DReaderI<T>>& inReader,
                 std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> f_in = inReader->readBufferedFrame(k_in);
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_in = inReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out
         = shiftedBuffframe(f_in, targetMean - currentMean);
     outputWritter->writeBufferedFrame(*f_out, k_out);
 }
@@ -233,18 +233,18 @@ void scaleFrame(int _FTPLID,
                 double currentMean,
                 uint32_t k_in,
                 uint32_t k_out,
-                std::shared_ptr<io::DenFrame2DCachedReader<T>>& inReader,
+                std::shared_ptr<io::Frame2DReaderI<T>>& inReader,
                 std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> f_in = inReader->readBufferedFrame(k_in);
-    std::shared_ptr<io::BufferedFrame2D<T>> f_out = scaledBuffframe(f_in, targetMean / currentMean);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_in = inReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f_out = scaledBuffframe(f_in, targetMean / currentMean);
     outputWritter->writeBufferedFrame(*f_out, k_out);
 }
 
 template <typename T>
 void sumFrame(int _FTPLID,
               uint32_t k,
-              std::shared_ptr<io::DenFrame2DCachedReader<T>>& inReader,
+              std::shared_ptr<io::Frame2DReaderI<T>>& inReader,
               std::vector<double>* sumVector)
 {
     (*sumVector)[k] = bufferedFrameSum(inReader->readBufferedFrame(k));
@@ -258,7 +258,7 @@ void processFiles(Args ARG)
     {
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
-    std::shared_ptr<io::DenFrame2DCachedReader<T>> fReader
+    std::shared_ptr<io::Frame2DReaderI<T>> fReader
         = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input, ARG.threads);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,

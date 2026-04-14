@@ -16,6 +16,7 @@
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -145,13 +146,13 @@ void processFrame(int _FTPLID,
                   Args ARG,
                   uint32_t k_in,
                   uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& denReader,
+                  std::shared_ptr<io::Frame2DReaderI<T>>& denReader,
                   std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
     io::BufferedFrame2D<T> f(T(0), ARG.dimx, ARG.dimy);
-    std::shared_ptr<io::BufferedFrame2D<T>> A = denReader->readBufferedFrame(k_in);
-    T* A_array = A->getDataPointer();
-    T* x_array = f.getDataPointer();
+    std::shared_ptr<io::BufferedFrame2DI<T>> A = denReader->readBufferedFrame(k_in);
+    T* A_array = A->data();
+    T* x_array = f.data();
     Transform<T> o = nullptr;
     T constantToMultiply;
     T constantToAdd;
@@ -278,7 +279,7 @@ void processFiles(Args ARG)
     {
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
-    std::shared_ptr<io::DenFrame2DReader<T>> denReader
+    std::shared_ptr<io::Frame2DReaderI<T>> denReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_den, ARG.threads);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(

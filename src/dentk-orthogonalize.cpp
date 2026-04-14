@@ -9,6 +9,7 @@
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "BufferedFrame2D.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -37,10 +38,10 @@ template <typename T>
 using WRITERPTR = std::shared_ptr<WRITER<T>>;
 
 template <typename T>
-using FRAME = io::BufferedFrame2D<T>;
+using FRAMEI = io::BufferedFrame2DI<T>;
 
 template <typename T>
-using FRAMEPTR = std::shared_ptr<FRAME<T>>;
+using FRAMEPTR = std::shared_ptr<FRAMEI<T>>;
 
 using namespace KCT::util;
 
@@ -84,7 +85,7 @@ void process(Args ARG)
                   [ARG.frames.size() - 1
                    - i]; //First vector will be last in the matrix, and ortogonalized version will be last element in Q matrix
         f = frameReader->readBufferedFrame(IND);
-        T* f_array = f->getDataPointer();
+        T* f_array = f->data();
         std::copy(f_array, f_array + frameSize, values + i * frameSize);
     }
     matrix::RQFactorization rq;
@@ -110,8 +111,8 @@ void process(Args ARG)
     }
     WRITERPTR<T> w
         = std::make_shared<WRITER<T>>(ARG.output_file, dimx, dimy, nonzeroVectorIndices.size());
-    FRAMEPTR<T> bf = std::make_shared<FRAME<T>>(T(0), dimx, dimy);
-    T* bf_array = bf->getDataPointer();
+    FRAMEPTR<T> bf = std::make_shared<io::BufferedFrame2D<T>>(T(0), dimx, dimy);
+    T* bf_array = bf->data();
     for(uint32_t i = 0; i != nonzeroVectorIndices.size(); i++)
     {
         IND = nonzeroVectorIndices[i];

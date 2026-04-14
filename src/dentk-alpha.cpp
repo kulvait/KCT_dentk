@@ -7,6 +7,7 @@
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
 #include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
 #include "DEN/DenFrame2DReader.hpp"
@@ -201,14 +202,14 @@ void writeAlphaChannel(int ftpl_id,
                        float loq_line,
                        float upq_line)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> f = denFrameReader->readBufferedFrame(fromId);
+    std::shared_ptr<io::BufferedFrame2DI<T>> f = denFrameReader->readBufferedFrame(fromId);
     uint64_t dimx, dimy;
     dimx = f->dimx();
     dimy = f->dimy();
     uint64_t frameSize = dimx * dimy;
     io::BufferedFrame2D<W> alpha(W(0), dimx, dimy);
-    T* f_array = f->getDataPointer();
-    W* a_array = alpha.getDataPointer();
+    T* f_array = f->data();
+    W* a_array = alpha.data();
     if(loq_line != 1.0f || upq_line != 1.0f)
     {
         T* x = new T[dimx];

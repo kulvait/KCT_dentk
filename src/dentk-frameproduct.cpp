@@ -151,16 +151,16 @@ int Args::postParse()
 template <typename T>
 void processFrame(int _FTPLID,
                   const Args& ARG,
-                  const std::shared_ptr<io::DenFrame2DCachedReader<T>>& aReader,
-                  const std::shared_ptr<io::DenFrame2DCachedReader<T>>& bReader,
+                  const std::shared_ptr<io::Frame2DReaderI<T>>& aReader,
+                  const std::shared_ptr<io::Frame2DReaderI<T>>& bReader,
                   const uint32_t& i,
                   const uint32_t& j,
                   T* elm)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(i);
-    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader->readBufferedFrame(j);
-    T* A_array = A->getDataPointer();
-    T* B_array = B->getDataPointer();
+    std::shared_ptr<io::BufferedFrame2DI<T>> A = aReader->readBufferedFrame(i);
+    std::shared_ptr<io::BufferedFrame2DI<T>> B = bReader->readBufferedFrame(j);
+    T* A_array = A->data();
+    T* B_array = B->data();
     *elm = std::inner_product(A_array, A_array + ARG.frameSize, B_array, 0.0);
 }
 
@@ -173,10 +173,10 @@ void processFiles(Args ARG)
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
     io::BufferedFrame2D<T> X(T(0), ARG.dimz_a_count, ARG.dimz_b_count);
-    T* X_array = X.getDataPointer();
-    std::shared_ptr<io::DenFrame2DCachedReader<T>> aReader
+    T* X_array = X.data();
+    std::shared_ptr<io::Frame2DReaderI<T>> aReader
         = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input_op1, ARG.threads, ARG.threads);
-    std::shared_ptr<io::DenFrame2DCachedReader<T>> bReader
+    std::shared_ptr<io::Frame2DReaderI<T>> bReader
         = std::make_shared<io::DenFrame2DCachedReader<T>>(ARG.input_op2, ARG.threads, ARG.threads);
     const int dummy_FTPLID = 0;
     for(uint32_t j = 0; j != ARG.dimz_b_count; j++)

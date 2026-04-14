@@ -15,6 +15,7 @@
 
 // Internal libraries
 #include "BufferedFrame2D.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFileInfo.hpp"
@@ -152,15 +153,15 @@ void processFrame(int _FTPLID,
                   Args ARG,
                   uint32_t k_in,
                   uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& aReader,
-                  std::shared_ptr<io::BufferedFrame2D<T>>& B,
+                  std::shared_ptr<io::Frame2DReaderI<T>>& aReader,
+                  std::shared_ptr<io::BufferedFrame2DI<T>>& B,
                   std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
 {
-    std::shared_ptr<io::BufferedFrame2D<T>> A = aReader->readBufferedFrame(k_in);
+    std::shared_ptr<io::BufferedFrame2DI<T>> A = aReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
-    T* A_array = A->getDataPointer();
-    T* B_array = B->getDataPointer();
-    T* x_array = x.getDataPointer();
+    T* A_array = A->data();
+    T* B_array = B->data();
+    T* x_array = x.data();
     if(ARG.multiply)
     {
         std::transform(A_array, A_array + ARG.frameSize, B_array, x_array, std::multiplies());
@@ -211,10 +212,10 @@ void processFiles(Args ARG)
     {
         threadpool = new ftpl::thread_pool(ARG.threads);
     }
-    std::shared_ptr<io::DenFrame2DReader<T>> aReader
+    std::shared_ptr<io::Frame2DReaderI<T>> aReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_op1, ARG.threads);
     io::DenFrame2DReader<T> bReader(ARG.input_op2);
-    std::shared_ptr<io::BufferedFrame2D<T>> B = bReader.readBufferedFrame(0);
+    std::shared_ptr<io::BufferedFrame2DI<T>> B = bReader.readBufferedFrame(0);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter
         = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(ARG.output, ARG.dimx, ARG.dimy,
                                                                   ARG.frames.size());

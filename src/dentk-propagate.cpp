@@ -447,21 +447,21 @@ private:
         void* GPU_envelope = _GPU_envelope[workerID];
         void* GPU_FTenvelope = _GPU_FTenvelope[workerID];
 
-        std::shared_ptr<io::BufferedFrame2D<T>> I_f = intensityReader->readBufferedFrame(k_in);
-        std::shared_ptr<io::BufferedFrame2D<T>> P_f = phaseReader->readBufferedFrame(k_in);
+        std::shared_ptr<io::BufferedFrame2DI<T>> I_f = intensityReader->readBufferedFrame(k_in);
+        std::shared_ptr<io::BufferedFrame2DI<T>> P_f = phaseReader->readBufferedFrame(k_in);
         // We transform it to E_0 and decompose back to I and P in GPU memmory
-        T* I_array = I_f->getDataPointer();
-        T* P_array = P_f->getDataPointer();
+        T* I_array = I_f->data();
+        T* P_array = P_f->data();
         // clang-format off
 //DEBUG TO HAVE BEFORE AND AFTER FRAMES
 //        io::BufferedFrame2D<T> _pwb(T(0), dimx_padded, dimy_padded);
 //        io::BufferedFrame2D<T> _pwa(T(0), dimx_padded, dimy_padded);
 //        io::BufferedFrame2D<T> _iwb(T(0), dimx_padded, dimy_padded);
 //        io::BufferedFrame2D<T> _iwa(T(0), dimx_padded, dimy_padded);
-//        T* iwb_array = _iwb.getDataPointer();
-//        T* iwa_array = _iwa.getDataPointer();
-//        T* pwb_array = _pwb.getDataPointer();
-//        T* pwa_array = _pwa.getDataPointer();
+//        T* iwb_array = _iwb.data();
+//        T* iwa_array = _iwa.data();
+//        T* pwb_array = _pwb.data();
+//        T* pwa_array = _pwa.data();
 //END DEBUG
         // clang-format on
         // Do something here
@@ -647,8 +647,8 @@ void exportKernelFloat(Args ARG,
     // Try without distinguishing types
     io::BufferedFrame2D<T> kernel_re_f(T(0), dimx_padded, dimy_padded);
     io::BufferedFrame2D<T> kernel_im_f(T(0), dimx_padded, dimy_padded);
-    T* K_re_array = kernel_re_f.getDataPointer();
-    T* K_im_array = kernel_im_f.getDataPointer();
+    T* K_re_array = kernel_re_f.data();
+    T* K_im_array = kernel_im_f.data();
     void* GPU_kernel_re;
     void* GPU_kernel_im;
     EXECUDA(cudaMalloc((void**)&GPU_kernel_re, frameSizePadded * sizeof(T)));

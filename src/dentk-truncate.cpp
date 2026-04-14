@@ -15,6 +15,7 @@
 
 // Internal libraries
 #include "AsyncFrame2DWritterI.hpp"
+#include "BufferedFrame2DI.hpp"
 #include "DEN/DenAsyncFrame2DBufferedWritter.hpp"
 #include "DEN/DenAsyncFrame2DWritter.hpp"
 #include "DEN/DenFrame2DCachedReader.hpp"
@@ -205,10 +206,10 @@ void writeReducedFrame(int id,
                        std::shared_ptr<Args> a)
 {
     //Frame is Xmajor structure by definition
-    std::shared_ptr<io::BufferedFrame2D<T>> origf = denFrameReader->readBufferedFrame(k);
+    std::shared_ptr<io::BufferedFrame2DI<T>> origf = denFrameReader->readBufferedFrame(k);
     io::BufferedFrame2D<T> f(T(0), a->dimx_new, a->dimy_new);
-    T* inBuffer = origf->getDataPointer();
-    T* outBuffer = f.getDataPointer();
+    T* inBuffer = origf->data();
+    T* outBuffer = f.data();
     //Now I make strided copy
     T* inStridedStart;
     T* ouStridedStart;

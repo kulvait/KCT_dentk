@@ -251,7 +251,7 @@ void createNoisyDEN(std::string fileName,
     {
         //I can not reuse the same frame, because the noise shall be different for each frame
         f = std::make_shared<io::BufferedFrame2D<T>>(T(0), sizex, sizey);
-        T* f_array = f->getDataPointer();
+        T* f_array = f->data();
         for(uint64_t i = 0; i < frameSize; i++)
         {
             f_array[i] = dis(gen);
