@@ -185,7 +185,7 @@ void processFile(Args ARG, io::DenFileInfo di)
         = std::accumulate(shiftedSumSquaresVector.begin(), shiftedSumSquaresVector.end(), 0.0);
     double variance = (shiftedSumSquares - (shiftedSum * shiftedSum) / N) / N;
 
-    if(denDataType == io::DenSupportedType::UINT16)
+    if(denDataType == io::DenSupportedType::UINT16 || denDataType == io::DenSupportedType::UINT8)
     {
         std::cout << io::xprintf("Global [min, max] = [%d, %d], mean=%f, stdev=%f.\n", (int)min,
                                  (int)max, mean, std::pow(variance, 0.5));
@@ -252,7 +252,7 @@ void processFile(Args ARG, io::DenFileInfo di)
             double shiftedSumSquares = shiftedSumSquaresVector[k];
             double variance = (shiftedSumSquares - (shiftedSum * shiftedSum) / N) / N;
 
-            if(denDataType == io::DenSupportedType::UINT16)
+            if(denDataType == io::DenSupportedType::UINT16 || denDataType == io::DenSupportedType::UINT8)
             {
                 std::cout << io::xprintf(
                     "||frame %d||_2=%E RMSE=%E, [min, max] = [%d, %d], mean=%f, stdev=%f.\n", k,
@@ -345,8 +345,32 @@ int main(int argc, char* argv[])
     {
         switch(t)
         {
+        case io::DenSupportedType::UINT8: {
+            processFile<uint8_t>(ARG, di);
+            break;
+        }
         case io::DenSupportedType::UINT16: {
             processFile<uint16_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::UINT32: {
+            processFile<uint32_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::UINT64: {
+            processFile<uint64_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::INT16: {
+            processFile<int16_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::INT32: {
+            processFile<int32_t>(ARG, di);
+            break;
+        }
+        case io::DenSupportedType::INT64: {
+            processFile<int64_t>(ARG, di);
             break;
         }
         case io::DenSupportedType::FLOAT32: {

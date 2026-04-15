@@ -44,6 +44,9 @@ public:
     float loq = 1.0;
     bool nan = false;
     bool inf = false;
+    uint64_t dimx, dimy;
+    uint64_t totalSize;
+    io::DenSupportedType dataType;
 };
 
 /**Argument parsing
@@ -72,6 +75,11 @@ int Args::postParse()
 {
     io::DenFileInfo inf(inputFile);
     fillFramesVector(inf.dimz());
+    io::DenFileInfo inputFileInfo(inputFile);
+    dataType = inputFileInfo.getElementType();
+    dimx = inputFileInfo.dimx();
+    dimy = inputFileInfo.dimy();
+    totalSize = dimx * dimy * frames.size();
     return 0;
 }
 
@@ -123,6 +131,166 @@ void findValues(int id,
     }
 }
 
+template <typename T>
+void preprocessFloatType(Args& ARG, io::DenSupportedType dataType)
+{
+    std::shared_ptr<io::Frame2DReaderI<T>> frameReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputFile);
+    T leq = ARG.leq;
+    T geq = ARG.geq;
+    T lt = ARG.lt;
+    T gt = ARG.gt;
+    if(ARG.loq != 1.0 || ARG.upq != 1.0)
+    {
+        T* filebuffer = new T[ARG.totalSize];
+        uint64_t frameSize = frameReader->getFrameSize();
+        for(uint32_t i = 0; i != ARG.frames.size(); i++)
+        {
+            frameReader->readFrameIntoBuffer(ARG.frames[i], filebuffer + i * frameSize);
+        }
+        std::sort(filebuffer, filebuffer + ARG.totalSize, std::less<T>());
+        uint32_t loqElements, upqElements;
+        loqElements = (uint32_t)(double(ARG.loq) * (ARG.totalSize - 1));
+        upqElements = (uint32_t)(double(ARG.upq) * (ARG.totalSize - 1));
+        leq = std::min(leq, filebuffer[loqElements]);
+        geq = std::max(geq, filebuffer[ARG.totalSize - 1 - upqElements]);
+        delete[] filebuffer;
+    }
+    ftpl::thread_pool* threadpool = nullptr;
+    if(ARG.threads > 0)
+    {
+        threadpool = new ftpl::thread_pool(ARG.threads);
+    }
+    for(uint32_t i = 0; i != ARG.frames.size(); i++)
+    {
+        if(threadpool != nullptr)
+        {
+            threadpool->push(findValues<T>, ARG.frames[i], frameReader, leq, geq, lt, gt,
+                             ARG.nan, ARG.inf);
+        } else
+        {
+
+            findValues<T>(0, ARG.frames[i], frameReader, leq, geq, lt, gt, ARG.nan, ARG.inf);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->stop(true);
+        delete threadpool;
+    }
+    return;
+}
+
+//Integer types does not have concept of NAN and INF, so we ignore those flags and only check the range.
+//lt and gt are ignored for integer types, because they do not make much sense. If the user wants to use them, we convert to leq and geq, so we do not need to check them here.
+template <typename T>
+void findIntegerValues(
+    int id, int fromId, std::shared_ptr<io::Frame2DReaderI<T>> denSliceReader, T leq, T geq)
+{
+    std::shared_ptr<io::Frame2DI<T>> f = denSliceReader->readFrame(fromId);
+    for(std::size_t i = 0; i != f->dimx(); i++)
+    {
+        for(std::size_t j = 0; j != f->dimy(); j++)
+        {
+            T elm = f->get(i, j);
+            if(elm >= geq && elm <= leq)
+            {
+                std::cout << io::xprintf("val(%d, %d, %d) = %d\n", i, j, fromId, int64_t(elm));
+            }
+        }
+    }
+}
+
+template <typename T>
+void preprocessIntegerType(Args& ARG, io::DenSupportedType dataType)
+{
+    std::shared_ptr<io::Frame2DReaderI<T>> frameReader
+        = std::make_shared<io::DenFrame2DReader<T>>(ARG.inputFile);
+    auto clamp_to_T = [](float v) -> T {
+        if(v <= static_cast<float>(std::numeric_limits<T>::lowest()))
+            return std::numeric_limits<T>::lowest();
+        if(v >= static_cast<float>(std::numeric_limits<T>::max()))
+            return std::numeric_limits<T>::max();
+        return static_cast<T>(v);
+    };
+
+    T leq = std::numeric_limits<T>::max();
+    T geq = std::numeric_limits<T>::lowest();
+    if(ARG.geq != -std::numeric_limits<float>::infinity())
+    {
+        geq = clamp_to_T(ARG.geq);
+    }
+    if(ARG.leq != std::numeric_limits<float>::infinity())
+    {
+        leq = clamp_to_T(ARG.leq);
+    }
+    if(ARG.lt != std::numeric_limits<float>::infinity())
+    {
+        T lt = clamp_to_T(ARG.lt);
+        if(lt == std::numeric_limits<T>::lowest())
+        {
+            //No such value can exist in the data type, so we can just ignore this condition, but we warn the user about it.
+            LOGW << io::xprintf("The value of lt is too small for the data type %s.",
+                                io::DenSupportedTypeToString(dataType).c_str());
+            return;
+        }
+        T lt_leq = lt - 1;
+        leq = std::min(leq, lt_leq);
+    }
+    if(ARG.gt != -std::numeric_limits<float>::infinity())
+    {
+        T gt = clamp_to_T(ARG.gt);
+        if(gt == std::numeric_limits<T>::max())
+        {
+            //No such value can exist in the data type, so we can just ignore this condition, but we warn the user about it.
+            LOGW << io::xprintf("The value of gt is too big for the data type %s.",
+                                io::DenSupportedTypeToString(dataType).c_str());
+            return;
+        }
+        T gt_geq = gt + 1;
+        geq = std::max(geq, gt_geq);
+    }
+    if(ARG.loq != 1.0 || ARG.upq != 1.0)
+    {
+        T* filebuffer = new T[ARG.totalSize];
+        uint64_t frameSize = frameReader->getFrameSize();
+        for(uint32_t i = 0; i != ARG.frames.size(); i++)
+        {
+            frameReader->readFrameIntoBuffer(ARG.frames[i], filebuffer + i * frameSize);
+        }
+        std::sort(filebuffer, filebuffer + ARG.totalSize, std::less<T>());
+        uint32_t loqElements, upqElements;
+        loqElements = (uint32_t)(double(ARG.loq) * (ARG.totalSize - 1));
+        upqElements = (uint32_t)(double(ARG.upq) * (ARG.totalSize - 1));
+        leq = std::min(leq, filebuffer[loqElements]);
+        geq = std::max(geq, filebuffer[ARG.totalSize - 1 - upqElements]);
+        delete[] filebuffer;
+    }
+    LOGI << io::xprintf("Finding values in file %s with geq=%d, leq=%d",
+                        io::DenSupportedTypeToString(dataType).c_str(), int64_t(geq), int64_t(leq));
+    ftpl::thread_pool* threadpool = nullptr;
+    if(ARG.threads > 0)
+    {
+        threadpool = new ftpl::thread_pool(ARG.threads);
+    }
+    for(uint32_t i = 0; i != ARG.frames.size(); i++)
+    {
+        if(threadpool != nullptr)
+        {
+            threadpool->push(findIntegerValues<T>, ARG.frames[i], frameReader, leq, geq);
+        } else
+        {
+            findIntegerValues<T>(0, ARG.frames[i], frameReader, leq, geq);
+        }
+    }
+    if(threadpool != nullptr)
+    {
+        threadpool->stop(true);
+        delete threadpool;
+    }
+    return;
+}
+
 int main(int argc, char* argv[])
 {
     Program PRG(argc, argv);
@@ -147,153 +315,49 @@ int main(int argc, char* argv[])
         LOGI << io::xprintf("The size of file %s is %lu that is bigger than MAX_UINT32!",
                             ARG.inputFile.c_str(), totalSize);
     }
-    ftpl::thread_pool* threadpool = nullptr;
-    if(ARG.threads > 0)
-    {
-        threadpool = new ftpl::thread_pool(ARG.threads);
-    }
     switch(dataType)
     {
+    case io::DenSupportedType::UINT8: {
+        preprocessIntegerType<uint8_t>(ARG, dataType);
+        break;
+    }
+
     case io::DenSupportedType::UINT16: {
-        std::shared_ptr<io::Frame2DReaderI<uint16_t>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<uint16_t>>(ARG.inputFile);
-        uint16_t geq, leq, gt, lt;
-        geq = (uint16_t)ARG.geq;
-        leq = (uint16_t)ARG.leq;
-        gt = (uint16_t)ARG.gt;
-        lt = (uint16_t)ARG.lt;
-        if(ARG.geq == -std::numeric_limits<float>::infinity())
-        {
-            geq = 0;
-        }
-        if(ARG.leq == std::numeric_limits<float>::infinity())
-        {
-            leq = 65535;
-        }
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            uint16_t* x = new uint16_t[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(uint16_t)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(uint16_t));
-            }
-            std::sort(x, x + totalSize, std::less<uint32_t>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            if(threadpool != nullptr)
-            {
-                threadpool->push(findValues<uint16_t>, ARG.frames[i], denSliceReader, leq, geq, lt,
-                                 gt, ARG.nan, ARG.inf);
-            } else
-            {
-                findValues<uint16_t>(0, ARG.frames[i], denSliceReader, leq, geq, lt, gt, ARG.nan,
-                                     ARG.inf);
-            }
-        }
+        preprocessIntegerType<uint16_t>(ARG, dataType);
+        break;
+    }
+    case io::DenSupportedType::UINT32: {
+        preprocessIntegerType<uint32_t>(ARG, dataType);
+        break;
+    }
+    case io::DenSupportedType::UINT64: {
+        preprocessIntegerType<uint64_t>(ARG, dataType);
+        break;
+    }
+    case io::DenSupportedType::INT16: {
+        preprocessIntegerType<int16_t>(ARG, dataType);
+        break;
+    }
+    case io::DenSupportedType::INT32: {
+        preprocessIntegerType<int32_t>(ARG, dataType);
+        break;
+    }
+    case io::DenSupportedType::INT64: {
+        preprocessIntegerType<int64_t>(ARG, dataType);
         break;
     }
     case io::DenSupportedType::FLOAT32: {
-        std::shared_ptr<io::Frame2DReaderI<float>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<float>>(ARG.inputFile);
-        float leq = ARG.leq;
-        float geq = ARG.geq;
-        float lt = ARG.lt;
-        float gt = ARG.gt;
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            float* x = new float[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(float)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(float));
-            }
-            std::sort(x, x + totalSize, std::less<float>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * double(totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * double(totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            if(threadpool != nullptr)
-            {
-                threadpool->push(findValues<float>, ARG.frames[i], denSliceReader, leq, geq, lt, gt,
-                                 ARG.nan, ARG.inf);
-            } else
-            {
-
-                findValues<float>(0, ARG.frames[i], denSliceReader, leq, geq, lt, gt, ARG.nan,
-                                  ARG.inf);
-            }
-        }
+        preprocessFloatType<float>(ARG, dataType);
         break;
     }
     case io::DenSupportedType::FLOAT64: {
-        std::shared_ptr<io::Frame2DReaderI<double>> denSliceReader
-            = std::make_shared<io::DenFrame2DReader<double>>(ARG.inputFile);
-        double leq = ARG.leq;
-        double geq = ARG.geq;
-        double lt = ARG.lt;
-        double gt = ARG.gt;
-        if(ARG.loq != 1.0 || ARG.upq != 1.0)
-        {
-            double* x = new double[totalSize];
-            uint32_t frameSize = dimx * dimy;
-            for(uint32_t i = 0; i != ARG.frames.size(); i++)
-            {
-                io::readBytesFrom(ARG.inputFile,
-                                  uint64_t(ARG.frames[i]) * frameSize * sizeof(double)
-                                      + inputFileInfo.getOffset(),
-                                  (uint8_t*)&x[i * frameSize], frameSize * sizeof(double));
-            }
-            std::sort(x, x + totalSize, std::less<double>());
-            uint32_t loqElements, upqElements;
-            loqElements = (uint32_t)(double(ARG.loq) * (totalSize - 1));
-            upqElements = (uint32_t)(double(ARG.upq) * (totalSize - 1));
-            leq = std::min(leq, x[loqElements]);
-            geq = std::max(geq, x[totalSize - 1 - upqElements]);
-            delete[] x;
-        }
-        for(uint32_t i = 0; i != ARG.frames.size(); i++)
-        {
-            if(threadpool != nullptr)
-            {
-                threadpool->push(findValues<double>, ARG.frames[i], denSliceReader, leq, geq, lt,
-                                 gt, ARG.nan, ARG.inf);
-            } else
-            {
-
-                findValues<double>(0, ARG.frames[i], denSliceReader, leq, geq, lt, gt, ARG.nan,
-                                   ARG.inf);
-            }
-        }
+        preprocessFloatType<double>(ARG, dataType);
         break;
     }
     default:
         std::string errMsg = io::xprintf("Unsupported data type %s.",
                                          io::DenSupportedTypeToString(dataType).c_str());
         KCTERR(errMsg);
-    }
-    if(threadpool != nullptr)
-    {
-        threadpool->stop(true);
-        delete threadpool;
     }
     PRG.endLog();
 }
