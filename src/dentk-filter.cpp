@@ -11,6 +11,7 @@
 #include <cuda_runtime_api.h>
 #include <cufft.h> //Nvidia CUDA FFT
 #include <iostream>
+#include <mutex>
 #include <regex>
 #include <string>
 
@@ -27,8 +28,8 @@
 #include "PROG/ArgumentsThreadingCUDA.hpp"
 #include "PROG/ArgumentsVerbose.hpp"
 #include "PROG/Program.hpp"
+#include "PROG/ThreadPool.hpp"
 #include "PROG/parseArgs.h"
-#include "ftpl.h"
 #include "tomographicFiltering.cuh"
 
 using namespace KCT;
@@ -94,8 +95,8 @@ int Args::postParse()
     {
         outputFileExists = true;
     }
-    threads = 0; //No multithreading to fix curent issues
-        //TODO: Fix multithreading
+    //threads = 0; //No multithreading to fix curent issues
+    //TODO: Fix multithreading
     dimx = input_inf.dimx();
     dimy = input_inf.dimy();
     frameCount = input_inf.getFrameCount();
@@ -188,16 +189,124 @@ void _assert_CUFFT(cufftResult inf, const char* file, int line, bool abort = tru
 #define EXECUFFT(INF) _assert_CUFFT(INF, __FILE__, __LINE__)
 
 template <typename T>
-void processFrameNopad(int _FTPLID,
-                       Args ARG,
-                       io::DenSupportedType dataType,
-                       cufftHandle FFT,
-                       cufftHandle IFT,
-                       uint32_t k_in,
-                       uint32_t k_out,
-                       std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
-                       std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+using READER = io::DenFrame2DReader<T>;
+
+template <typename T>
+using READERPTR = std::shared_ptr<READER<T>>;
+
+template <typename T>
+using WRITER = io::DenAsyncFrame2DBufferedWritter<T>;
+
+template <typename T>
+using WRITERPTR = std::shared_ptr<WRITER<T>>;
+
+template <typename T>
+class GPUWorker
 {
+public:
+    int gpuID;
+    Args ARG;
+    io::DenSupportedType dataType;
+    READERPTR<T> reader;
+    WRITERPTR<T> writer;
+
+    cufftHandle FFT = 0;
+    cufftHandle IFT = 0;
+    uint32_t NX;
+
+    std::mutex gpuMutex;
+
+    GPUWorker(int gpuID_,
+              Args ARG_,
+              io::DenSupportedType dataType_,
+              READERPTR<T> reader_,
+              WRITERPTR<T> writer_)
+        : gpuID(gpuID_)
+        , ARG(ARG_)
+        , dataType(dataType_)
+        , reader(reader_)
+        , writer(writer_)
+    {
+        EXECUDA(cudaSetDevice(gpuID));
+        if(ARG.pad_none)
+        {
+            NX = ARG.dimx;
+            EXECUFFT(cufftPlan1d(&FFT, ARG.dimx, CUFFT_R2C, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&IFT, ARG.dimx, CUFFT_C2R, ARG.dimy));
+        } else if(ARG.pad_zero)
+        {
+            uint32_t padPower
+                = static_cast<uint32_t>(std::ceil(std::log2(static_cast<float>(ARG.dimx)))) + 1;
+            NX = 1 << padPower; // see https://stackoverflow.com/a/30357743
+            LOGI << io::xprintf("ARG.dimx=%d padded NX=%d", ARG.dimx, NX);
+            EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
+        } else //Symmetric padding is a special case
+        {
+            if(ARG.dimx < 2)
+            {
+                std::string err
+                    = io::xprintf("For symmetric padding ARG.dimx > 1 but ARG.dimx=%d", ARG.dimx);
+                KCTERR(err);
+            }
+            NX = 2 * ARG.dimx - 2;
+            EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
+        }
+    }
+
+    ~GPUWorker()
+    {
+        cudaSetDevice(gpuID);
+
+        if(FFT != 0)
+        {
+            cufftDestroy(FFT);
+        }
+
+        if(IFT != 0)
+        {
+            cufftDestroy(IFT);
+        }
+    }
+
+    void setDevice() { EXECUDA(cudaSetDevice(gpuID)); }
+
+    cufftHandle fft() { return FFT; }
+
+    cufftHandle ift() { return IFT; }
+
+    WRITERPTR<T> getWriter() { return writer; }
+
+    uint32_t getNX() const { return NX; }
+};
+
+template <typename T>
+using GPUWORKERPTR = std::shared_ptr<GPUWorker<T>>;
+
+template <typename T>
+using TP = io::ThreadPool<GPUWorker<T>>;
+
+template <typename T>
+using TPPTR = std::shared_ptr<TP<T>>;
+
+template <typename T>
+using TPINFO = typename TP<T>::ThreadInfo;
+
+template <typename T>
+using TPINFOPTR = std::shared_ptr<TPINFO<T>>;
+template <typename T>
+
+void processFrameNopad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
+{
+    GPUWORKERPTR<T> worker = threadInfo->worker;
+    Args ARG = worker->ARG;
+    READERPTR<T> fReader = worker->reader;
+    WRITERPTR<T> outputWritter = worker->writer;
+    io::DenSupportedType dataType = worker->dataType;
+    cufftHandle FFT = worker->fft();
+    cufftHandle IFT = worker->ift();
+
     std::shared_ptr<io::BufferedFrame2DI<T>> F = fReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
     T* F_array = F->data();
@@ -213,70 +322,74 @@ void processFrameNopad(int _FTPLID,
                         (xSizeHermitan + THREADSIZE2 - 1) / THREADSIZE2);
     dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
                 (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
-    // Do something here
-    // Try without distinguishing types
-    void* GPU_f;
-    void* GPU_FTf;
-    EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
-    EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
-                       cudaMemcpyHostToDevice));
-    uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
-    EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
-    if(dataType == io::DenSupportedType::FLOAT32)
+    // Mutex protected GPU access for avoiding issues with multiple threads using the same GPU
     {
-        bool withoutFftShift = false;
-        if(withoutFftShift)
+        std::lock_guard<std::mutex> lock(worker->gpuMutex);
+        worker->setDevice();
+        void* GPU_f;
+        void* GPU_FTf;
+
+        EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
+        EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
+                           cudaMemcpyHostToDevice));
+        uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
+        EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
+        if(dataType == io::DenSupportedType::FLOAT32)
         {
-            EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
-            CUDARadonFilter(threads, blocksHermitan, GPU_FTf, ARG.dimx, ARG.dimy, ARG.pixelSizeX,
-                            false);
-            EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f));
-        } else
-        {
-            void* GPU_f_shifted;
-            EXECUDA(cudaMalloc((void**)&GPU_f_shifted, ARG.frameSize * sizeof(T)));
-            bool doSpectralIfftshift = false;
-            if(doSpectralIfftshift)
+            bool withoutFftShift = false;
+            if(withoutFftShift)
             {
                 EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
                 CUDARadonFilter(threads, blocksHermitan, GPU_FTf, ARG.dimx, ARG.dimy,
-                                ARG.pixelSizeX, true);
-                EXECUDA(cudaPeekAtLastError());
-                EXECUDA(cudaDeviceSynchronize());
-
-                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
-                CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f,
-                             ARG.dimx, ARG.dimy);
+                                ARG.pixelSizeX, false);
+                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f));
             } else
             {
-                CUDAifftshift(threads, blocks, (cufftReal*)GPU_f, (cufftReal*)GPU_f_shifted,
-                              ARG.dimx, ARG.dimy);
-                EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_shifted, (cufftComplex*)GPU_FTf));
-                CUDARadonFilter(threads, blocksHermitan, GPU_FTf, ARG.dimx, ARG.dimy,
-                                ARG.pixelSizeX, false);
-                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
-                CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f,
-                             ARG.dimx, ARG.dimy);
+                void* GPU_f_shifted;
+                EXECUDA(cudaMalloc((void**)&GPU_f_shifted, ARG.frameSize * sizeof(T)));
+                bool doSpectralIfftshift = false;
+                if(doSpectralIfftshift)
+                {
+                    EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
+                    CUDARadonFilter(threads, blocksHermitan, GPU_FTf, ARG.dimx, ARG.dimy,
+                                    ARG.pixelSizeX, true);
+                    EXECUDA(cudaPeekAtLastError());
+                    EXECUDA(cudaDeviceSynchronize());
+
+                    EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
+                    CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f,
+                                 ARG.dimx, ARG.dimy);
+                } else
+                {
+                    CUDAifftshift(threads, blocks, (cufftReal*)GPU_f, (cufftReal*)GPU_f_shifted,
+                                  ARG.dimx, ARG.dimy);
+                    EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_shifted, (cufftComplex*)GPU_FTf));
+                    CUDARadonFilter(threads, blocksHermitan, GPU_FTf, ARG.dimx, ARG.dimy,
+                                    ARG.pixelSizeX, false);
+                    EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
+                    CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f,
+                                 ARG.dimx, ARG.dimy);
+                }
+                EXECUDA(cudaFree(GPU_f_shifted));
             }
-            EXECUDA(cudaFree(GPU_f_shifted));
-        }
-        //Divide by number of projections for avoiding backprojection aditivity
-        /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
+            //Divide by number of projections for avoiding backprojection aditivity
+            /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
         float frameCount = static_cast<float>(ARG.frameCount);
         float factor = PI / (frameCount * ARG.dimx);
         CUDAconstantMultiplication(threads, blocks, (cufftReal*)GPU_f, factor, ARG.dimx, ARG.dimy,
                                    ARG.dimx, ARG.dimy);
 		*/
 
-    } else
-    {
-        KCTERR("Implemented just for FLOAT32!");
-    }
+        } else
+        {
+            KCTERR("Implemented just for FLOAT32!");
+        }
 
-    EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
-                       cudaMemcpyDeviceToHost));
-    EXECUDA(cudaFree(GPU_f));
-    EXECUDA(cudaFree(GPU_FTf));
+        EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
+                           cudaMemcpyDeviceToHost));
+        EXECUDA(cudaFree(GPU_f));
+        EXECUDA(cudaFree(GPU_FTf));
+    }
     outputWritter->writeBufferedFrame(x, k_out);
     if(ARG.verbose)
     {
@@ -292,17 +405,17 @@ void processFrameNopad(int _FTPLID,
 }
 
 template <typename T>
-void processFramePad(int _FTPLID,
-                     Args ARG,
-                     io::DenSupportedType dataType,
-                     cufftHandle FFT,
-                     cufftHandle IFT,
-                     uint32_t NX,
-                     uint32_t k_in,
-                     uint32_t k_out,
-                     std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
-                     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+void processFramePad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
+    GPUWORKERPTR<T> worker = threadInfo->worker;
+    Args ARG = worker->ARG;
+    READERPTR<T> fReader = worker->reader;
+    WRITERPTR<T> outputWritter = worker->writer;
+    io::DenSupportedType dataType = worker->dataType;
+    cufftHandle FFT = worker->fft();
+    cufftHandle IFT = worker->ift();
+    uint32_t NX = worker->getNX();
+
     std::shared_ptr<io::BufferedFrame2DI<T>> F = fReader->readBufferedFrame(k_in);
     io::BufferedFrame2D<T> x(T(0), ARG.dimx, ARG.dimy);
     T* F_array = F->data();
@@ -317,26 +430,30 @@ void processFramePad(int _FTPLID,
     dim3 blocks((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1, (NX + THREADSIZE2 - 1) / THREADSIZE2);
     dim3 blocksNopad((ARG.dimy + THREADSIZE1 - 1) / THREADSIZE1,
                      (ARG.dimx + THREADSIZE2 - 1) / THREADSIZE2);
-    void* GPU_f;
-    void* GPU_f_padded;
-    void* GPU_FTf;
-    EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
-    EXECUDA(cudaMalloc((void**)&GPU_f_padded, frameSizePad * sizeof(T)));
-    EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
-                       cudaMemcpyHostToDevice));
-    uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
-    EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
-
-    if(dataType == io::DenSupportedType::FLOAT32)
+    // Mutex protected GPU access for avoiding issues with multiple threads using the same GPU
     {
-        if(ARG.pad_zero)
+        std::lock_guard<std::mutex> lock(worker->gpuMutex);
+        worker->setDevice();
+        void* GPU_f;
+        void* GPU_f_padded;
+        void* GPU_FTf;
+        EXECUDA(cudaMalloc((void**)&GPU_f, ARG.frameSize * sizeof(T)));
+        EXECUDA(cudaMalloc((void**)&GPU_f_padded, frameSizePad * sizeof(T)));
+        EXECUDA(cudaMemcpy((void*)GPU_f, (void*)F_array, ARG.frameSize * sizeof(T),
+                           cudaMemcpyHostToDevice));
+        uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
+        EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
+
+        if(dataType == io::DenSupportedType::FLOAT32)
         {
-            CUDAZeroPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
-        } else
-        {
-            CUDASymmPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
-            //Debug padding
-            /*
+            if(ARG.pad_zero)
+            {
+                CUDAZeroPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+            } else
+            {
+                CUDASymmPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+                //Debug padding
+                /*
             std::string fileName = io::xprintf("/tmp/padded_%03d.den", k_out);
             io::BufferedFrame2D<T> p(T(0), NX, ARG.dimy);
             T* p_array = p.data();
@@ -346,70 +463,72 @@ void processFramePad(int _FTPLID,
                                cudaMemcpyDeviceToHost));
             padWriter.writeBufferedFrame(p, 0);
 			*/
-            //End test
-        }
-        bool withoutFftShift = false;
-        if(withoutFftShift)
-        {
-            EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_padded, (cufftComplex*)GPU_FTf));
-            CUDARadonFilter(threads, blocksHermitan, GPU_FTf, NX, ARG.dimy, ARG.pixelSizeX, false);
-            EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_padded));
-
-        } else
-        {
-            void* GPU_f_shifted;
-            EXECUDA(cudaMalloc((void**)&GPU_f_shifted, frameSizePad * sizeof(T)));
-            bool doSpectralIfftshift = false;
-            if(doSpectralIfftshift)
+                //End test
+            }
+            bool withoutFftShift = false;
+            if(withoutFftShift)
             {
                 EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_padded, (cufftComplex*)GPU_FTf));
                 CUDARadonFilter(threads, blocksHermitan, GPU_FTf, NX, ARG.dimy, ARG.pixelSizeX,
-                                true);
-                EXECUDA(cudaPeekAtLastError());
-                EXECUDA(cudaDeviceSynchronize());
+                                false);
+                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_padded));
 
-                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
-                CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f_padded,
-                             NX, ARG.dimy);
             } else
             {
-                CUDAifftshift(threads, blocks, (cufftReal*)GPU_f_padded, (cufftReal*)GPU_f_shifted,
-                              NX, ARG.dimy);
-                //EXECUDA(cudaMemcpy((void*)GPU_f_shifted, (void*)GPU_f_padded,
-                //                   NX * ARG.dimy * sizeof(T), cudaMemcpyDeviceToDevice));
-                EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_shifted, (cufftComplex*)GPU_FTf));
-                CUDARadonFilter(threads, blocksHermitan, GPU_FTf, NX, ARG.dimy, ARG.pixelSizeX,
-                                false);
-                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
-                CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted, (cufftReal*)GPU_f_padded,
-                             NX, ARG.dimy);
-                //EXECUDA(cudaMemcpy((void*)GPU_f_padded, (void*)GPU_f_shifted,
-                //                   NX * ARG.dimy * sizeof(T), cudaMemcpyDeviceToDevice));
+                void* GPU_f_shifted;
+                EXECUDA(cudaMalloc((void**)&GPU_f_shifted, frameSizePad * sizeof(T)));
+                bool doSpectralIfftshift = false;
+                if(doSpectralIfftshift)
+                {
+                    EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_padded, (cufftComplex*)GPU_FTf));
+                    CUDARadonFilter(threads, blocksHermitan, GPU_FTf, NX, ARG.dimy, ARG.pixelSizeX,
+                                    true);
+                    EXECUDA(cudaPeekAtLastError());
+                    EXECUDA(cudaDeviceSynchronize());
+
+                    EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
+                    CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted,
+                                 (cufftReal*)GPU_f_padded, NX, ARG.dimy);
+                } else
+                {
+                    CUDAifftshift(threads, blocks, (cufftReal*)GPU_f_padded,
+                                  (cufftReal*)GPU_f_shifted, NX, ARG.dimy);
+                    //EXECUDA(cudaMemcpy((void*)GPU_f_shifted, (void*)GPU_f_padded,
+                    //                   NX * ARG.dimy * sizeof(T), cudaMemcpyDeviceToDevice));
+                    EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_shifted, (cufftComplex*)GPU_FTf));
+                    CUDARadonFilter(threads, blocksHermitan, GPU_FTf, NX, ARG.dimy, ARG.pixelSizeX,
+                                    false);
+                    EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_shifted));
+                    CUDAfftshift(threads, blocks, (cufftReal*)GPU_f_shifted,
+                                 (cufftReal*)GPU_f_padded, NX, ARG.dimy);
+                    //EXECUDA(cudaMemcpy((void*)GPU_f_padded, (void*)GPU_f_shifted,
+                    //                   NX * ARG.dimy * sizeof(T), cudaMemcpyDeviceToDevice));
+                }
+                EXECUDA(cudaFree(GPU_f_shifted));
             }
-            EXECUDA(cudaFree(GPU_f_shifted));
-        }
-        CUDAStripPad(threads, blocksNopad, GPU_f_padded, GPU_f, ARG.dimx, NX, ARG.dimy);
-        //Divide by number of projections for avoiding backprojection aditivity
-        /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
+            CUDAStripPad(threads, blocksNopad, GPU_f_padded, GPU_f, ARG.dimx, NX, ARG.dimy);
+            //Divide by number of projections for avoiding backprojection aditivity
+            /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
         float frameCount = static_cast<float>(ARG.frameCount);
         float factor = PI / (frameCount * ARG.dimx);
         CUDAconstantMultiplication(threads, blocks, (cufftReal*)GPU_f, factor, ARG.dimx, ARG.dimy,
                                    ARG.dimx, ARG.dimy);
 		*/
 
-    } else if(dataType == io::DenSupportedType::FLOAT64)
-    {
-        KCTERR("Implemented just for FLOAT32!");
-    }
-    //Test if there are some errors, wrong GPU ...
-    EXECUDA(cudaPeekAtLastError());
-    EXECUDA(cudaDeviceSynchronize());
+        } else if(dataType == io::DenSupportedType::FLOAT64)
+        {
+            KCTERR("Implemented just for FLOAT32!");
+        }
+        //Test if there are some errors, wrong GPU ...
+        EXECUDA(cudaPeekAtLastError());
+        EXECUDA(cudaDeviceSynchronize());
 
-    EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
-                       cudaMemcpyDeviceToHost));
-    EXECUDA(cudaFree(GPU_f));
-    EXECUDA(cudaFree(GPU_FTf));
-    EXECUDA(cudaFree(GPU_f_padded));
+        EXECUDA(cudaMemcpy((void*)x_array, (void*)GPU_f, ARG.frameSize * sizeof(T),
+                           cudaMemcpyDeviceToHost));
+        EXECUDA(cudaFree(GPU_f));
+        EXECUDA(cudaFree(GPU_FTf));
+        EXECUDA(cudaFree(GPU_f_padded));
+    }
     outputWritter->writeBufferedFrame(x, k_out);
     if(ARG.verbose)
     {
@@ -425,35 +544,22 @@ void processFramePad(int _FTPLID,
 }
 
 template <typename T>
-void processFrame(int _FTPLID,
-                  Args ARG,
-                  io::DenSupportedType dataType,
-                  cufftHandle FFT,
-                  cufftHandle IFT,
-                  uint32_t NX,
-                  uint32_t k_in,
-                  uint32_t k_out,
-                  std::shared_ptr<io::DenFrame2DReader<T>>& fReader,
-                  std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>>& outputWritter)
+void processFrame(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
+    GPUWORKERPTR<T> worker = threadInfo->worker;
+    Args ARG = worker->ARG;
     if(ARG.pad_none)
     {
-        processFrameNopad<T>(_FTPLID, ARG, dataType, FFT, IFT, k_in, k_out, fReader, outputWritter);
+        processFrameNopad<T>(threadInfo, k_in, k_out);
     } else
     {
-        processFramePad<T>(_FTPLID, ARG, dataType, FFT, IFT, NX, k_in, k_out, fReader,
-                           outputWritter);
+        processFramePad<T>(threadInfo, k_in, k_out);
     }
 }
 
 template <typename T>
 void processFiles(Args ARG, io::DenSupportedType dataType)
 {
-    ftpl::thread_pool* threadpool = nullptr;
-    if(ARG.threads > 0)
-    {
-        threadpool = new ftpl::thread_pool(ARG.threads);
-    }
     std::shared_ptr<io::DenFrame2DReader<T>> fReader
         = std::make_shared<io::DenFrame2DReader<T>>(ARG.input_den, ARG.threads);
     std::shared_ptr<io::DenAsyncFrame2DBufferedWritter<T>> outputWritter;
@@ -466,36 +572,42 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         outputWritter = std::make_shared<io::DenAsyncFrame2DBufferedWritter<T>>(
             ARG.output_den, ARG.dimx, ARG.dimy, ARG.frames.size());
     }
-    const int dummy_FTPLID = 0;
-    uint32_t k_in, k_out;
-    cufftHandle FFT, IFT;
-    // First is  slowest changing dimension, last is  slowest changing dimension
-    uint32_t NX; //Padding size
-    if(ARG.pad_none)
+    //Figure out how many GPUs are available
+    int gpuCount = 0;
+    EXECUDA(cudaGetDeviceCount(&gpuCount));
+    if(gpuCount <= 0)
     {
-        NX = ARG.dimx;
-        EXECUFFT(cufftPlan1d(&FFT, ARG.dimx, CUFFT_R2C, ARG.dimy));
-        EXECUFFT(cufftPlan1d(&IFT, ARG.dimx, CUFFT_C2R, ARG.dimy));
-    } else if(ARG.pad_zero)
-    {
-        uint32_t padPower
-            = static_cast<uint32_t>(std::ceil(std::log2(static_cast<float>(ARG.dimx)))) + 1;
-        NX = 1 << padPower; // see https://stackoverflow.com/a/30357743
-        LOGI << io::xprintf("ARG.dimx=%d padded NX=%d", ARG.dimx, NX);
-        EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
-        EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
-    } else //Symmetric padding is a special case
-    {
-        if(ARG.dimx < 2)
-        {
-            std::string err
-                = io::xprintf("For symmetric padding ARG.dimx > 1 but ARG.dimx=%d", ARG.dimx);
-            KCTERR(err);
-        }
-        NX = 2 * ARG.dimx - 2;
-        EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
-        EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
+        KCTERR("No CUDA device available.");
     }
+    TPPTR<T> threadpool = nullptr;
+    std::shared_ptr<typename TP<T>::ThreadInfo> thread_info = nullptr;
+    //Regardelss if we use threadpool or not, we create workers vector so that without threading we can use workers[0] for processing frames.
+    //This is done for better code structure and to avoid ifs in the processing function.
+    std::vector<GPUWORKERPTR<T>> workers;
+    uint32_t threadCount = ARG.threads > 0 ? ARG.threads : 1;
+    uint32_t workerCount = std::min(threadCount, static_cast<uint32_t>(gpuCount));
+    uint32_t divisionBoundaries = (threadCount + workerCount - 1) / workerCount;
+    GPUWORKERPTR<T> wp = nullptr;
+    for(uint32_t i = 0; i < threadCount; i++)
+    {
+        if(i % divisionBoundaries == 0 || wp == nullptr)
+        {
+            wp = std::make_shared<GPUWorker<T>>(i % gpuCount, ARG, dataType, fReader,
+                                                outputWritter);
+        }
+        workers.push_back(wp);
+    }
+
+    if(ARG.threads > 0)
+    {
+        threadpool = std::make_shared<TP<T>>(ARG.threads, workers);
+    } else
+    {
+        wp = workers[0];
+        thread_info = std::make_shared<typename TP<T>::ThreadInfo>(TPINFO<T>{ 0, 0, wp });
+    }
+
+    uint32_t k_in, k_out;
     LOGI << io::xprintf("Processing %d frames.", ARG.frames.size());
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
@@ -510,18 +622,16 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         }
         if(threadpool)
         {
-            threadpool->push(processFrame<T>, ARG, dataType, FFT, IFT, NX, k_in, k_out, fReader,
-                             outputWritter);
+            threadpool->submit(processFrame<T>, k_in, k_out);
         } else
         {
-            processFrame<T>(dummy_FTPLID, ARG, dataType, FFT, IFT, NX, k_in, k_out, fReader,
-                            outputWritter);
+            processFrame<T>(thread_info, k_in, k_out);
         }
     }
     if(threadpool != nullptr)
     {
-        threadpool->stop(true);
-        delete threadpool;
+        threadpool->waitAll();
+        threadpool = nullptr;
     }
 }
 
