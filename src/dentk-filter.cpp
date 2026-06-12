@@ -95,8 +95,6 @@ int Args::postParse()
     {
         outputFileExists = true;
     }
-    //threads = 0; //No multithreading to fix curent issues
-    //TODO: Fix multithreading
     dimx = input_inf.dimx();
     dimy = input_inf.dimy();
     frameCount = input_inf.getFrameCount();
@@ -608,7 +606,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     }
 
     uint32_t k_in, k_out;
-    LOGI << io::xprintf("Processing %d frames.", ARG.frames.size());
+    LOGI << io::xprintf("Processing %d frames using %d thread(s) and %d GPU(s).", ARG.frames.size(), ARG.threads, gpuCount);
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
         k_in = ARG.frames[IND];
@@ -669,5 +667,5 @@ int main(int argc, char* argv[])
         KCTERR(errMsg);
     }
     }
-    PRG.endLog();
+    PRG.endLog(true);
 }
