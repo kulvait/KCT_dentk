@@ -87,6 +87,7 @@ int main(int argc, char* argv[])
             return -1; // Exited somehow wrong
         }
     }
+    constexpr double pi = 3.14159265358979323846;
     if(a.estimateReconstructionSize)
     {
         if(!a.PBMAT)
@@ -134,14 +135,34 @@ int main(int argc, char* argv[])
             std::shared_ptr<io::DenGeometry3DParallelReader> geometryReader
                 = std::make_shared<io::DenGeometry3DParallelReader>(a.input_file);
             std::shared_ptr<geometry::Geometry3DParallel> geometry;
+
+            std::array<double, 8> pm;
+            double polarAngle, polarAnglePrev, polarAngleFirst;
+            bool first = true;
             for(const int f : a.frames)
             {
                 std::cout << io::xprintf("PBCT matrix from %d-th frame:\n", f);
                 geometry = std::make_shared<geometry::Geometry3DParallel>(
                     geometryReader->readGeometry(f));
-                std::array<double, 8> pm = geometry->projectionMatrixAsVector8();
+                pm = geometry->projectionMatrixAsVector8();
                 std::cout << io::xprintf("[[%f %f %f %f],[%f %f %f %f]]\n", pm[0], pm[1], pm[2],
                                          pm[3], pm[4], pm[5], pm[6], pm[7]);
+                polarAngle = std::atan2(pm[1], pm[0]) * 180 / pi;
+                if(polarAngle < 0)
+                {
+                    polarAngle += 360;
+                }
+                if(first)
+                {
+                    std::cout << io::xprintf("polar_angle=%f, diff_to_first=%f\n", polarAngle, polarAngle - polarAngle);
+                    polarAngleFirst = polarAngle;
+                } else
+                {
+                    std::cout << io::xprintf("polar_angle=%f, diff_to_first=%f, diff_to_prev=%f\n",
+                                             polarAngle, polarAngle - polarAngleFirst, polarAngle - polarAnglePrev);
+                }
+                polarAnglePrev = polarAngle;
+                first = false;
             }
         }
     }
