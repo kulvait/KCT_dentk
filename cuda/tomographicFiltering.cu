@@ -38,9 +38,10 @@ __global__ void RadonFilter(float2* __restrict__ x,
     if((PX >= xSizeHermitan) || (PY >= SIZEY))
         return;
     double L = ((double)SIZEX) * pixel_size_x;
-    //Note that K shall be PX/L but 1/L is a global scaling factor, which is additionally used here
-    //See Kak_Slaney, Ch 3, p. 66, (41)
-    double K = PX / (L * L);
+    //Note that K shall be PX/L but 1/L is a global scaling factor, see Kak_Slaney, Ch 3, p. 66, (41)
+    //double K = PX / (L * L);
+    //Note that K shall be PX/L but 1/SIZEX is a global scaling factor for unscaled IFFT
+    double K = PX / (L * SIZEX); 
     //ifftshiftSpectral
     //Note normally we would call fftshift(fft(ifftshift(image))
     //Now just transfrom results as if we input sequence f[ifftshift(x)]

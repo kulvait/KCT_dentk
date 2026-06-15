@@ -71,12 +71,48 @@ void Args::defineArguments()
         ->check(CLI::ExistingFile);
     cliApp->add_option("output_den", output_den, "Output filtered data.")->required();
     addForceArgs();
+    //Ramp filter selection
+    CLI::Option_group* og_base_filter = cliApp->add_option_group(
+        "Base filter",
+        io::xprintf("Ramp construction method, defaults to %s.", to_string(baseFilter).c_str()));
+    og_base_filter->add_flag_callback(
+        "--filter-ideal-ramp", [this]() { baseFilter = BaseFilter::IdealFrequencyRamp; },
+        "Ideal frequency ramp |w|.");
+    og_base_filter->add_flag_callback(
+        "--filter-ram-lak", [this]() { baseFilter = BaseFilter::RamLakDiscrete; },
+        "Ram-Lak discrete ramp.");
+    og_base_filter->require_option(0, 1);
+    //Ramp window selection
+    CLI::Option_group* og_window = cliApp->add_option_group(
+        "Ramp window",
+        io::xprintf("Window to apply on the ramp filter, defaults to %s.",
+                    to_string(rampWindow).c_str()));
+    og_window->add_flag_callback(
+        "--window-ramp", [this]() { rampWindow = RampWindow::None; }, "No window, pure ramp.");
+    og_window->add_flag_callback(
+        "--window-shepp-logan", [this]() { rampWindow = RampWindow::SheppLogan; },
+        "Shepp-Logan window.");
+    og_window->add_flag_callback(
+        "--window-cosine", [this]() { rampWindow = RampWindow::Cosine; }, "Cosine window.");
+    og_window->add_flag_callback(
+        "--window-hanning", [this]() { rampWindow = RampWindow::Hanning; }, "Hanning window.");
+    og_window->add_flag_callback(
+        "--window-hamming", [this]() { rampWindow = RampWindow::Hamming; }, "Hamming window.");
+    CLI::Option* opt_kaiser = og_window->add_flag_callback(
+        "--window-kaiser", [this]() { rampWindow = RampWindow::Kaiser; }, "Kaiser window.");
+    og_window->require_option(0, 1);
+    cliApp
+        ->add_option("--window-kaiser-beta", kaiserBeta,
+                     "Beta parameter for Kaiser window, only used if --window-kaiser is selected.")
+        ->check(CLI::PositiveNumber)
+        ->needs(opt_kaiser);
     //Padding
     CLI::Option_group* op_clg = cliApp->add_option_group("Padding strategy", "Padding to use.");
     op_clg->add_flag("--pad-none", pad_none, "No padding.");
     op_clg->add_flag("--pad-symm", pad_symm, "Symmetric or reflection padding.");
     op_clg->add_flag("--pad-zero", pad_zero, "Padding with zeros.");
     op_clg->require_option(1);
+
     // Natural derivatives
     addPixelSizeArgs(1.0, 1.0);
     addFramespecArgs();
@@ -293,8 +329,8 @@ using TPINFO = typename TP<T>::ThreadInfo;
 
 template <typename T>
 using TPINFOPTR = std::shared_ptr<TPINFO<T>>;
-template <typename T>
 
+template <typename T>
 void processFrameNopad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
     GPUWORKERPTR<T> worker = threadInfo->worker;
@@ -606,7 +642,8 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
     }
 
     uint32_t k_in, k_out;
-    LOGI << io::xprintf("Processing %d frames using %d thread(s) and %d GPU(s).", ARG.frames.size(), ARG.threads, gpuCount);
+    LOGI << io::xprintf("Processing %d frames using %d thread(s) and %d GPU(s).", ARG.frames.size(),
+                        ARG.threads, gpuCount);
     for(uint32_t IND = 0; IND != ARG.frames.size(); IND++)
     {
         k_in = ARG.frames[IND];
