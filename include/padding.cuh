@@ -25,10 +25,6 @@ __global__ void ZeroPad2D(T* __restrict__ IN,
                           const int SIZEXPAD,
                           const int SIZEYPAD);
 
-// Templated CUDA kernel function for symmetric padding (1D)
-template <typename T>
-__global__ void SymmPad(
-    T* __restrict__ IN, T* __restrict__ OUT, const int SIZEX, const int SIZEXPAD, const int SIZEY);
 // Templated CUDA kernel function for symmetric padding (2D)
 template <typename T>
 __global__ void SymmPad2D(T* __restrict__ IN,
@@ -75,9 +71,18 @@ void CUDAZeroPad2D(dim3 threads,
                    const int SIZEXPAD,
                    const int SIZEYPAD);
 
-// Host function wrapper for symmetric padding (1D)
+// Host function wrapper for symmetric padding (1D) Neumann with zeros for SIZEXPAD > 2 * SIZEX - 2
 template <typename T>
-void CUDASymmPad(dim3 threads,
+void CUDASymmPadZero(dim3 threads,
+                 void* GPU_in,
+                 void* GPU_out,
+                 const int SIZEX,
+                 const int SIZEXPAD,
+                 const int SIZEY);
+
+// Host function wrapper for symmetric padding (1D) Neumann with wrap for SIZEXPAD > 2 * SIZEX - 2
+template <typename T>
+void CUDASymmPadWrap(dim3 threads,
                  void* GPU_in,
                  void* GPU_out,
                  const int SIZEX,

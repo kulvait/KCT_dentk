@@ -467,7 +467,7 @@ void processZ(std::shared_ptr<typename TP1D<T>::ThreadInfo> threadInfo, uint32_t
     {
         if(zpadding == SYMPAD)
         { //Neumann extension provides exactly symmetric padding
-            CUDASymmPad<T>(threads, worker->GPU_f, worker->GPU_extendedf, worker->dimx,
+            CUDASymmPadWrap<T>(threads, worker->GPU_f, worker->GPU_extendedf, worker->dimx,
                            currentChunkSize, worker->dimx_padded);
         } else if(zpadding == ZEROPAD)
         {

@@ -1,6 +1,5 @@
-// Logging
-
 #include "tomographicFiltering.cuh"
+#include "cudaUtil.cuh"
 
 __global__ void ifftshiftSpectral(float2* __restrict__ x, const int SIZEX, const int SIZEY)
 {
@@ -26,31 +25,31 @@ void CUDAifftshiftSpectral(dim3 threads, dim3 blocks, void* x, const int SIZEX, 
 }
 
 __global__ void RadonFilter(float2* __restrict__ x,
-                            const int SIZEX,
+                            const int SIZEX_FULL,
                             const int SIZEY,
                             const float pixel_size_x,
                             const bool ifftshift)
 {
     const int PX = threadIdx.y + blockIdx.y * blockDim.y;
     const int PY = threadIdx.x + blockIdx.x * blockDim.x;
-    const int xSizeHermitan = SIZEX / 2 + 1;
-    const int IDX = xSizeHermitan * PY + PX;
-    if((PX >= xSizeHermitan) || (PY >= SIZEY))
+    const int SIZEX_FULL_HERMITIAN = SIZEX_FULL / 2 + 1;
+    const int IDX = SIZEX_FULL_HERMITIAN * PY + PX;
+    if((PX >= SIZEX_FULL_HERMITIAN) || (PY >= SIZEY))
         return;
-    double L = ((double)SIZEX) * pixel_size_x;
+    double L = ((double)SIZEX_FULL) * pixel_size_x;
     //Note that K shall be PX/L but 1/L is a global scaling factor, see Kak_Slaney, Ch 3, p. 66, (41)
     //double K = PX / (L * L);
-    //Note that K shall be PX/L but 1/SIZEX is a global scaling factor for unscaled IFFT
-    double K = PX / (L * SIZEX); 
+    //Note that K shall be PX/L but 1/SIZEX_FULL is a global scaling factor for unscaled IFFT
+    double K = PX / (L * SIZEX_FULL);
     //ifftshiftSpectral
     //Note normally we would call fftshift(fft(ifftshift(image))
     //Now just transfrom results as if we input sequence f[ifftshift(x)]
     if(ifftshift)
     {
 
-        int centerShift = (SIZEX + 1) / 2;
+        int centerShift = (SIZEX_FULL + 1) / 2;
         int freq = PX;
-        double shiftingAngle = -TWOPI * freq * centerShift / SIZEX;
+        double shiftingAngle = -TWOPI * freq * centerShift / SIZEX_FULL;
         double sinVal, cosVal;
         sincos(shiftingAngle, &sinVal, &cosVal);
         float2 xval = x[IDX];
@@ -81,6 +80,460 @@ void CUDARadonFilter(dim3 threads,
            ifftshift ? "true" : "false");
 */
     RadonFilter<<<blocks, threads>>>((float2*)x, SIZEX, SIZEY, pixel_size_x, ifftshift);
+}
+
+template <typename T, typename W>
+__global__ void SpectralFilter(W* __restrict__ X,
+                               const T* __restrict__ FILTER,
+                               const int SIZEX,
+                               const int SIZEY,
+                               const T pixel_size_x)
+{
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    const int SIZEX_HERMITIAN = SIZEX / 2 + 1;
+
+    if(PX >= SIZEX_HERMITIAN || PY >= SIZEY)
+        return;
+
+    const int IDX = SIZEX_HERMITIAN * PY + PX;
+
+    T F = FILTER[PX] / (static_cast<T>(SIZEX) * pixel_size_x);
+    X[IDX].x *= F;
+    X[IDX].y *= F;
+}
+
+template <typename T, typename W>
+void CUDASpectralFilter(dim3 threads,
+                        void* GPU_f_in,
+                        void* GPU_filter_in,
+                        const int SIZEX_FULL,
+                        const int SIZEY,
+                        const T pixel_size_x)
+{
+    const int SIZEX_HERMITIAN = SIZEX_FULL / 2 + 1;
+    const dim3 numBlocks = getNumBlocks(threads, SIZEX_HERMITIAN, SIZEY);
+
+    SpectralFilter<T, W>
+        <<<numBlocks, threads>>>((W*)GPU_f_in, (T*)GPU_filter_in, SIZEX_FULL, SIZEY, pixel_size_x);
+
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        fprintf(stderr, "Failed to launch SpectralFilter kernel (error code %s)!\n",
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
+/**
+ * Construct a circularly even discrete spatial-domain Ram-Lak convolution kernel.
+ * see https://doi.org/10.1073/pnas.68.9.2236
+ *
+ * The generated sequence satisfies
+ *
+ *   h[n] = h[(N - n) mod N],
+ *
+ * so its DFT is real-valued in exact arithmetic. CUFFT R2C/D2Z still returns a
+ * complex half-spectrum, but the imaginary components should be zero up to
+ * floating-point roundoff. Therefore, after transforming this kernel, it is
+ * sufficient to keep only the real part of the frequency response and multiply
+ * projection spectra by a real scalar.
+ *
+ * The circular FFT layout is:
+ *
+ *   h[0] = 1/4
+ *   h[ i] = -1 / (pi^2 i^2),  for positive odd i
+ *   h[-i] = -1 / (pi^2 i^2),  for positive odd i
+ *   h[ i] = 0,                otherwise
+ *
+ * In array indexing, negative spatial index -i is stored as h[N - i].
+ *
+ * This layout is intended to be transformed directly by CUFFT R2C/D2Z.
+ * Do not fftshift this kernel before the FFT.
+ */
+template <typename T>
+__global__ void RamLakKernel1D(T* __restrict__ OUT, const int SIZE)
+{
+    const int PX = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(PX >= SIZE)
+    {
+        return;
+    }
+
+    if(PX == 0)
+    {
+        OUT[PX] = static_cast<T>(0.25);
+        return;
+    }
+
+    // Circular distance from zero:
+    //
+    //   PX = 1          -> i = 1
+    //   PX = 2          -> i = 2
+    //   ...
+    //   PX = SIZE - 1   -> i = 1  equivalent to h[-1]
+    //   PX = SIZE - 2   -> i = 2  equivalent to h[-2]
+    //
+    const int i = min(PX, SIZE - PX);
+
+    // Match Python:
+    //
+    //   for i in range(SIZE // 2):
+    //       ...
+    //
+    // Therefore i == SIZE / 2 is excluded.
+    if((i & 1) == 0)
+    {
+        OUT[PX] = static_cast<T>(0);
+        return;
+    }
+
+    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
+    const T denom = pi * static_cast<T>(i);
+
+    OUT[PX] = -static_cast<T>(1) / (denom * denom);
+}
+
+void CUDARamLakKernel1DFloat(void* x, const int SIZE)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
+
+    RamLakKernel1D<float><<<BLOCKS, THREADS>>>(static_cast<float*>(x), SIZE);
+}
+
+void CUDARamLakKernel1DDouble(void* x, const int SIZE)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
+
+    RamLakKernel1D<double><<<BLOCKS, THREADS>>>(static_cast<double*>(x), SIZE);
+}
+
+template <typename T>
+__global__ void IdealRamp1D(T* __restrict__ OUT_PACKED, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+    // R2C half-spectrum stores frequencies:
+    //   IND = 0, 1, 2, ..., SIZE_FULL / 2
+    // so the normalized nonnegative frequency is IND / SIZE_FULL.
+    OUT_PACKED[IND] = static_cast<T>(IND) / static_cast<T>(SIZE_FULL);
+}
+
+// Vector X_PACKED is of the size SIZE_HERMITIAN.
+template <typename T>
+void CUDAIdealRamp1D(void* OUT_PACKED, const int SIZE_FULL)
+{
+    const int SIZE_HERMITIAN = SIZE_FULL / 2 + 1;
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    IdealRamp1D<T><<<BLOCKS, THREADS>>>(static_cast<T*>(OUT_PACKED), SIZE_HERMITIAN, SIZE_FULL);
+
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        fprintf(stderr, "Failed to launch IdealRamp1D kernel (error code %s)!\n",
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
+template <typename T>
+__global__ void
+ApplySheppLoganWindow1D(T* __restrict__ FILTER, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+
+    if(IND == 0)
+    {
+        return;
+    }
+
+    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
+    const T omega = pi * static_cast<T>(IND) / static_cast<T>(SIZE_FULL);
+
+    FILTER[IND] *= sin(omega) / omega;
+}
+
+template <typename T>
+__global__ void
+ApplyCosineWindow1D(T* __restrict__ FILTER, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+
+    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
+    const T omega = pi * static_cast<T>(IND) / static_cast<T>(SIZE_FULL);
+
+    FILTER[IND] *= cos(omega);
+}
+
+template <typename T>
+__global__ void
+ApplyHanningWindow1D(T* __restrict__ FILTER, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+
+    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
+    const T theta = static_cast<T>(2) * pi * static_cast<T>(IND) / static_cast<T>(SIZE_FULL);
+    const T window = static_cast<T>(0.5) + static_cast<T>(0.5) * cos(theta);
+
+    FILTER[IND] *= window;
+}
+
+template <typename T>
+__global__ void
+ApplyHammingWindow1D(T* __restrict__ FILTER, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+
+    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
+    const T theta = static_cast<T>(2) * pi * static_cast<T>(IND) / static_cast<T>(SIZE_FULL);
+    const T window = static_cast<T>(0.54) + static_cast<T>(0.46) * cos(theta);
+
+    FILTER[IND] *= window;
+}
+
+template <typename T>
+__device__ T BesselI0Approx(T x)
+{
+    const T ax = fabs(x);
+
+    if(ax < static_cast<T>(3.75))
+    {
+        const T y = (x / static_cast<T>(3.75)) * (x / static_cast<T>(3.75));
+
+        return static_cast<T>(1.0)
+            + y
+            * (static_cast<T>(3.5156229)
+               + y
+                   * (static_cast<T>(3.0899424)
+                      + y
+                          * (static_cast<T>(1.2067492)
+                             + y
+                                 * (static_cast<T>(0.2659732)
+                                    + y
+                                        * (static_cast<T>(0.0360768)
+                                           + y * static_cast<T>(0.0045813))))));
+    }
+
+    const T y = static_cast<T>(3.75) / ax;
+
+    return (exp(ax) / sqrt(ax))
+        * (static_cast<T>(0.39894228)
+           + y
+               * (static_cast<T>(0.01328592)
+                  + y
+                      * (static_cast<T>(0.00225319)
+                         + y
+                             * (-static_cast<T>(0.00157565)
+                                + y
+                                    * (static_cast<T>(0.00916281)
+                                       + y
+                                           * (-static_cast<T>(0.02057706)
+                                              + y
+                                                  * (static_cast<T>(0.02635537)
+                                                     + y
+                                                         * (-static_cast<T>(0.01647633)
+                                                            + y
+                                                                * static_cast<T>(
+                                                                    0.00392377)))))))));
+}
+
+template <typename T>
+__global__ void ApplyKaiserWindow1D(T* __restrict__ FILTER,
+                                    const int SIZE_HERMITIAN,
+                                    const int SIZE_FULL,
+                                    const T beta)
+{
+    const int IND = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(IND >= SIZE_HERMITIAN)
+    {
+        return;
+    }
+
+    const T alpha = static_cast<T>(SIZE_FULL - 1) / static_cast<T>(2);
+
+    if(alpha <= static_cast<T>(0))
+    {
+        return;
+    }
+
+    const T r = static_cast<T>(IND) / alpha;
+    const T oneMinusRSquared = max(static_cast<T>(0), static_cast<T>(1) - r * r);
+
+    const T numerator = BesselI0Approx(beta * sqrt(oneMinusRSquared));
+    const T denominator = BesselI0Approx(beta);
+
+    FILTER[IND] *= numerator / denominator;
+}
+
+void CUDAApplySheppLoganWindow1DFloat(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplySheppLoganWindow1D<float>
+        <<<BLOCKS, THREADS>>>(static_cast<float*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplySheppLoganWindow1DDouble(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplySheppLoganWindow1D<double>
+        <<<BLOCKS, THREADS>>>(static_cast<double*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyCosineWindow1DFloat(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyCosineWindow1D<float>
+        <<<BLOCKS, THREADS>>>(static_cast<float*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyCosineWindow1DDouble(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyCosineWindow1D<double>
+        <<<BLOCKS, THREADS>>>(static_cast<double*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyHanningWindow1DFloat(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyHanningWindow1D<float>
+        <<<BLOCKS, THREADS>>>(static_cast<float*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyHanningWindow1DDouble(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyHanningWindow1D<double>
+        <<<BLOCKS, THREADS>>>(static_cast<double*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyHammingWindow1DFloat(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyHammingWindow1D<float>
+        <<<BLOCKS, THREADS>>>(static_cast<float*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyHammingWindow1DDouble(void* filter, const int SIZE_HERMITIAN, const int SIZE_FULL)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyHammingWindow1D<double>
+        <<<BLOCKS, THREADS>>>(static_cast<double*>(filter), SIZE_HERMITIAN, SIZE_FULL);
+}
+
+void CUDAApplyKaiserWindow1DFloat(void* filter,
+                                  const int SIZE_HERMITIAN,
+                                  const int SIZE_FULL,
+                                  const float beta)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyKaiserWindow1D<float>
+        <<<BLOCKS, THREADS>>>(static_cast<float*>(filter), SIZE_HERMITIAN, SIZE_FULL, beta);
+}
+
+void CUDAApplyKaiserWindow1DDouble(void* filter,
+                                   const int SIZE_HERMITIAN,
+                                   const int SIZE_FULL,
+                                   const double beta)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE_HERMITIAN + THREADS - 1) / THREADS;
+
+    ApplyKaiserWindow1D<double>
+        <<<BLOCKS, THREADS>>>(static_cast<double*>(filter), SIZE_HERMITIAN, SIZE_FULL, beta);
+}
+
+__global__ void
+ExtractRealFFTFloat(const cufftComplex* __restrict__ IN, float* __restrict__ OUT, const int SIZE)
+{
+    const int PX = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(PX >= SIZE)
+    {
+        return;
+    }
+
+    OUT[PX] = IN[PX].x;
+}
+
+__global__ void ExtractRealFFTDouble(const cufftDoubleComplex* __restrict__ IN,
+                                     double* __restrict__ OUT,
+                                     const int SIZE)
+{
+    const int PX = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(PX >= SIZE)
+    {
+        return;
+    }
+
+    OUT[PX] = IN[PX].x;
+}
+
+void CUDAExtractRealFFTFloat(void* in, void* out, const int SIZE)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
+
+    ExtractRealFFTFloat<<<BLOCKS, THREADS>>>(static_cast<const cufftComplex*>(in),
+                                             static_cast<float*>(out), SIZE);
+}
+
+void CUDAExtractRealFFTDouble(void* in, void* out, const int SIZE)
+{
+    const int THREADS = 256;
+    const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
+
+    ExtractRealFFTDouble<<<BLOCKS, THREADS>>>(static_cast<const cufftDoubleComplex*>(in),
+                                              static_cast<double*>(out), SIZE);
 }
 
 inline __device__ float scaledSigmoid(float x, float scale)
@@ -223,116 +676,6 @@ void CUDAconstantMultiplication(dim3 threads,
     printf("CUDAconstantMultiplication threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
            threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
     constantMultiplication<<<blocks, threads>>>((float*)x, factor, SIZEX, SIZEY, TOX, TOY);
-}
-
-__global__ void ZeroPad(float* __restrict__ IN,
-                        float* __restrict__ OUT,
-                        const int SIZEX,
-                        const int SIZEXPAD,
-                        const int SIZEY)
-{
-    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
-    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
-    if((PX >= SIZEXPAD) || (PY >= SIZEY))
-        return;
-    const int IDX = SIZEX * PY + PX;
-    const int IDXPAD = SIZEXPAD * PY + PX;
-    if(PX >= SIZEX)
-    {
-        OUT[IDXPAD] = 0.0f;
-    } else
-    {
-        float val = IN[IDX];
-        OUT[IDXPAD] = val;
-    }
-}
-
-void CUDAZeroPad(dim3 threads,
-                 dim3 blocks,
-                 void* GPU_in,
-                 void* GPU_out,
-                 const int SIZEX,
-                 const int SIZEXPAD,
-                 const int SIZEY)
-{
-    /*
-    printf("CUDAZeroPad threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
-           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
-*/
-    ZeroPad<<<blocks, threads>>>((float*)GPU_in, (float*)GPU_out, SIZEX, SIZEXPAD, SIZEY);
-}
-
-__global__ void SymmPad(float* __restrict__ IN,
-                        float* __restrict__ OUT,
-                        const int SIZEX,
-                        const int SIZEXPAD,
-                        const int SIZEY)
-{
-    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
-    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
-    if((PX >= SIZEXPAD) || (PY >= SIZEY))
-        return;
-    const int SIZEXPERIOD = 2 * SIZEX - 2;
-    const int IDXPAD = SIZEXPAD * PY + PX;
-    int PX_ORIGIN = PX;
-    while(PX_ORIGIN > SIZEXPERIOD)
-    {
-        PX_ORIGIN -= SIZEXPERIOD;
-    }
-    if(PX_ORIGIN >= SIZEX)
-    {
-        PX_ORIGIN = SIZEX - 2 - (PX_ORIGIN - SIZEX);
-    }
-    int IDX = SIZEX * PY + PX_ORIGIN;
-    OUT[IDXPAD] = IN[IDX];
-}
-
-void CUDASymmPad(dim3 threads,
-                 dim3 blocks,
-                 void* GPU_in,
-                 void* GPU_out,
-                 const int SIZEX,
-                 const int SIZEXPAD,
-                 const int SIZEY)
-{
-    /*
-    printf("CUDAZeroPad threads=(%d,%d,%d), blocks(%d, %d, %d) SIZEX=%d, SIZEY=%d\n",
-           threads.x, threads.y, threads.z, blocks.x, blocks.y, blocks.z, SIZEX, SIZEY);
-*/
-    if(SIZEX < 2)
-    {
-        printf("This method is invalid for SIZEX<2 but SIZEX=%d", SIZEX);
-        return;
-    }
-    if(SIZEXPAD != 2 * SIZEX - 2)
-    {
-        printf("SIZEXPAD=%d is not 2*%d-2 = %d", SIZEXPAD, SIZEX, 2 * SIZEX - 2);
-    }
-    SymmPad<<<blocks, threads>>>((float*)GPU_in, (float*)GPU_out, SIZEX, SIZEXPAD, SIZEY);
-}
-
-__global__ void StripPad(float* __restrict__ IN,
-                         float* __restrict__ OUT,
-                         const int SIZEX,
-                         const int SIZEXPAD,
-                         const int SIZEY)
-{
-    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
-    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
-    if((PX >= SIZEX) || (PY >= SIZEY))
-        return;
-    OUT[SIZEX * PY + PX] = IN[SIZEXPAD * PY + PX];
-}
-
-void CUDAStripPad(dim3 threads,
-                  dim3 blocks,
-                  void* GPU_IN,
-                  void* GPU_OUT,
-                  const int SIZEX,
-                  const int SIZEXPAD,
-                  const int SIZEY)
-{
-    StripPad<<<blocks, threads>>>((float*)GPU_IN, (float*)GPU_OUT, SIZEX, SIZEXPAD, SIZEY);
 }
 
 //Template argument W is of the type cufftComplex or cufftDoubleComplex
@@ -522,3 +865,33 @@ template __global__ void SpectralGaussianBlur1D<float, cufftComplex>(cufftComple
 
 template __global__ void SpectralGaussianBlur1D<double, cufftDoubleComplex>(
     cufftDoubleComplex* __restrict__ VEC, const int SIZEX, const int SIZEY, const double sigma_z);
+
+template __global__ void SpectralFilter<float, cufftComplex>(cufftComplex* __restrict__ X,
+                                                             const float* __restrict__ FILTER,
+                                                             const int SIZEX,
+                                                             const int SIZEY,
+                                                             const float pixel_size_x);
+
+template __global__ void
+SpectralFilter<double, cufftDoubleComplex>(cufftDoubleComplex* __restrict__ X,
+                                           const double* __restrict__ FILTER,
+                                           const int SIZEX,
+                                           const int SIZEY,
+                                           const double pixel_size_x);
+
+template void CUDASpectralFilter<float, cufftComplex>(dim3 threads,
+                                                      void* GPU_f_in,
+                                                      void* GPU_filter_in,
+                                                      const int SIZEX_FULL,
+                                                      const int SIZEY,
+                                                      const float pixel_size_x);
+
+template void CUDASpectralFilter<double, cufftDoubleComplex>(dim3 threads,
+                                                             void* GPU_f_in,
+                                                             void* GPU_filter_in,
+                                                             const int SIZEX_FULL,
+                                                             const int SIZEY,
+                                                             const double pixel_size_x);
+//IdealRamp1D
+template void CUDAIdealRamp1D<float>(void* OUT_PACKED, const int SIZE_FULL);
+template void CUDAIdealRamp1D<double>(void* OUT_PACKED, const int SIZE_FULL);

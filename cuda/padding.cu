@@ -1,9 +1,5 @@
 #include "padding.cuh"
-
-dim3 getNumBlocks(dim3 threads, int SIZEX, int SIZEY)
-{
-    return dim3((SIZEY + threads.x - 1) / threads.x, (SIZEX + threads.y - 1) / threads.y);
-}
+#include "cudaUtil.cuh"//getNumBlocks(dim3 threads, int SIZEX, int SIZEY)
 
 template <typename T>
 __global__ void ZeroPad2D(T* __restrict__ IN,
@@ -40,8 +36,8 @@ void CUDAZeroPad2D(dim3 threads,
                    const int SIZEXPAD,
                    const int SIZEYPAD)
 {
-    printf("CUDAZeroPad2D threads=(%d, %d, %d), SIZEX=%d, SIZEY=%d, SIZEXPAD=%d, SIZEYPAD=%d\n",
-           threads.x, threads.y, threads.z, SIZEX, SIZEY, SIZEXPAD, SIZEYPAD);
+    //printf("CUDAZeroPad2D threads=(%d, %d, %d), SIZEX=%d, SIZEY=%d, SIZEXPAD=%d, SIZEYPAD=%d\n",
+    //       threads.x, threads.y, threads.z, SIZEX, SIZEY, SIZEXPAD, SIZEYPAD);
 
     // Calculate the number of blocks needed
     dim3 numBlocks = getNumBlocks(threads, SIZEXPAD, SIZEYPAD);
@@ -83,8 +79,8 @@ template <typename T>
 void CUDAZeroPad(
     dim3 threads, void* GPU_in, void* GPU_out, const int SIZEX, const int SIZEXPAD, const int SIZEY)
 {
-    printf("CUDAZeroPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
-           threads.y, threads.z, SIZEX, SIZEXPAD, SIZEY);
+    //printf("CUDAZeroPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
+    //       threads.y, threads.z, SIZEX, SIZEXPAD, SIZEY);
 
     // Calculate the number of blocks needed
     dim3 numBlocks = getNumBlocks(threads, SIZEXPAD, SIZEY);
@@ -100,32 +96,61 @@ void CUDAZeroPad(
     }
 }
 
+/*
+Symmetric padding with zero-fill outside the valid mirrored domain.
+
+This implements a finite even-symmetric extension of length (2*N - 2),
+which is commonly used for FFT-compatible boundary handling without
+endpoint duplication.
+
+The valid symmetric domain is:
+    [0, 2*N - 2)
+
+Mapping inside this domain:
+    0 ... N-1   -> original signal
+    N ... 2N-2  -> mirrored signal without duplicating endpoints
+
+Outside this domain:
+    values are explicitly set to 0 (zero padding)
+
+This differs from periodic symmetric padding in that it does NOT wrap
+around; it truncates the extension beyond the valid symmetric support.
+*/
 template <typename T>
-__global__ void SymmPad(
-    T* __restrict__ IN, T* __restrict__ OUT, const int SIZEX, const int SIZEXPAD, const int SIZEY)
+__global__ void SymmPadZero(const T* __restrict__ IN,
+                            T* __restrict__ OUT,
+                            const int SIZEX,
+                            const int SIZEXPAD,
+                            const int SIZEY)
 {
-    const int PY = threadIdx.x + blockIdx.x * blockDim.x; // y-dimension
-    const int PX = threadIdx.y + blockIdx.y * blockDim.y; // x-dimension
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x;
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y;
 
     if(PX >= SIZEXPAD || PY >= SIZEY)
         return;
 
-    int IDX = SIZEX * PY + PX;
-    int IDXPAD = SIZEXPAD * PY + PX;
+    const int SIZEXPERIOD = 2 * SIZEX - 2;
+    const int IDXPAD = SIZEXPAD * PY + PX;
 
-    // Reflect the index PX to handle symmetric padding
-    int PX_reflected = PX % (2 * SIZEX - 2);
-    if(PX_reflected >= SIZEX)
+    if(PX >= SIZEXPERIOD)
     {
-        PX_reflected = 2 * SIZEX - 2 - PX_reflected;
+        OUT[IDXPAD] = 0;
+        return;
     }
 
-    IDX = SIZEX * PY + PX_reflected;
+    // Reflect the index PX to handle symmetric padding
+    int PX_reflected = PX % SIZEXPERIOD;
+    if(PX_reflected >= SIZEX)
+    {
+        PX_reflected = SIZEXPERIOD - PX_reflected;
+    }
+
+    const int IDX = SIZEX * PY + PX_reflected;
     OUT[IDXPAD] = IN[IDX];
 }
 
 template <typename T>
-void CUDASymmPad(
+void CUDASymmPadZero(
     dim3 threads, void* GPU_in, void* GPU_out, const int SIZEX, const int SIZEXPAD, const int SIZEY)
 {
     printf("CUDASymmPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
@@ -134,7 +159,66 @@ void CUDASymmPad(
     // Calculate the number of blocks needed
     dim3 numBlocks = getNumBlocks(threads, SIZEXPAD, SIZEY);
 
-    SymmPad<T><<<numBlocks, threads>>>((T*)GPU_in, (T*)GPU_out, SIZEX, SIZEXPAD, SIZEY);
+    SymmPadZero<T><<<numBlocks, threads>>>((T*)GPU_in, (T*)GPU_out, SIZEX, SIZEXPAD, SIZEY);
+
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        fprintf(stderr, "Failed to launch SymmPad kernel (error code %s)!\n",
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
+/*
+Symmetric padding with periodic extension.
+This implements a finite even-symmetric extension of length (2*N - 2), which is commonly used for FFT-compatible boundary handling without endpoint duplication.
+The valid symmetric domain is:
+    [0, 2*N - 2)
+
+Mapping inside this domain:
+    0 ... N-1   -> original signal
+    N ... 2N-2  -> mirrored signal without duplicating endpoints
+
+Outside this domain:
+    values wrap around periodically, creating a tiled pattern of the original signal and its mirror across the entire extended domain.
+
+This differs from the zero-padded symmetric extension in that it wraps around periodically, effectively creating a tiled pattern of the original signal and its mirror across the entire extended domain.
+*/
+template <typename T>
+__global__ void SymmPadWrap(
+    T* __restrict__ IN, T* __restrict__ OUT, const int SIZEX, const int SIZEXPAD, const int SIZEY)
+{
+    const int PY = threadIdx.x + blockIdx.x * blockDim.x; // y-dimension
+    const int PX = threadIdx.y + blockIdx.y * blockDim.y; // x-dimension
+
+    if(PX >= SIZEXPAD || PY >= SIZEY)
+        return;
+    const int SIZEXPERIOD = 2 * SIZEX - 2;
+    const int IDXPAD = SIZEXPAD * PY + PX;
+
+    // Reflect the index PX to handle symmetric padding
+    int PX_reflected = PX % SIZEXPERIOD;
+    if(PX_reflected >= SIZEX)
+    {
+        PX_reflected = SIZEXPERIOD - PX_reflected;
+    }
+
+    const int IDX = SIZEX * PY + PX_reflected;
+    OUT[IDXPAD] = IN[IDX];
+}
+
+template <typename T>
+void CUDASymmPadWrap(
+    dim3 threads, void* GPU_in, void* GPU_out, const int SIZEX, const int SIZEXPAD, const int SIZEY)
+{
+    printf("CUDASymmPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
+           threads.y, threads.z, SIZEX, SIZEXPAD, SIZEY);
+
+    // Calculate the number of blocks needed
+    dim3 numBlocks = getNumBlocks(threads, SIZEXPAD, SIZEY);
+
+    SymmPadWrap<T><<<numBlocks, threads>>>((T*)GPU_in, (T*)GPU_out, SIZEX, SIZEXPAD, SIZEY);
 
     cudaError_t err = cudaGetLastError();
     if(err != cudaSuccess)
@@ -335,8 +419,8 @@ template <typename T>
 void CUDARemovePadding(
     dim3 threads, void* GPU_in, void* GPU_out, const int SIZEX, const int SIZEY, const int SIZEXPAD)
 {
-    printf("CUDARemovePadding threads=(%d, %d, %d), SIZEX=%d, SIZEY=%d, SIZEXPAD=%d\n", threads.x,
-           threads.y, threads.z, SIZEX, SIZEY, SIZEXPAD);
+    //printf("CUDARemovePadding threads=(%d, %d, %d), SIZEX=%d, SIZEY=%d, SIZEXPAD=%d\n", threads.x,
+    //       threads.y, threads.z, SIZEX, SIZEY, SIZEXPAD);
 
     // Calculate the number of blocks needed
     dim3 numBlocks = getNumBlocks(threads, SIZEX, SIZEY);
@@ -510,19 +594,33 @@ template void CUDAZeroPad2D<double>(dim3 threads,
                                     const int SIZEXPAD,
                                     const int SIZEYPAD);
 
-template void CUDASymmPad<float>(dim3 threads,
-                                 void* GPU_in,
-                                 void* GPU_out,
-                                 const int SIZEX,
-                                 const int SIZEXPAD,
-                                 const int SIZEY);
+template void CUDASymmPadZero<float>(dim3 threads,
+                                     void* GPU_in,
+                                     void* GPU_out,
+                                     const int SIZEX,
+                                     const int SIZEXPAD,
+                                     const int SIZEY);
 
-template void CUDASymmPad<double>(dim3 threads,
-                                  void* GPU_in,
-                                  void* GPU_out,
-                                  const int SIZEX,
-                                  const int SIZEXPAD,
-                                  const int SIZEY);
+template void CUDASymmPadZero<double>(dim3 threads,
+                                      void* GPU_in,
+                                      void* GPU_out,
+                                      const int SIZEX,
+                                      const int SIZEXPAD,
+                                      const int SIZEY);
+
+template void CUDASymmPadWrap<float>(dim3 threads,
+                                     void* GPU_in,
+                                     void* GPU_out,
+                                     const int SIZEX,
+                                     const int SIZEXPAD,
+                                     const int SIZEY);
+
+template void CUDASymmPadWrap<double>(dim3 threads,
+                                      void* GPU_in,
+                                      void* GPU_out,
+                                      const int SIZEX,
+                                      const int SIZEXPAD,
+                                      const int SIZEY);
 
 template void CUDASymmPad2D<float>(dim3 threads,
                                    void* GPU_in,
@@ -541,18 +639,18 @@ template void CUDASymmPad2D<double>(dim3 threads,
                                     const int SIZEYPAD);
 
 template void CUDAAsymmPad<float>(dim3 threads,
-                                  void* GPU_in,
-                                  void* GPU_out,
-                                  const int SIZEX,
-                                  const int SIZEXPAD,
-                                  const int SIZEY);
+                                      void* GPU_in,
+                                      void* GPU_out,
+                                      const int SIZEX,
+                                      const int SIZEXPAD,
+                                      const int SIZEY);
 
 template void CUDAAsymmPad<double>(dim3 threads,
-                                   void* GPU_in,
-                                   void* GPU_out,
-                                   const int SIZEX,
-                                   const int SIZEXPAD,
-                                   const int SIZEY);
+                                       void* GPU_in,
+                                       void* GPU_out,
+                                       const int SIZEX,
+                                       const int SIZEXPAD,
+                                       const int SIZEY);
 
 template void CUDAAsymmPad2D<float>(dim3 threads,
                                     void* GPU_in,

@@ -30,11 +30,14 @@
 #include "PROG/Program.hpp"
 #include "PROG/ThreadPool.hpp"
 #include "PROG/parseArgs.h"
+#include "padding.cuh"
 #include "tomographicFiltering.cuh"
 
 using namespace KCT;
 using namespace KCT::util;
 
+enum class BaseFilter { IdealFrequencyRamp, RamLakDiscrete };
+enum class RampWindow { None, SheppLogan, Cosine, Hanning, Hamming, Kaiser };
 // class declarations
 class Args : public ArgumentsForce,
              public ArgumentsVerbose,
@@ -62,6 +65,42 @@ public:
     uint64_t frameSize;
     bool outputFileExists = false;
     bool pad_none = false, pad_symm = false, pad_zero = false;
+
+    inline std::string to_string(BaseFilter f)
+    {
+        switch(f)
+        {
+        case BaseFilter::IdealFrequencyRamp:
+            return "IdealFrequencyRamp";
+        case BaseFilter::RamLakDiscrete:
+            return "RamLakDiscrete";
+        }
+        return "Unknown";
+    }
+
+    inline std::string to_string(RampWindow w)
+    {
+        switch(w)
+        {
+        case RampWindow::None:
+            return "None";
+        case RampWindow::SheppLogan:
+            return "SheppLogan";
+        case RampWindow::Cosine:
+            return "Cosine";
+        case RampWindow::Hanning:
+            return "Hanning";
+        case RampWindow::Hamming:
+            return "Hamming";
+        case RampWindow::Kaiser:
+            return "Kaiser";
+        }
+        return "Unknown";
+    }
+
+    BaseFilter baseFilter = BaseFilter::RamLakDiscrete;
+    RampWindow rampWindow = RampWindow::None;
+    double kaiserBeta = 0.0; // Only used if rampWindow == RampWindow::Kaiser
 };
 
 void Args::defineArguments()
@@ -246,7 +285,12 @@ public:
 
     cufftHandle FFT = 0;
     cufftHandle IFT = 0;
+    cufftHandle RamLakFFT = 0;
     uint32_t NX;
+    uint32_t xSizeHermitian;
+    uint32_t frameByteSize;
+    uint32_t paddedFrameByteSize;
+    uint32_t complexBufferByteSize;
 
     std::mutex gpuMutex;
 
@@ -265,16 +309,12 @@ public:
         if(ARG.pad_none)
         {
             NX = ARG.dimx;
-            EXECUFFT(cufftPlan1d(&FFT, ARG.dimx, CUFFT_R2C, ARG.dimy));
-            EXECUFFT(cufftPlan1d(&IFT, ARG.dimx, CUFFT_C2R, ARG.dimy));
         } else if(ARG.pad_zero)
         {
             uint32_t padPower
                 = static_cast<uint32_t>(std::ceil(std::log2(static_cast<float>(ARG.dimx)))) + 1;
             NX = 1 << padPower; // see https://stackoverflow.com/a/30357743
             LOGI << io::xprintf("ARG.dimx=%d padded NX=%d", ARG.dimx, NX);
-            EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
-            EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
         } else //Symmetric padding is a special case
         {
             if(ARG.dimx < 2)
@@ -284,14 +324,153 @@ public:
                 KCTERR(err);
             }
             NX = 2 * ARG.dimx - 2;
+        }
+        if(dataType == io::DenSupportedType::FLOAT32)
+        {
             EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
             EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
+        } else if(dataType == io::DenSupportedType::FLOAT64)
+        {
+            EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_D2Z, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_Z2D, ARG.dimy));
+        } else
+        {
+            KCTERR(io::xprintf("Unsupported DenSupportedType %s for FFT plan creation.",
+                               io::DenSupportedTypeToString(dataType).c_str()));
+        }
+
+        xSizeHermitian = NX / 2 + 1;
+
+        frameByteSize = ARG.frameSize * sizeof(T);
+        paddedFrameByteSize = static_cast<uint64_t>(NX) * ARG.dimy * sizeof(T);
+        complexBufferByteSize = static_cast<uint64_t>(ARG.dimy) * xSizeHermitian * 2 * sizeof(T);
+
+        EXECUDA(cudaMalloc(&GPU_f, frameByteSize));
+        EXECUDA(cudaMalloc(&GPU_FTf, complexBufferByteSize));
+
+        if(!ARG.pad_none)
+        {
+            EXECUDA(cudaMalloc(&GPU_f_padded, paddedFrameByteSize));
+        }
+
+        EXECUDA(cudaMalloc(&GPU_f_shifted, frameByteSize));
+        EXECUDA(cudaMalloc(&GPU_filter, xSizeHermitian * sizeof(T)));
+        if(ARG.baseFilter == BaseFilter::RamLakDiscrete)
+        {
+            EXECUDA(cudaMalloc(&GPU_RamLak, NX * sizeof(T)));
+            EXECUDA(cudaMalloc(&GPU_RamLak_FFT, xSizeHermitian * 2 * sizeof(T)));
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDARamLakKernel1DFloat(GPU_RamLak, NX);
+                EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_R2C, 1));
+                EXECUFFT(
+                    cufftExecR2C(RamLakFFT, (cufftReal*)GPU_RamLak, (cufftComplex*)GPU_RamLak_FFT));
+                CUDAExtractRealFFTFloat(GPU_RamLak_FFT, GPU_filter, xSizeHermitian);
+                EXECUDA(cudaPeekAtLastError());
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDARamLakKernel1DDouble(GPU_RamLak, NX);
+                EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_D2Z, 1));
+                EXECUFFT(cufftExecD2Z(RamLakFFT, (cufftDoubleReal*)GPU_RamLak,
+                                      (cufftDoubleComplex*)GPU_RamLak_FFT));
+                CUDAExtractRealFFTDouble(GPU_RamLak_FFT, GPU_filter, xSizeHermitian);
+                EXECUDA(cudaPeekAtLastError());
+            } else
+            {
+                KCTERR("Unsupported data type for filter creation.");
+            }
+        } else if(ARG.baseFilter == BaseFilter::IdealFrequencyRamp)
+        {
+            CUDAIdealRamp1D<T>(GPU_filter, NX);
+        }
+
+        switch(ARG.rampWindow)
+        {
+        case RampWindow::None:
+            break;
+        case RampWindow::SheppLogan:
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDAApplySheppLoganWindow1DFloat(GPU_filter, xSizeHermitian, NX);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDAApplySheppLoganWindow1DDouble(GPU_filter, xSizeHermitian, NX);
+            }
+            break;
+        case RampWindow::Cosine:
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDAApplyCosineWindow1DFloat(GPU_filter, xSizeHermitian, NX);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDAApplyCosineWindow1DDouble(GPU_filter, xSizeHermitian, NX);
+            }
+            break;
+        case RampWindow::Hanning:
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDAApplyHanningWindow1DFloat(GPU_filter, xSizeHermitian, NX);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDAApplyHanningWindow1DDouble(GPU_filter, xSizeHermitian, NX);
+            }
+            break;
+        case RampWindow::Hamming:
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDAApplyHammingWindow1DFloat(GPU_filter, xSizeHermitian, NX);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDAApplyHammingWindow1DDouble(GPU_filter, xSizeHermitian, NX);
+            }
+            break;
+        case RampWindow::Kaiser:
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                CUDAApplyKaiserWindow1DFloat(GPU_filter, xSizeHermitian, NX, ARG.kaiserBeta);
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                CUDAApplyKaiserWindow1DDouble(GPU_filter, xSizeHermitian, NX, ARG.kaiserBeta);
+            }
+            break;
+        default:
+            KCTERR("Unknown ramp window selected.");
         }
     }
 
     ~GPUWorker()
     {
         cudaSetDevice(gpuID);
+
+        if(GPU_f != nullptr)
+        {
+            cudaFree(GPU_f);
+        }
+
+        if(GPU_f_padded != nullptr)
+        {
+            cudaFree(GPU_f_padded);
+        }
+
+        if(GPU_f_shifted != nullptr)
+        {
+            cudaFree(GPU_f_shifted);
+        }
+
+        if(GPU_FTf != nullptr)
+        {
+            cudaFree(GPU_FTf);
+        }
+
+        if(FFT != 0)
+        {
+            cufftDestroy(FFT);
+        }
+
+        if(IFT != 0)
+        {
+            cufftDestroy(IFT);
+        }
 
         if(FFT != 0)
         {
@@ -313,6 +492,110 @@ public:
     WRITERPTR<T> getWriter() { return writer; }
 
     uint32_t getNX() const { return NX; }
+
+    void processFrameNopad(const io::BufferedFrame2D<T>& frame_in,
+                           io::BufferedFrame2D<T>& frame_out)
+    {
+        uint32_t THREADSIZE1 = 32;
+        uint32_t THREADSIZE2 = 32;
+        dim3 threads(THREADSIZE1, THREADSIZE2);
+        {
+            std::lock_guard<std::mutex> lock(gpuMutex);
+            setDevice();
+
+            EXECUDA(cudaMemcpy((void*)GPU_f, (void*)frame_in.data(), ARG.frameSize * sizeof(T),
+                               cudaMemcpyHostToDevice));
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f, (cufftComplex*)GPU_FTf));
+                CUDASpectralFilter<float, cufftComplex>(threads, GPU_FTf, GPU_filter, NX, ARG.dimy,
+                                                        ARG.pixelSizeX);
+                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f));
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                EXECUFFT(cufftExecD2Z(FFT, (cufftDoubleReal*)GPU_f, (cufftDoubleComplex*)GPU_FTf));
+                CUDASpectralFilter<double, cufftDoubleComplex>(threads, GPU_FTf, GPU_filter, NX,
+                                                               ARG.dimy, ARG.pixelSizeX);
+                EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf, (cufftDoubleReal*)GPU_f));
+            } else
+            {
+                KCTERR("Unsupported data type for FFT.");
+            }
+            EXECUDA(cudaPeekAtLastError());
+            EXECUDA(cudaDeviceSynchronize());
+            EXECUDA(cudaMemcpy((void*)frame_out.data(), (void*)GPU_f, frameByteSize,
+                               cudaMemcpyDeviceToHost));
+        }
+    }
+
+    void processFramePad(const io::BufferedFrame2D<T>& frame_in, io::BufferedFrame2D<T>& frame_out)
+    {
+        uint32_t THREADSIZE1 = 32;
+        uint32_t THREADSIZE2 = 32;
+        dim3 threads(THREADSIZE1, THREADSIZE2);
+        //int xSizeHermitan = NX / 2 + 1;
+        {
+            std::lock_guard<std::mutex> lock(gpuMutex);
+            setDevice();
+            EXECUDA(cudaMemcpy((void*)GPU_f, (void*)frame_in.data(), ARG.frameSize * sizeof(T),
+                               cudaMemcpyHostToDevice));
+            if(ARG.pad_zero)
+            {
+                CUDAZeroPad<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+            } else
+            {
+                CUDASymmPadZero<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+            }
+            if(dataType == io::DenSupportedType::FLOAT32)
+            {
+                EXECUFFT(cufftExecR2C(FFT, (cufftReal*)GPU_f_padded, (cufftComplex*)GPU_FTf));
+                CUDASpectralFilter<float, cufftComplex>(threads, GPU_FTf, GPU_filter, NX, ARG.dimy,
+                                                        ARG.pixelSizeX);
+                EXECUFFT(cufftExecC2R(IFT, (cufftComplex*)GPU_FTf, (cufftReal*)GPU_f_padded));
+            } else if(dataType == io::DenSupportedType::FLOAT64)
+            {
+                EXECUFFT(cufftExecD2Z(FFT, (cufftDoubleReal*)GPU_f_padded,
+                                      (cufftDoubleComplex*)GPU_FTf));
+                CUDASpectralFilter<double, cufftDoubleComplex>(threads, GPU_FTf, GPU_filter, NX,
+                                                               ARG.dimy, ARG.pixelSizeX);
+                EXECUFFT(cufftExecZ2D(IFT, (cufftDoubleComplex*)GPU_FTf,
+                                      (cufftDoubleReal*)GPU_f_padded));
+            } else
+            {
+                KCTERR("Unsupported data type for FFT.");
+            }
+            CUDARemovePadding<T>(threads, GPU_f_padded, GPU_f, ARG.dimx, ARG.dimy, NX);
+            EXECUDA(cudaMemcpy((void*)frame_out.data(), (void*)GPU_f, frameByteSize,
+                               cudaMemcpyDeviceToHost));
+        }
+    }
+
+    void processFrame(uint32_t k_in, uint32_t k_out)
+    {
+        io::BufferedFrame2D<T> frame_in(ARG.dimx, ARG.dimy);
+        reader->readFrameIntoBuffer(k_in, frame_in.data());
+        io::BufferedFrame2D<T> frame_out(T(0), ARG.dimx, ARG.dimy);
+
+        if(ARG.pad_none)
+        {
+            processFrameNopad(frame_in, frame_out);
+        } else
+        {
+            processFramePad(frame_in, frame_out);
+        }
+        writer->writeBufferedFrame(frame_out, k_out);
+    }
+
+private:
+    //GPU buffers
+    void* GPU_RamLak = nullptr;
+    void* GPU_RamLak_FFT = nullptr;
+    void* GPU_filter = nullptr;
+    void* GPU_f = nullptr;
+    void* GPU_FTf = nullptr;
+    //void* GPU_filter = nullptr;
+    void* GPU_f_shifted = nullptr;
+    void* GPU_f_padded = nullptr;
 };
 
 template <typename T>
@@ -330,6 +613,7 @@ using TPINFO = typename TP<T>::ThreadInfo;
 template <typename T>
 using TPINFOPTR = std::shared_ptr<TPINFO<T>>;
 
+//Legacy implementation to be removed
 template <typename T>
 void processFrameNopad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
@@ -438,6 +722,7 @@ void processFrameNopad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
     }
 }
 
+//Legacy implementation to be removed
 template <typename T>
 void processFramePad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
@@ -478,27 +763,15 @@ void processFramePad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
         uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
         EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
 
+        if(ARG.pad_zero)
+        {
+            CUDAZeroPad<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+        } else
+        {
+            CUDASymmPadZero<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
+        }
         if(dataType == io::DenSupportedType::FLOAT32)
         {
-            if(ARG.pad_zero)
-            {
-                CUDAZeroPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
-            } else
-            {
-                CUDASymmPad(threads, blocks, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
-                //Debug padding
-                /*
-            std::string fileName = io::xprintf("/tmp/padded_%03d.den", k_out);
-            io::BufferedFrame2D<T> p(T(0), NX, ARG.dimy);
-            T* p_array = p.data();
-            io::DenAsyncFrame2DBufferedWritter<T> padWriter(fileName, NX, ARG.dimy, 1);
-
-            EXECUDA(cudaMemcpy((void*)p_array, (void*)GPU_f_padded, frameSizePad * sizeof(T),
-                               cudaMemcpyDeviceToHost));
-            padWriter.writeBufferedFrame(p, 0);
-			*/
-                //End test
-            }
             bool withoutFftShift = false;
             if(withoutFftShift)
             {
@@ -540,19 +813,19 @@ void processFramePad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
                 }
                 EXECUDA(cudaFree(GPU_f_shifted));
             }
-            CUDAStripPad(threads, blocksNopad, GPU_f_padded, GPU_f, ARG.dimx, NX, ARG.dimy);
-            //Divide by number of projections for avoiding backprojection aditivity
-            /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
-        float frameCount = static_cast<float>(ARG.frameCount);
-        float factor = PI / (frameCount * ARG.dimx);
-        CUDAconstantMultiplication(threads, blocks, (cufftReal*)GPU_f, factor, ARG.dimx, ARG.dimy,
-                                   ARG.dimx, ARG.dimy);
-		*/
 
         } else if(dataType == io::DenSupportedType::FLOAT64)
         {
             KCTERR("Implemented just for FLOAT32!");
         }
+        CUDARemovePadding<T>(threads, GPU_f_padded, GPU_f, ARG.dimx, ARG.dimy, NX);
+        //Divide by number of projections for avoiding backprojection aditivity
+        /* Not necessary as --backprojector-natural-scaling was introduced in kct-pb2d-backprojector 5b5bc55
+        float frameCount = static_cast<float>(ARG.frameCount);
+        float factor = PI / (frameCount * ARG.dimx);
+        CUDAconstantMultiplication(threads, blocks, (cufftReal*)GPU_f, factor, ARG.dimx, ARG.dimy,
+                                   ARG.dimx, ARG.dimy);
+		*/
         //Test if there are some errors, wrong GPU ...
         EXECUDA(cudaPeekAtLastError());
         EXECUDA(cudaDeviceSynchronize());
@@ -581,6 +854,8 @@ template <typename T>
 void processFrame(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
 {
     GPUWORKERPTR<T> worker = threadInfo->worker;
+    worker->processFrame(k_in, k_out);
+    /*
     Args ARG = worker->ARG;
     if(ARG.pad_none)
     {
@@ -588,7 +863,7 @@ void processFrame(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
     } else
     {
         processFramePad<T>(threadInfo, k_in, k_out);
-    }
+    }*/
 }
 
 template <typename T>
@@ -650,7 +925,7 @@ void processFiles(Args ARG, io::DenSupportedType dataType)
         if(ARG.outputFileExists)
         {
             k_out = k_in; // To be able to do dentk-calc --force --multiply -f 0,end zero.den
-                // BETA.den BETA.den
+            // BETA.den BETA.den
         } else
         {
             k_out = IND;
