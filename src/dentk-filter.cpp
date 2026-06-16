@@ -38,6 +38,7 @@ using namespace KCT::util;
 
 enum class BaseFilter { IdealFrequencyRamp, RamLakDiscrete };
 enum class RampWindow { None, SheppLogan, Cosine, Hanning, Hamming, Kaiser };
+enum class PaddingStrategy { None, Symm, Zero, SymmZero };
 // class declarations
 class Args : public ArgumentsForce,
              public ArgumentsVerbose,
@@ -64,7 +65,6 @@ public:
     uint32_t frameCount;
     uint64_t frameSize;
     bool outputFileExists = false;
-    bool pad_none = false, pad_symm = false, pad_zero = false;
 
     inline std::string to_string(BaseFilter f)
     {
@@ -100,7 +100,8 @@ public:
 
     BaseFilter baseFilter = BaseFilter::RamLakDiscrete;
     RampWindow rampWindow = RampWindow::None;
-    double kaiserBeta = 0.0; // Only used if rampWindow == RampWindow::Kaiser
+    PaddingStrategy paddingStrategy = PaddingStrategy::None;
+    double kaiserBeta = 8.6; // Only used if rampWindow == RampWindow::Kaiser
 };
 
 void Args::defineArguments()
@@ -142,14 +143,26 @@ void Args::defineArguments()
     og_window->require_option(0, 1);
     cliApp
         ->add_option("--window-kaiser-beta", kaiserBeta,
-                     "Beta parameter for Kaiser window, only used if --window-kaiser is selected.")
+                     "Beta parameter for Kaiser window (controls filter strength; reference: "
+                     "Ramp = 0.0, Shepp-Logan ≈ 1.5, Cosine ≈ 3, Hamming ≈ 5, Hanning ≈ 6, strong "
+                     "high suppression "
+                     "≈ 8.6). Only used if --window-kaiser is selected.")
         ->check(CLI::PositiveNumber)
         ->needs(opt_kaiser);
     //Padding
     CLI::Option_group* op_clg = cliApp->add_option_group("Padding strategy", "Padding to use.");
-    op_clg->add_flag("--pad-none", pad_none, "No padding.");
-    op_clg->add_flag("--pad-symm", pad_symm, "Symmetric or reflection padding.");
-    op_clg->add_flag("--pad-zero", pad_zero, "Padding with zeros.");
+    op_clg->add_flag_callback(
+        "--pad-none", [this]() { paddingStrategy = PaddingStrategy::None; }, "No padding.");
+    op_clg->add_flag_callback(
+        "--pad-symm", [this]() { paddingStrategy = PaddingStrategy::Symm; },
+        "Symmetric or reflection padding with Neumann like extension to 2*dimx-2.");
+    op_clg->add_flag_callback(
+        "--pad-zero", [this]() { paddingStrategy = PaddingStrategy::Zero; },
+        "Padding with zeros on domain extension to the two times next power of 2.");
+    op_clg->add_flag_callback(
+        "--pad-symm-zero", [this]() { paddingStrategy = PaddingStrategy::SymmZero; },
+        "Domain extension to the two times next power of 2. Use symmetric padding up to 2*dimx-2 "
+        "and zero padding from there to the end of domain.");
     op_clg->require_option(1);
 
     // Natural derivatives
@@ -306,16 +319,18 @@ public:
         , writer(writer_)
     {
         EXECUDA(cudaSetDevice(gpuID));
-        if(ARG.pad_none)
+        if(ARG.paddingStrategy == PaddingStrategy::None)
         {
             NX = ARG.dimx;
-        } else if(ARG.pad_zero)
+        } else if(ARG.paddingStrategy == PaddingStrategy::Zero
+                  || ARG.paddingStrategy == PaddingStrategy::SymmZero)
         {
+            // NX is the next power of two strictly larger than the next power-of-two larger than dimx
             uint32_t padPower
                 = static_cast<uint32_t>(std::ceil(std::log2(static_cast<float>(ARG.dimx)))) + 1;
-            NX = 1 << padPower; // see https://stackoverflow.com/a/30357743
+            NX = 1 << padPower; //2^padPower see https://stackoverflow.com/a/30357743
             LOGI << io::xprintf("ARG.dimx=%d padded NX=%d", ARG.dimx, NX);
-        } else //Symmetric padding is a special case
+        } else //Symmetric padding is a special case where the padding is done by reflection and Neumann like extension. In this case, the padded size is 2*dimx-2 as the last pixel is not repeated but only reflected once.
         {
             if(ARG.dimx < 2)
             {
@@ -329,10 +344,12 @@ public:
         {
             EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_R2C, ARG.dimy));
             EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_C2R, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_R2C, 1));
         } else if(dataType == io::DenSupportedType::FLOAT64)
         {
             EXECUFFT(cufftPlan1d(&FFT, NX, CUFFT_D2Z, ARG.dimy));
             EXECUFFT(cufftPlan1d(&IFT, NX, CUFFT_Z2D, ARG.dimy));
+            EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_D2Z, 1));
         } else
         {
             KCTERR(io::xprintf("Unsupported DenSupportedType %s for FFT plan creation.",
@@ -348,7 +365,7 @@ public:
         EXECUDA(cudaMalloc(&GPU_f, frameByteSize));
         EXECUDA(cudaMalloc(&GPU_FTf, complexBufferByteSize));
 
-        if(!ARG.pad_none)
+        if(ARG.paddingStrategy != PaddingStrategy::None)
         {
             EXECUDA(cudaMalloc(&GPU_f_padded, paddedFrameByteSize));
         }
@@ -359,18 +376,15 @@ public:
         {
             EXECUDA(cudaMalloc(&GPU_RamLak, NX * sizeof(T)));
             EXECUDA(cudaMalloc(&GPU_RamLak_FFT, xSizeHermitian * 2 * sizeof(T)));
+            CUDARamLakKernel1D<T>(GPU_RamLak, NX);
             if(dataType == io::DenSupportedType::FLOAT32)
             {
-                CUDARamLakKernel1DFloat(GPU_RamLak, NX);
-                EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_R2C, 1));
                 EXECUFFT(
                     cufftExecR2C(RamLakFFT, (cufftReal*)GPU_RamLak, (cufftComplex*)GPU_RamLak_FFT));
                 CUDAExtractRealFFTFloat(GPU_RamLak_FFT, GPU_filter, xSizeHermitian);
                 EXECUDA(cudaPeekAtLastError());
             } else if(dataType == io::DenSupportedType::FLOAT64)
             {
-                CUDARamLakKernel1DDouble(GPU_RamLak, NX);
-                EXECUFFT(cufftPlan1d(&RamLakFFT, NX, CUFFT_D2Z, 1));
                 EXECUFFT(cufftExecD2Z(RamLakFFT, (cufftDoubleReal*)GPU_RamLak,
                                       (cufftDoubleComplex*)GPU_RamLak_FFT));
                 CUDAExtractRealFFTDouble(GPU_RamLak_FFT, GPU_filter, xSizeHermitian);
@@ -539,10 +553,10 @@ public:
             setDevice();
             EXECUDA(cudaMemcpy((void*)GPU_f, (void*)frame_in.data(), ARG.frameSize * sizeof(T),
                                cudaMemcpyHostToDevice));
-            if(ARG.pad_zero)
+            if(ARG.paddingStrategy == PaddingStrategy::Zero)
             {
                 CUDAZeroPad<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
-            } else
+            } else //We can use the same Kernel for PaddingStrategy::SymmZero and PaddingStrategy::Symm as for later NX will be small enough not to add zeros pads into GPU_f_padded but only symmetric pads
             {
                 CUDASymmPadZero<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
             }
@@ -576,7 +590,7 @@ public:
         reader->readFrameIntoBuffer(k_in, frame_in.data());
         io::BufferedFrame2D<T> frame_out(T(0), ARG.dimx, ARG.dimy);
 
-        if(ARG.pad_none)
+        if(ARG.paddingStrategy == PaddingStrategy::None)
         {
             processFrameNopad(frame_in, frame_out);
         } else
@@ -763,7 +777,7 @@ void processFramePad(TPINFOPTR<T> threadInfo, uint32_t k_in, uint32_t k_out)
         uint64_t complexBufferSize = ARG.dimy * xSizeHermitan;
         EXECUDA(cudaMalloc((void**)&GPU_FTf, complexBufferSize * 2 * sizeof(T)));
 
-        if(ARG.pad_zero)
+        if(ARG.paddingStrategy == PaddingStrategy::Zero)
         {
             CUDAZeroPad<T>(threads, GPU_f, GPU_f_padded, ARG.dimx, NX, ARG.dimy);
         } else

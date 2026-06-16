@@ -13,6 +13,7 @@
 
 //Tested to be good double representation of these values, FOURPISQUARED=4*pi*pi
 #define PI 3.141592653589793
+#define PISQUARED 9.869604401089358
 #define TWOPI 6.283185307179586
 #define FOURPISQUARED 39.47841760435743
 #define MINUSTWOPISQUARED -19.739208802178716
@@ -109,8 +110,8 @@ void CUDAifftshiftSpectral(dim3 threads,
  * This kernel is intended to be transformed by CUFFT R2C/D2Z if the exact
  * frequency response of the discrete Ram-Lak spatial kernel is desired.
  */
-void CUDARamLakKernel1DFloat(void* x, const int SIZE);
-void CUDARamLakKernel1DDouble(void* x, const int SIZE);
+template <typename T>
+void CUDARamLakKernel1D(void* x, const int SIZE);
 
 /**
  * Construct an ideal ramp response directly in R2C/D2Z half-spectrum Hermitian packed layout layout.

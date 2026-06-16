@@ -190,26 +190,18 @@ __global__ void RamLakKernel1D(T* __restrict__ OUT, const int SIZE)
         return;
     }
 
-    const T pi = static_cast<T>(3.141592653589793238462643383279502884);
-    const T denom = pi * static_cast<T>(i);
+    const T denom = static_cast<T>(PISQUARED) * static_cast<T>(i) * static_cast<T>(i);
 
-    OUT[PX] = -static_cast<T>(1) / (denom * denom);
+    OUT[PX] = -static_cast<T>(1) / denom;
 }
 
-void CUDARamLakKernel1DFloat(void* x, const int SIZE)
+template <typename T>
+void CUDARamLakKernel1D(void* x, const int SIZE)
 {
     const int THREADS = 256;
     const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
 
-    RamLakKernel1D<float><<<BLOCKS, THREADS>>>(static_cast<float*>(x), SIZE);
-}
-
-void CUDARamLakKernel1DDouble(void* x, const int SIZE)
-{
-    const int THREADS = 256;
-    const int BLOCKS = (SIZE + THREADS - 1) / THREADS;
-
-    RamLakKernel1D<double><<<BLOCKS, THREADS>>>(static_cast<double*>(x), SIZE);
+    RamLakKernel1D<T><<<BLOCKS, THREADS>>>(static_cast<T*>(x), SIZE);
 }
 
 template <typename T>
@@ -895,3 +887,7 @@ template void CUDASpectralFilter<double, cufftDoubleComplex>(dim3 threads,
 //IdealRamp1D
 template void CUDAIdealRamp1D<float>(void* OUT_PACKED, const int SIZE_FULL);
 template void CUDAIdealRamp1D<double>(void* OUT_PACKED, const int SIZE_FULL);
+//RamLakKernel1D
+template void CUDARamLakKernel1D<float>(void* x, const int SIZE);
+template void CUDARamLakKernel1D<double>(void* x, const int SIZE);
+//Windowing functions

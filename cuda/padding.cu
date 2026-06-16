@@ -153,8 +153,8 @@ template <typename T>
 void CUDASymmPadZero(
     dim3 threads, void* GPU_in, void* GPU_out, const int SIZEX, const int SIZEXPAD, const int SIZEY)
 {
-    printf("CUDASymmPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
-           threads.y, threads.z, SIZEX, SIZEXPAD, SIZEY);
+    //printf("CUDASymmPad threads=(%d, %d, %d), SIZEX=%d, SIZEXPAD=%d, SIZEY=%d\n", threads.x,
+    //       threads.y, threads.z, SIZEX, SIZEXPAD, SIZEY);
 
     // Calculate the number of blocks needed
     dim3 numBlocks = getNumBlocks(threads, SIZEXPAD, SIZEY);
