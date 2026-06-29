@@ -164,9 +164,16 @@ include_directories(${CMAKE_SOURCE_DIR}/submodules/CLI11/include)
 # Thread pool management
 include_directories(${CMAKE_SOURCE_DIR}/submodules/FTPL)
 
-# Intel MKL
-find_package(MKL)
+#Intel MKL
+find_package(MKL REQUIRED)
 include_directories(${MKL_INCLUDE_DIRS})
+message("Including directory ${MKL_INCLUDE_DIRS}")
+#Set RPATH to find the shared libraries for MKL on cluster or any system with unreliable library paths
+#Next line is not yet enforced
+#set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+get_filename_component(MKL_LIB_DIR "${MKL_CORE_LIBRARY}" DIRECTORY)
+set(CMAKE_BUILD_RPATH "${MKL_LIB_DIR}" ${CMAKE_BUILD_RPATH})
+set(CMAKE_INSTALL_RPATH "${MKL_LIB_DIR}" ${CMAKE_INSTALL_RPATH})
 
 # Matplotlibcpp
 include_directories(${CMAKE_SOURCE_DIR}/submodules/matplotlib-cpp)

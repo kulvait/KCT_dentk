@@ -1,5 +1,5 @@
-#include "tomographicFiltering.cuh"
 #include "cudaUtil.cuh"
+#include "tomographicFiltering.cuh"
 
 __global__ void ifftshiftSpectral(float2* __restrict__ x, const int SIZEX, const int SIZEY)
 {
@@ -40,7 +40,7 @@ __global__ void RadonFilter(float2* __restrict__ x,
     //Note that K shall be PX/L but 1/L is a global scaling factor, see Kak_Slaney, Ch 3, p. 66, (41)
     //double K = PX / (L * L);
     //Note that K shall be PX/L but 1/SIZEX_FULL is a global scaling factor for unscaled IFFT
-    double K = PX / (L * SIZEX_FULL);
+    double K = PX / (L * L);
     //ifftshiftSpectral
     //Note normally we would call fftshift(fft(ifftshift(image))
     //Now just transfrom results as if we input sequence f[ifftshift(x)]
@@ -96,9 +96,10 @@ __global__ void SpectralFilter(W* __restrict__ X,
     if(PX >= SIZEX_HERMITIAN || PY >= SIZEY)
         return;
 
+    //Pixel compensation for projection/bacprojection pair
     const int IDX = SIZEX_HERMITIAN * PY + PX;
-
-    T F = FILTER[PX] / (static_cast<T>(SIZEX) * pixel_size_x);
+    T factor = T(1) / (static_cast<T>(SIZEX) * pixel_size_x * pixel_size_x);
+    T F = FILTER[PX] * factor;
     X[IDX].x *= F;
     X[IDX].y *= F;
 }
@@ -205,7 +206,8 @@ void CUDARamLakKernel1D(void* x, const int SIZE)
 }
 
 template <typename T>
-__global__ void IdealRamp1D(T* __restrict__ OUT_PACKED, const int SIZE_HERMITIAN, const int SIZE_FULL)
+__global__ void
+IdealRamp1D(T* __restrict__ OUT_PACKED, const int SIZE_HERMITIAN, const int SIZE_FULL)
 {
     const int IND = threadIdx.x + blockIdx.x * blockDim.x;
     if(IND >= SIZE_HERMITIAN)
